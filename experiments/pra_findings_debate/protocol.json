@@ -1,0 +1,23 @@
+{
+  "study_id": "pra-findings-debate-3paper-v1",
+  "phase": "development",
+  "provider": "codex",
+  "model": "gpt-5.6-sol",
+  "effort": "medium",
+  "seed": 20260917,
+  "paper_ids": ["nT89RltY10", "UwcZEoNP19", "IjduZQK8gM"],
+  "conditions": ["pra_revised", "pra_original", "single_agent"],
+  "debate_rounds": 2,
+  "max_concerns": 5,
+  "final_word_limit": 900,
+  "max_calls_per_condition": 40,
+  "observed_token_stop": 1200000,
+  "max_total_calls": 72,
+  "max_total_tokens": 6000000,
+  "call_timeout_seconds": 600,
+  "live_retrieval": false,
+  "held_out_runs_authorized": false,
+  "parent_root": "/home/ty/Repos/insilico/runs/peerreview-validation-codex-v5",
+  "pra_python": "/home/ty/Repos/PeerReviewAgents/.venv/bin/python",
+  "budget_interpretation": "Observed completed-call limits. A running call may overshoot. No compute-matching claim."
+}

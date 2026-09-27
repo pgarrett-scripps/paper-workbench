@@ -1,0 +1,12 @@
+{
+  "findings": [
+    {
+      "title": "Clarify analysis denominator",
+      "block_id": "b0001",
+      "quote": "flow diagram reports 86 analyzed participants",
+      "kind": "question",
+      "severity": "major",
+      "comment": "State which denominator governs the primary analysis and correct the inconsistent count."
+    }
+  ]
+}

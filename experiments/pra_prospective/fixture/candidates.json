@@ -1,0 +1,9 @@
+{
+  "papers": [
+    {
+      "paper_id": "heldout-fixture-001",
+      "doi": "10.5555/heldout.fixture.001",
+      "source_manifest": "source-packet.json"
+    }
+  ]
+}

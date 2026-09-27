@@ -1,0 +1,6 @@
+{
+  "provider": "offline-fixture",
+  "model": "not-run",
+  "reasoning_effort": "recorded-only",
+  "generation_authorized": false
+}

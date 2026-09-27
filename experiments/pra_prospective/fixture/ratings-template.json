@@ -1,0 +1,20 @@
+{
+  "provenance": {
+    "assessor_id": "expert-001",
+    "expertise": "Declare the relevant independent domain expertise",
+    "independence_attestation": "No role in creating either review and blinded to condition mapping",
+    "rated_at": "YYYY-MM-DD",
+    "source_sha256": "REPLACE_WITH_ASSESSMENT_PACKET_SHA256"
+  },
+  "ratings": [
+    {
+      "item_id": "A1",
+      "assessment": "supported",
+      "importance": 2,
+      "actionability": 2,
+      "evidence_block_id": "b0001",
+      "evidence_quote": "84 participants, while the flow diagram reports 86 analyzed participants",
+      "reason": "The source reports conflicting analyzed totals."
+    }
+  ]
+}

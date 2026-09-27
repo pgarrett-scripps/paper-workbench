@@ -1,0 +1,21 @@
+{
+  "study_id": "pra-three-reviewers-3paper-v1",
+  "phase": "development",
+  "provider": "codex",
+  "model": "gpt-5.6-sol",
+  "effort": "medium",
+  "paper_ids": ["nT89RltY10", "UwcZEoNP19", "IjduZQK8gM"],
+  "seed": 20260918,
+  "max_calls_per_condition": 4,
+  "observed_token_stop": 400000,
+  "max_total_calls": 30,
+  "max_total_tokens": 2500000,
+  "call_timeout_seconds": 600,
+  "live_retrieval": false,
+  "held_out_runs_authorized": false,
+  "parent_root": "/home/ty/Repos/insilico/runs/pra-findings-debate-3paper-v2",
+  "max_parallel_calls": 3,
+  "max_concerns": 5,
+  "max_words": 900,
+  "budget_interpretation": "Observed usage stops. Up to three already running calls may overshoot. Missing usage is reported. No automatic retries."
+}

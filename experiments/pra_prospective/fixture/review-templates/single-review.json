@@ -1,0 +1,12 @@
+{
+  "findings": [
+    {
+      "title": "Reconcile analyzed totals",
+      "block_id": "b0001",
+      "quote": "84 participants",
+      "kind": "question",
+      "severity": "major",
+      "comment": "Please reconcile the two analyzed participant totals."
+    }
+  ]
+}

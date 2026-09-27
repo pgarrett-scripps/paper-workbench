@@ -1,0 +1,13 @@
+# Exclusion handoff development retest
+
+The user authorized another paper check and blinded preference assessment. The bounded test reuses the frozen initial single and investigator reviews from `pra-claim-retest-v1`, reruns debate with the complete exclusion handoff, and obtains one fresh anonymous evaluation. Exactly two new Sol medium calls are planned. No new initial reviews, literature searches, or analysis reruns are needed.
+
+The paper and source delivery are unchanged. The new debate receives all four investigator findings, all three discarded hypotheses, and the available investigation records. It must account for every issue and component. A restored question requires a unique manuscript anchor and supporting source evidence. All selected outputs remain question-only, with at most five findings and 900 comment words. The final review is not required to restore any particular question. No prior scores or single-reviewer output are supplied to debate.
+
+The single reviewer and before-debate selection are reused exactly. A fresh evaluator receives those two outputs and the new debate review under randomized labels fixed before inference. It sees the same source packet and evaluation instructions used previously. It receives no workflow identities, discarded notes, component records, or earlier grades. One same-family model evaluation can express a preference but is not independent expert validation.
+
+This isolates the revised handoff and debate behavior. It does not retest the new deterministic reconciliation task inventory or the investigator's later candidate-retention instruction. Those changes require fresh generation in a separate experiment. The paper is a known development case, so the result cannot establish general superiority or human-review overlap. Comparing PRA's final output with the single reviewer also has unequal total generation calls.
+
+The launch stop is 250,000 new observed tokens including any cached input. An in-flight call can cross the stop. Each stage runs separately with durable receipts to avoid repeating generation after a launcher interruption. There are no automatic retries, model fallback, paid credits, or usage resets. Failed references remain unscored. All prior results remain frozen.
+
+After the anonymous evaluation, audit whether the collection-order note was restored, resolved, or deferred, whether any other useful issue disappeared, and whether the final questions contain unsupported premises or disproportionate demands. Record actual new token usage separately from the cost of generating the reused initial reviews.

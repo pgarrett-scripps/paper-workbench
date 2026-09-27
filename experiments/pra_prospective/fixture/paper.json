@@ -1,0 +1,14 @@
+{
+  "id": "heldout-fixture-001",
+  "title": "Offline prospective evaluation fixture",
+  "blocks": [
+    {
+      "id": "b0001",
+      "text": "The primary analysis included 84 participants, while the flow diagram reports 86 analyzed participants."
+    },
+    {
+      "id": "b0002",
+      "text": "The outcome was registered before enrollment and measured at twelve weeks."
+    }
+  ]
+}

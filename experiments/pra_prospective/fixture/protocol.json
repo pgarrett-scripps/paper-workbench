@@ -1,0 +1,42 @@
+{
+  "schema_version": "pra-prospective-v2",
+  "study_id": "offline-integration-fixture",
+  "candidate_manifest": "candidates.json",
+  "prior_corpus_manifest": "prior-corpus.json",
+  "frozen_paths": [],
+  "prompt_paths": ["prompt.txt"],
+  "settings_paths": ["settings.json"],
+  "implementation_paths": ["../core.py", "../cli.py"],
+  "domain_paths": ["domain-guidance.txt"],
+  "evidence_limitations": ["Synthetic integration evidence only"],
+  "conditions": {
+    "single": {
+      "review_path": "outputs/single-review.json",
+      "manuscript": "paper.json",
+      "source_packet": "source-packet.json",
+      "images": [],
+      "domain_guidance": "domain-guidance.txt",
+      "model": "fixture-model",
+      "settings": {"effort": "medium"},
+      "tools": ["manuscript", "calculator", "source"],
+      "tool_call_budget": 8,
+      "source_request_budget": 6,
+      "model_calls": 1,
+      "usage_receipts": []
+    },
+    "pra": {
+      "review_path": "outputs/pra-review.json",
+      "manuscript": "paper.json",
+      "source_packet": "source-packet.json",
+      "images": [],
+      "domain_guidance": "domain-guidance.txt",
+      "model": "fixture-model",
+      "settings": {"effort": "medium"},
+      "tools": ["manuscript", "calculator", "source"],
+      "tool_call_budget": 8,
+      "source_request_budget": 6,
+      "model_calls": 2,
+      "usage_receipts": []
+    }
+  }
+}

@@ -1,0 +1,37 @@
+{
+  "study_id": "pra-codex-sol-pilot-v1",
+  "phase": "development",
+  "model": "gpt-5.6-sol",
+  "provider": "codex",
+  "effort": "medium",
+  "pilot_size": 10,
+  "seed": 20260916,
+  "conditions": [
+    "one_shot",
+    "single_agent",
+    "pra_full",
+    "pra_no_debate"
+  ],
+  "debate_rounds": 2,
+  "max_concerns": 5,
+  "final_word_limit": 900,
+  "call_timeout_seconds": 600,
+  "max_calls_per_condition": 40,
+  "observed_token_stop": 1200000,
+  "budget_interpretation": "Pilot stop after observed usage. A running call can exceed the threshold. This is not an enforced compute-matched experiment.",
+  "live_retrieval": false,
+  "journal": "ml-conference",
+  "article_type": "conference-paper",
+  "prior_corpus": "/home/ty/Repos/PeerReviewAgents/data/eval/iclr-2025-publication",
+  "pra_source": "/home/ty/Repos/PeerReviewAgents",
+  "pra_python": "/home/ty/Repos/PeerReviewAgents/.venv/bin/python",
+  "held_out_runs_authorized": false,
+  "limitations": [
+    "Historical pilot candidates have prior development exposure.",
+    "Exact submission and first-review versions must be verified before scientific evaluation.",
+    "Local legacy inputs are extracted text and do not establish figure access.",
+    "All automated judges use GPT-5.6 Sol and can share errors.",
+    "Pilot budgets require calibration before any claim of resource matching.",
+    "Codex JSON events do not expose resolved model identity. CLI selection is pinned and recorded."
+  ]
+}

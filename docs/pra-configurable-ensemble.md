@@ -1,0 +1,54 @@
+# Configurable independent discovery and debate
+
+The review CLI now defaults to two independent whole-paper discovery sessions, followed by one fresh evidence-based debate. Set `--reviewers 3` or a higher count to expand discovery. Counts from 1 through 16 are accepted, subject to the launch budget. Larger counts have not been validated as more effective.
+
+Each reviewer receives the same manuscript workspace and initial figure pages, with its own source cache and tool state. It does not receive another reviewer's findings. Sessions currently run sequentially to control subscription usage. Independence refers to separate contexts, not different models or scientifically independent evidence.
+
+Each discovery session can return up to ten candidates and use four manuscript or domain tool calls. The pool preserves every candidate and discarded hypothesis with reviewer provenance. Similar comments are not deleted automatically. The debate records an explicit scientific decision and a destination for every sentence component. Several source issues can map into one final comment.
+
+The debate can introduce up to five new candidates, each with a uniquely located manuscript anchor and an explicit evidence-based decision. Supported secondary candidates remain in the editor package even when they do not fit the five-finding summary. Unresolved candidates remain marked as unresolved. Neither agreement nor retention establishes correctness.
+
+Workflow `ensemble-v2` requires each new candidate to contain its own decision and component treatment. The runtime assigns the matching issue and component IDs, then applies the existing evidence and retention checks. Missing judgments and duplicate decisions fail validation. The runtime never supplies a scientific decision. Historical v1 artifacts remain unchanged.
+
+Workflow `ensemble-v3` additionally requires an adjudicated, anchored secondary comment for a retained concern that has deferred components and no primary destination. The wording must reflect the accepted author defense and any remaining uncertainty. Source comments remain available separately for audit. Unanchored unresolved investigator notes can remain audit-only. Secondary comments cannot contain unguarded manuscript replacements. This avoids presenting a rejected broad allegation as though it were the final scientific judgment.
+
+Discovery, ordinary revision, and debate share guidance to retain consequential clarification questions without asserting unverified defects. Source evidence that answers the question can resolve it. Missing decisive information alone is not a reason to discard it.
+
+When an otherwise valid component reference differs only in its first-letter capitalization or one trailing punctuation mark, a restricted repair can select the unique matching span from the same final comment. It records both versions and revalidates the entire result. It cannot rewrite a comment, change its scientific status, redirect a component, paraphrase a quotation, or repair a manuscript quotation.
+
+Debate is one fresh model session that weighs criticism and author defense. It is not a conversation among multiple independently running debaters. It receives the pooled ledger, full manuscript, source cards, and original images. It has two additional tool calls. The existing source-handle validation, conservative edit guard, secondary inventory, and manuscript annotation export remain in use.
+
+## Run
+
+```bash
+python -m paper_workspace review /path/to/workspace /path/to/new-run \
+  --billing-confirmation /path/to/billing-confirmation.json \
+  --literature-cutoff 2026-09-25 \
+  --reviewers 2 \
+  --model gpt-5.6-terra \
+  --token-budget 750000
+```
+
+Add `--scaffold-root /path/to/paper-scaffold` for its offline advisory checks. Add up to three `--source-image /path/to/original-page.png` arguments for common initial figure pages. `--source-packet` supports frozen external records. `--historical-snapshots` supports curated registration snapshots. These inputs are optional and their absence is not evidence that a manuscript failed a check.
+
+Terra at medium reasoning is the CLI default. Sol is also supported. Two reviewers require three generation calls, three reviewers require four. A blind evaluation is separate and is never automatically added by this runner.
+
+`--token-budget` is an observed-token threshold for launching another call. It is not a hard token cap on a call already running. Unknown usage or an incomplete call receipt stops the workflow. Failed calls do not trigger automatic retries. Each output directory is a single attempt and cannot be reused for an automatic restart.
+
+For callers using Python, use `ensemble_review(...)` or `review(..., mode='ensemble', reviewers=2, model='gpt-5.6-terra')`. The older `review()` function retains its previous default mode for compatibility with existing experiments. Explicit `--mode panel` also retains the earlier one-investigator debate workflow.
+
+## Evidence and remaining questions
+
+Offline tests exercise two and three reviewer sessions, separate contexts and source state, source candidate preservation, new debate findings, and launch-budget stops. They do not prove scientific quality or exhaustive discovery.
+
+The first live development check reuses two previously independent behavioral-paper drafts, then makes one new debate call and one new blind judge call. Those drafts used different prompts and tool access. This deliberately inexpensive comparison tests pooling and debate, while the new discovery runner is exercised offline. It is not a fresh matched-compute benchmark of the complete new workflow.
+
+That check preferred the pooled review over the previous PRA review and two-pass basic review. All five pooled primary findings received supported ratings. The original debate delivery failed on two component-reference formatting errors, which were repaired offline without changing the scientific review. See [pilot results](pra-ensemble-pilot-results.md) for the retained failure record, cost, and limitations.
+
+Before increasing the default, measure the third reviewer's additional supported issues, false premises, and token cost on held-out papers. More candidates or agreement alone are not success criteria. Preserve all failures and distinguish primary findings, supported secondary findings, and unresolved questions.
+
+The next two-paper development comparison generated both workflows on two fresh manuscripts. Only the clinical blind assessment completed. It preferred the ensemble scientific draft, although ensemble delivery failed on a missing new-candidate decision. The plant judge was interrupted without a completed answer. The v2 contract addresses the clinical failure and has offline tests, but has not been validated by another live review. See [fresh comparison results](pra-ensemble-fresh-results.md) for the incomplete trial, baseline prompt overhead, and usage uncertainty.
+
+The subsequently authorized clarification check is specified in [the follow-up protocol](pra-ensemble-clarification-protocol.md). Its evaluator records process identity, heartbeat, deadline, and completion or failure. `evaluate(..., resume=True)` only recovers an identical saved request. It cannot launch a model call. A new assessment uses a separate attempt and retains the earlier failure.
+
+That check completed both assessments. The saved plant judge and fresh owl judge each preferred ensemble, with five supported primary findings versus four for sequential revision. The fresh workflow delivered without repair and retained one supported addition from the second reviewer. Its secondary and debate-only new-candidate branches were not exercised by that manuscript. See [clarification results](pra-ensemble-clarification-results.md) for costs, preserved failures, and limits on interpretation.
