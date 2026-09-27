@@ -4,12 +4,12 @@ A local research prototype for scientific peer review in context. It imports a P
 
 ## Use
 
-Run from the In Silico repository with Python 3.11 or newer, `rustypaper`, Pillow, and Poppler installed. The local PeerReviewAgents virtual environment provides the Python dependencies on this machine.
+Install Paper Workbench as described in the repository README. PDF import requires `rustypaper`, Pillow and Poppler. The `paper_workbench_core` package provides the shared headless integration API.
 
 ```bash
-/home/ty/Repos/PeerReviewAgents/.venv/bin/python -m paper_workspace import manuscript.pdf workspace --xml manuscript.xml --supplements supplement-directory
-/home/ty/Repos/PeerReviewAgents/.venv/bin/python -m paper_workspace serve workspace --port 38744
-/home/ty/Repos/PeerReviewAgents/.venv/bin/python -m paper_workspace verify workspace
+python -m paper_workspace import manuscript.pdf workspace --xml manuscript.xml --supplements supplement-directory
+python -m paper_workspace serve workspace --port 38744
+python -m paper_workspace verify workspace
 ```
 
 Open `http://127.0.0.1:38744`. Sources stay local unless you explicitly run a model review. The pilot sends manuscript text and selected source images to the authenticated Codex subscription and sends focused literature queries to Crossref or Europe PMC.
@@ -22,10 +22,10 @@ Import structured findings with `add-review workspace response.json --id review-
 
 `investigation.py` exposes a bounded MCP server for source reads and searches, PDF page and supplementary figure inspection, saved evidence notes, arithmetic, DOI metadata checks, and focused literature searches. Tool logs and retrieved metadata retain provenance. Search defaults to a publication cutoff configured per paper. Abstracts and DOI metadata are not treated as full-text support.
 
-The reusable runner uses Sol medium and supports plain review, workspace investigation, and a panel with a debate pass. No API key, paid credit, fallback model, shell tool, author-code execution, or automatic retry is used. Inputs and code are fingerprinted before inference. Cache identity includes tool configuration, the manuscript manifest, and attached image paths and hashes. Completed calls can be recovered without another inference. Unknown usage and unresolved interrupted calls block further inference in that attempt directory. The default 250,000 observed-token stop is checked before each call. It is not a hard within-call cap.
+The CLI defaults to Terra medium and also supports Sol medium and supports plain review, workspace investigation, and a panel with a debate pass. No API key, paid credit, fallback model, shell tool, author-code execution, or automatic retry is used. Inputs and code are fingerprinted before inference. Cache identity includes tool configuration, the manuscript manifest, and attached image paths and hashes. Completed calls can be recovered without another inference. Unknown usage and unresolved interrupted calls block further inference in that attempt directory. The default 250,000 observed-token stop is checked before each call. It is not a hard within-call cap.
 
 ```bash
-/home/ty/Repos/PeerReviewAgents/.venv/bin/python -m paper_workspace review workspace run-output --mode panel --literature-cutoff 2026-01-05 --billing-confirmation billing_confirmation.json
+python -m paper_workspace review workspace run-output --mode panel --literature-cutoff 2026-01-05 --billing-confirmation billing_confirmation.json
 ```
 
 This command performs model inference. The billing confirmation must come from a current account check, record `no_paid_credits_verified: true`, and contain a Unix `checked_at` timestamp less than 24 hours old. The runner also requires an active ChatGPT subscription login. Do not fabricate this confirmation or use it to enable paid usage.
@@ -41,8 +41,8 @@ The debate receives guarded review suggestions, the coverage record, cited sourc
 The optional adapter genuinely reuses `readability.metrics` and `prose_check.check` from an explicitly selected Paper Scaffold checkout. It reports prose word counts, readability, and source-linked advisory findings. It records the checkout revision, tool hashes, and optional dependency versions. The imported manuscript stays unchanged.
 
 ```bash
-/home/ty/Repos/PeerReviewAgents/.venv/bin/python -m paper_workspace checks workspace --scaffold-root /path/to/paper-scaffold --output scaffold-report.json
-/home/ty/Repos/PeerReviewAgents/.venv/bin/python -m paper_workspace review workspace run-output --mode panel --literature-cutoff 2026-01-05 --billing-confirmation billing_confirmation.json --scaffold-root /path/to/paper-scaffold
+python -m paper_workspace checks workspace --scaffold-root /path/to/paper-scaffold --output scaffold-report.json
+python -m paper_workspace review workspace run-output --mode panel --literature-cutoff 2026-01-05 --billing-confirmation billing_confirmation.json --scaffold-root /path/to/paper-scaffold
 ```
 
 The checks operate on extracted plain text and skip headings, references, and tables. They include captions and supplementary prose. Their word convention differs from the importer totals. Readability and prose warnings are editorial cues, not evidence of scientific defects. Scaffold's Typst authoring rules and journal limits are not imposed on imported manuscripts.
@@ -88,7 +88,7 @@ See `docs/pra-debate-revision-protocol.md` and `docs/pra-debate-revision-results
 ## Verification
 
 ```bash
-/home/ty/Repos/PeerReviewAgents/.venv/bin/python -m unittest discover -s tests -p 'test_*.py' -v
+python -m unittest discover -s tests -p 'test_*.py' -v
 node --check paper_workspace/web/app.js
 ```
 

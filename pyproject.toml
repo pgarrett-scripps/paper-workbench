@@ -1,0 +1,27 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "paper-workbench"
+version = "0.1.0"
+description = "An evidence-linked workspace for manuscript review and revision"
+readme = "README.md"
+requires-python = ">=3.11"
+license = {file = "LICENSE"}
+dependencies = []
+
+[project.optional-dependencies]
+documents = ["rustypaper==0.2.1", "Pillow", "python-docx", "lxml"]
+test = ["Pillow", "python-docx", "lxml"]
+
+[project.scripts]
+paper-workbench = "paper_workspace.__main__:main"
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["paper_workspace*", "paper_workbench_core*"]
+namespaces = false
+
+[tool.setuptools.package-data]
+paper_workspace = ["web/*", "domains/*/manifest.json", "domains/*/skills/*/SKILL.md", "README.md"]
