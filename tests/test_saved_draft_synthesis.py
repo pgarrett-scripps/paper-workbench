@@ -27,14 +27,20 @@ class SavedDraftSynthesisTests(unittest.TestCase):
         self.original = self.root / 'original'
         debate = self.original / 'debate'
         debate.mkdir(parents=True)
-        source_review = self.original / 'reviewer-1' / 'editor-package.json'
-        source_review.parent.mkdir(parents=True)
-        source_review.write_text('{"summary":"draft"}')
-        records = [{'review': {'summary': 'draft', 'findings': []}, 'provenance': {
-            'paper_id': 'paper-1', 'reviewer_id': 'reviewer-1',
-            'source_review_path': str(source_review),
-            'source_review_sha256': digest(source_review.read_bytes()),
-            'origin': 'fresh_independent_session'}}]
+        records = []
+        for index, tokens in ((1, 30), (2, 40)):
+            reviewer = self.original / f'reviewer-{index}'
+            source_review = reviewer / 'editor-package.json'
+            source_review.parent.mkdir(parents=True)
+            source_review.write_text('{"summary":"draft-' + str(index) + '"}')
+            (reviewer / 'call.started.json').write_text('{}')
+            (reviewer / 'usage.jsonl').write_text(json.dumps({
+                'observed_tokens': tokens, 'usage_unknown': False}) + '\n')
+            records.append({'review': {'summary': f'draft-{index}', 'findings': []}, 'provenance': {
+                'paper_id': 'paper-1', 'reviewer_id': f'reviewer-{index}',
+                'source_review_path': str(source_review),
+                'source_review_sha256': digest(source_review.read_bytes()),
+                'origin': 'fresh_independent_session'}})
         write(debate / 'input-reviews.json', records)
         write(debate / 'manifest.json', {
             'review_input_sha256': digest((debate / 'input-reviews.json').read_bytes()),
@@ -46,7 +52,7 @@ class SavedDraftSynthesisTests(unittest.TestCase):
             'paper_id': 'paper-1',
             'source_manifest_sha256': digest((self.workspace / 'manifest.json').read_bytes()),
             'workflow': 'ensemble', 'model_requested': 'gpt-5.6-terra',
-            'resolved_configuration': {'synthesis_policy': 'debate'},
+            'resolved_configuration': {'synthesis_policy': 'debate', 'reviewers': 2},
             'source_packet_manifest_after': packet_hashes,
             'engine_source': source_manifest(Path(paper_workspace.__file__).parent),
             'core_source': source_manifest(Path(core_api.__file__).parent),
@@ -62,12 +68,13 @@ class SavedDraftSynthesisTests(unittest.TestCase):
     def synthesize(self, request=None):
         def fake(workspace, output, billing, cutoff, records, **kwargs):
             Path(output).mkdir(parents=True)
+            (Path(output) / 'call.started.json').write_text('{}')
+            (Path(output) / 'usage.jsonl').write_text(json.dumps({
+                'observed_tokens': 20, 'usage_unknown': False}) + '\n')
             return {'summary': 'ordinary', 'findings': [],
                     'synthesis_provenance': {'policy': 'ordinary', 'generation_calls': 1, 'tool_limit': 2}}
         with patch('paper_workbench_core.api.load_manuscript', return_value={'id': 'paper-1'}), \
-             patch('paper_workspace.ensemble.debate_reviews', side_effect=fake), \
-             patch('paper_workspace.ensemble.observed_usage', return_value={
-                 'calls': 1, 'receipts': 1, 'observed_tokens': 20, 'unknown': False}):
+             patch('paper_workspace.ensemble.debate_reviews', side_effect=fake):
             return run_saved_draft_synthesis(request or self.request)
 
     def test_reuses_exact_drafts_and_reports_new_usage_separately(self):
@@ -80,7 +87,10 @@ class SavedDraftSynthesisTests(unittest.TestCase):
         self.assertEqual(provenance['discovery_calls'], 0)
         self.assertEqual(artifact['usage']['calls'], 1)
         self.assertEqual(artifact['usage_scope'], 'new_synthesis_stage_only')
-        self.assertEqual(artifact['reused_discovery_usage']['calls'], 3)
+        self.assertEqual(artifact['reused_discovery_usage']['calls'], 2)
+        self.assertEqual(artifact['reused_discovery_usage']['observed_tokens'], 70)
+        self.assertEqual(artifact['original_full_workflow_usage']['calls'], 3)
+        self.assertEqual(len(artifact['reused_discovery_receipts']), 4)
 
     def test_rejects_incomplete_images_and_changed_drafts(self):
         other = self.root / 'other.png'
@@ -105,6 +115,15 @@ class SavedDraftSynthesisTests(unittest.TestCase):
             'output': self.root / 'budget-change', 'token_budget': 124})
         with self.assertRaisesRegex(ValueError, 'tool and token budget'):
             self.synthesize(request)
+
+
+    def test_rejects_wrong_expected_discovery_count(self):
+        artifact_path = self.original / 'core-artifact.json'
+        artifact = json.loads(artifact_path.read_text())
+        artifact['resolved_configuration']['reviewers'] = 3
+        write(artifact_path, artifact)
+        with self.assertRaisesRegex(ValueError, 'expected discovery count'):
+            self.synthesize()
 
     def test_rejects_original_engine_or_core_drift(self):
         artifact_path = self.original / 'core-artifact.json'

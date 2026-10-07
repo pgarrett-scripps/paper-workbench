@@ -189,7 +189,24 @@ def run_saved_draft_synthesis(request: SavedDraftSynthesisRequest):
     protocol = read(debate_root / 'protocol.json')
     if protocol.get('debate_tool_allowance') != 2 or protocol.get('token_launch_budget') != request.token_budget:
         raise ValueError('Saved draft synthesis must match the original synthesis tool and token budget')
-    cache_roots = [original / f'reviewer-{index}' / 'source-cache' for index in range(1, len(records) + 1)]
+    expected_discovery_calls = artifact.get('resolved_configuration', {}).get('reviewers')
+    if type(expected_discovery_calls) is not int or len(records) != expected_discovery_calls:
+        raise ValueError('Saved drafts do not match the original expected discovery count')
+    cache_roots = [original / f'reviewer-{index}' / 'source-cache'
+                   for index in range(1, expected_discovery_calls + 1)]
+    discovery_usage = []
+    discovery_receipts = {}
+    for index in range(1, expected_discovery_calls + 1):
+        reviewer_root = original / f'reviewer-{index}'
+        usage = observed_usage(reviewer_root)
+        if usage.get('unknown') or usage.get('calls') != 1 or usage.get('receipts') != 1:
+            raise ValueError('Every reused discovery draft requires one resolved original model receipt')
+        discovery_usage.append(usage)
+        for path in reviewer_root.rglob('*'):
+            if path.is_file() and (path.name == 'usage.jsonl' or path.name.endswith('.started.json')):
+                discovery_receipts[str(path.relative_to(original))] = digest(path.read_bytes())
+    reused_discovery_usage = {'calls': expected_discovery_calls, 'receipts': expected_discovery_calls,
+        'observed_tokens': sum(row['observed_tokens'] for row in discovery_usage), 'unknown': False}
     cache_before = {str(path.resolve()): digest(path.read_bytes()) for root in cache_roots for path in root.glob('*') if path.is_file()}
     raw_hashes = sorted({digest(path.read_bytes()) for root in [*cache_roots, Path(request.source_packet)]
                          for path in root.glob('*.raw') if path.is_file()})
@@ -205,7 +222,8 @@ def run_saved_draft_synthesis(request: SavedDraftSynthesisRequest):
         original_core_artifact_sha256=digest((original / 'core-artifact.json').read_bytes()),
         original_input_reviews_sha256=digest(records_path.read_bytes()),
         original_review_sha256=expected_review_hashes, source_packet_manifest=packet_before,
-        original_evidence_raw_sha256=raw_hashes, shared_images=supplied_images)
+        original_evidence_raw_sha256=raw_hashes, shared_images=supplied_images,
+        reused_discovery_receipts=discovery_receipts)
     write(output / 'editor-package.json', package)
     synthesis_usage = observed_usage(output)
     result = {'api_version': API_VERSION, 'artifact_version': 'paper-workbench-run-v1',
@@ -217,7 +235,9 @@ def run_saved_draft_synthesis(request: SavedDraftSynthesisRequest):
         'source_packet_manifest_before': packet_before, 'source_packet_manifest_after': packet_before,
         'engine_source': current_engine, 'core_source': current_core, 'editor_package': package,
         'usage': synthesis_usage, 'usage_scope': 'new_synthesis_stage_only',
-        'reused_discovery_usage': artifact.get('usage'), 'output_directory': str(output),
+        'reused_discovery_usage': reused_discovery_usage,
+        'reused_discovery_receipts': discovery_receipts,
+        'original_full_workflow_usage': artifact.get('usage'), 'output_directory': str(output),
         'limitation': 'Reused discovery usage is reported separately and is not counted as new synthesis usage.'}
     write(output / 'core-artifact.json', result)
     return result
