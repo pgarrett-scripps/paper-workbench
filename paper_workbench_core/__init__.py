@@ -7,7 +7,7 @@ from .api import (
 )
 from .config import CONFIG_VERSION, review_presets, resolved_review_config
 
-__version__ = '0.1.4'
+__version__ = '0.1.5'
 __all__ = ['API_VERSION', 'ReviewRequest', 'capabilities', 'load_manuscript',
            'evidence_registry', 'validate_review', 'run_review', 'StructuredRequest',
            'run_structured', 'usage_summary', 'CONFIG_VERSION', 'review_presets',
