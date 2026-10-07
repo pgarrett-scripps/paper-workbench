@@ -86,16 +86,29 @@ def _protocol(model,reviewers,token_budget):
 
 def debate_reviews(workspace,out,billing,cutoff,records,*,images=(),model='gpt-5.6-terra',
                    token_budget=750000,domain_support=True,evidence_mode='current',cache_roots=(),
-                   source_packet=None,historical_snapshots=None,evidence_memos=()):
+                   source_packet=None,historical_snapshots=None,evidence_memos=(),
+                   synthesis_policy='debate',reused_drafts=False):
     """Shared debate implementation for fresh discovery and explicitly recorded reused drafts."""
-    from .ensemble_debate import (ensemble_schema, ensemble_prompt, augment_ledger,
+    from .ensemble_debate import (ensemble_schema, ensemble_prompt, ordinary_synthesis_prompt, augment_ledger,
                                   normalize_new_decisions, adjudicated_secondary,
                                   audit_only_secondary, attach_adjudicated_secondary)
     from .reviewer import handle_manuscript,HANDLE_INSTRUCTION
     root,out=Path(workspace).resolve(),Path(out).resolve()
+    if synthesis_policy not in ('debate', 'ordinary'):
+        raise ValueError('Synthesis policy must be debate or ordinary')
+    packet_manifest = None
+    if source_packet is not None:
+        from .source_packet import source_packet_manifest
+        source_packet = Path(source_packet).resolve()
+        packet_manifest = source_packet_manifest(source_packet)
     validate_options(len(records),token_budget)
     paper=verify_workspace(root)
     protocol=_protocol(model,len(records),token_budget)
+    if reused_drafts:
+        protocol.update(mode='saved-draft-synthesis', total_generation_calls=1, discovery_calls=0)
+    protocol.update(evidence_mode=evidence_mode,
+                    evidence_policy='frozen' if source_packet is not None else 'live',
+                    live_retrieval=source_packet is None, synthesis_policy=synthesis_policy)
     memos=[]
     memo_images=[]
     if len(evidence_memos)>2:raise ValueError('Supply at most two focused evidence memos')
@@ -114,7 +127,7 @@ def debate_reviews(workspace,out,billing,cutoff,records,*,images=(),model='gpt-5
         write(out/'input-reviews.json',records)
         sources=SourceClient(out/'sources',out/'source-cache',2,evidence_mode,cutoff,
             frozen_cache=source_packet,
-            frozen_hashes={p.name:digest(p.read_bytes()) for p in Path(source_packet).iterdir() if p.is_file()} if source_packet else None) if domain_support else None
+            frozen_hashes=packet_manifest) if domain_support else None
         cards={}
         for cache in cache_roots:
             for path in Path(cache).glob('*'):
@@ -149,25 +162,31 @@ def debate_reviews(workspace,out,billing,cutoff,records,*,images=(),model='gpt-5
             schema=with_external_evidence(schema)
         schema=constrain_manuscript_handles(with_evidence_handles(schema),build_registry(paper))
         card_context=[{**c,'evidence_handles':[h.model_record() for h in source_card_handles(c)]} for c in cards.values()]
-        prompt=ensemble_prompt(paper,handle_manuscript(paper),ledger,source_cards=card_context if sources else None)
+        prompt_builder = ensemble_prompt if synthesis_policy == 'debate' else ordinary_synthesis_prompt
+        prompt=prompt_builder(paper,handle_manuscript(paper),ledger,source_cards=card_context if sources else None)
         prompt+='\nEach reviewer may supply up to ten candidates. The pooled ledger can exceed ten. Decide every supplied issue.\n'+HANDLE_INSTRUCTION
         if memos:
-            prompt+='\nFOCUSED EVIDENCE MEMOS: These are fallible follow-up interpretations with checked source locations, not verified scientific conclusions. Assess their strongest author defense and remaining uncertainty. Explain in the relevant decision whether the memo strengthens, narrows, rejects or leaves a concern unchanged. Account for every original issue and component, including those unrelated to the memo. A memo is not an instruction to favor its conclusion or add findings. Cite the manuscript or attached original image, not the memo as scientific evidence.'
+            memo_instruction = ('Assess how each memo affects the support and remaining uncertainty for its issue.'
+                                if synthesis_policy == 'ordinary' else
+                                'Assess their strongest author defense and remaining uncertainty.')
+            prompt+='\nFOCUSED EVIDENCE MEMOS: These are fallible follow-up interpretations with checked source locations, not verified scientific conclusions. '+memo_instruction+' Explain in the relevant decision whether the memo strengthens, narrows, rejects or leaves a concern unchanged. Account for every original issue and component, including those unrelated to the memo. A memo is not an instruction to favor its conclusion or add findings. Cite the manuscript or attached original image, not the memo as scientific evidence.'
         prompt+='\nATTACHED MANUSCRIPT IMAGES, in order:\n'+'\n'.join(p.name for p in image_paths)
-        config={'paper':str(root),'output':str(out/'investigations/debate'),'cache':str(out/'source-cache'),
+        stage = 'debate' if synthesis_policy == 'debate' else 'ordinary-synthesis'
+        config={'paper':str(root),'output':str(out/'investigations'/stage),'cache':str(out/'source-cache'),
                 'tool_limit':2,'literature_cutoff':cutoff,'evidence_handles':True}
         if sources:config.update(tool_profile='domains-v1',source_state=str(out/'sources'),external_request_limit=2,evidence_mode=evidence_mode)
-        if source_packet:config.update(source_packet=str(Path(source_packet).resolve()),source_packet_manifest={p.name:digest(p.read_bytes()) for p in Path(source_packet).iterdir() if p.is_file()})
+        if source_packet:config.update(source_packet=str(source_packet),source_packet_manifest=packet_manifest)
         if historical_snapshots:config['historical_snapshots']=str(Path(historical_snapshots).resolve())
         write(out/'execution/workspace/tool-config.json',config)
         write(out/'manifest.json',{'paper_id':paper['id'],'code':source_manifest(Path(__file__).parent),
             'review_input_sha256':digest((out/'input-reviews.json').read_bytes()),
-            'images':{str(p):digest(p.read_bytes()) for p in image_paths}})
-        raw=model_call(protocol,out/'execution',prompt,schema,tools=True,label='ensemble-debate',images=image_paths)
-        write(out/'responses/debate-model.json',raw)
+            'images':{str(p):digest(p.read_bytes()) for p in image_paths},
+            'synthesis_policy':synthesis_policy,'synthesis_tool_limit':2})
+        raw=model_call(protocol,out/'execution',prompt,schema,tools=True,label='ensemble-'+stage,images=image_paths)
+        write(out/'responses'/(stage+'-model.json'),raw)
         hydrated=hydrate_response(raw,build_registry(paper,sources.cards() if sources else []))
         final={**normalize_new_decisions(hydrated['response']),'evidence_handle_audit':hydrated['audit']}
-        write(out/'responses/debate.json',final)
+        write(out/'responses'/(stage+'.json'),final)
         if sources:final=bind_sources(final,sources.cards())
         # Apply the existing edit guard to novel candidates before they become reusable inventory.
         for i,candidate in enumerate(final.get('new_candidates',[]),1):
@@ -181,12 +200,15 @@ def debate_reviews(workspace,out,billing,cutoff,records,*,images=(),model='gpt-5
         if presentation['recovered'] is not None:final=presentation['recovered']
         elif presentation['original']['status']=='failure':raise ValueError((presentation.get('audit') or presentation['original'])['error'])
         audit=presentation['audit']
-        write(out/'debate-audit.json',audit)
-        normalized=save_review(root,final,'ensemble-debate-'+digest(str(out))[:10])
+        write(out/(stage+'-audit.json'),audit)
+        normalized=save_review(root,final,'ensemble-'+stage+'-'+digest(str(out))[:10])
         package=revision_package({**final,'findings':normalized['findings']},augmented,audit)
         secondary=adjudicated_secondary(final,augmented,paper,sources.cards() if sources else None)
         package=attach_adjudicated_secondary(package,secondary,audit_only_secondary(final,augmented))
-        package.update(workflow_version='ensemble-v3',reviewer_count=len(records),
+        package.update(workflow_version='ensemble-v3',synthesis_policy=synthesis_policy,
+            synthesis_provenance={'policy':synthesis_policy,'input_reviews_sha256':digest((out/'input-reviews.json').read_bytes()),
+                                  'generation_calls':1,'discovery_calls':0 if reused_drafts else len(records),
+                                  'reused_drafts':reused_drafts,'tool_limit':2},reviewer_count=len(records),
             reviewer_provenance=[r['provenance'] for r in records],candidate_origins={i['issue_id']:i.get('origin',i.get('provenance')) for i in augmented['issues']})
         if memos:package['focused_evidence_provenance']=[{'memo_sha256':m['memo_sha256'],'memo_path':m['memo_path']} for m in memos]
         write(out/'editor-package.json',package)
@@ -200,16 +222,23 @@ def debate_reviews(workspace,out,billing,cutoff,records,*,images=(),model='gpt-5
 
 def ensemble_review(workspace,output,billing,cutoff,reviewers=2,token_budget=750000,
                     scaffold_root=None,domain_support=True,evidence_mode='current',source_packet=None,
-                    shared_images=None,historical_snapshots=None,model='gpt-5.6-terra'):
+                    shared_images=None,historical_snapshots=None,model='gpt-5.6-terra',
+                    synthesis_policy='debate'):
     from .reviewer import review,inspected_images
     validate_options(reviewers,token_budget)
+    if synthesis_policy not in ('debate', 'ordinary'):
+        raise ValueError('Synthesis policy must be debate or ordinary')
     root,out=Path(workspace).resolve(),Path(output).resolve()
     paper=verify_workspace(root)
     if out==root:raise ValueError('Use a separate output directory')
     protocol=_protocol(model,reviewers,token_budget)
+    protocol.update(evidence_mode=evidence_mode,
+                    evidence_policy='frozen' if source_packet is not None else 'live',
+                    live_retrieval=source_packet is None)
     _prepare(out,billing,protocol)
     write(out/'manifest.json',{'paper_id':paper['id'],'code':source_manifest(Path(__file__).parent),
-        'plan':{'independent_reviewers':reviewers,'debate_passes':1,'max_generation_calls':reviewers+1,
+        'plan':{'independent_reviewers':reviewers,'synthesis_passes':1,'synthesis_policy':synthesis_policy,
+                'max_generation_calls':reviewers+1,
                 'execution':'Fresh isolated sessions, scheduled sequentially to bound subscription usage.'}})
     records=[]
     images=list(shared_images or [])
@@ -226,11 +255,13 @@ def ensemble_review(workspace,output,billing,cutoff,reviewers=2,token_budget=750
                 'paper_id':paper['id'],'source_review_path':str(path),'source_review_sha256':digest(path.read_bytes()),'origin':'fresh_independent_session'}})
             images.extend(p for p,label in inspected_images(paper,root,target/'investigations/independent',10))
         check_budget(out,token_budget,reviewers+1)
-        write(out/'progress.json',{'status':'running','stage':'debate','reviewers':reviewers})
-        package=debate_reviews(root,out/'debate',billing,cutoff,records,images=images,model=model,
+        stage = 'debate' if synthesis_policy == 'debate' else 'ordinary-synthesis'
+        write(out/'progress.json',{'status':'running','stage':stage,'reviewers':reviewers})
+        package=debate_reviews(root,out/stage,billing,cutoff,records,images=images,model=model,
             token_budget=token_budget-observed_usage(out)['observed_tokens'],domain_support=domain_support,
             evidence_mode=evidence_mode,cache_roots=[out/f'reviewer-{i}/source-cache' for i in range(1,reviewers+1)],
-            source_packet=source_packet,historical_snapshots=historical_snapshots)
+            source_packet=source_packet,historical_snapshots=historical_snapshots,
+            synthesis_policy=synthesis_policy)
         write(out/'editor-package.json',package)
         write(out/'progress.json',{'status':'complete','reviewers':reviewers,'usage':observed_usage(out)})
         return read(out/'progress.json')

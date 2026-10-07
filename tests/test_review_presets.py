@@ -41,7 +41,7 @@ class ReviewPresetTests(unittest.TestCase):
         presets = review_presets()
         self.assertEqual(set(presets), {
             'manuscript-only-single-v1', 'workspace-independent-v1',
-            'workspace-ensemble-v1',
+            'workspace-ensemble-v1', 'workspace-ensemble-ordinary-v1',
         })
         self.assertTrue(all(item['configuration_version'] == 'paper-workbench-config-v1'
                             for item in presets.values()))
@@ -53,8 +53,15 @@ class ReviewPresetTests(unittest.TestCase):
             'workspace-ensemble-v1', workspace=self.workspace,
             output=self.root / 'ensemble', billing_confirmation=self.root / 'billing.json',
             literature_cutoff='2026-09-25')
+        ordinary = review_request_from_preset(
+            'workspace-ensemble-ordinary-v1', workspace=self.workspace,
+            output=self.root / 'ordinary', billing_confirmation=self.root / 'billing.json',
+            literature_cutoff='2026-09-25')
         self.assertEqual((independent.workflow, independent.reviewers), ('independent', 1))
         self.assertEqual((ensemble.workflow, ensemble.reviewers), ('ensemble', 2))
+        self.assertEqual((ordinary.workflow, ordinary.reviewers, ordinary.synthesis_policy),
+                         ('ensemble', 2, 'ordinary'))
+        self.assertEqual(resolved_review_config(ensemble)['evidence_policy'], 'live')
         self.assertEqual(ReviewRequest(
             workspace=self.workspace, output=self.root / 'default',
             billing_confirmation=self.root / 'billing.json',
@@ -72,6 +79,8 @@ class ReviewPresetTests(unittest.TestCase):
             resolved_review_config(request)
         with self.assertRaisesRegex(ValueError, 'exactly one'):
             self.request(reviewers=2)
+        with self.assertRaisesRegex(ValueError, 'only for ensemble'):
+            self.request(synthesis_policy='ordinary')
 
     def test_baseline_delivers_complete_text_and_enforces_no_tools(self):
         request = self.request()

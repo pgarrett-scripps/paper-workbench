@@ -64,5 +64,45 @@ class CoreAPI(unittest.TestCase):
             with self.assertRaises(FileExistsError):run_review(request)
             self.assertEqual(engine.call_count,1)
 
+    def test_frozen_source_packet_is_pinned_passed_and_recorded(self):
+        packet = self.root / 'packet'
+        write(packet / 'index.json', {'records': []})
+        (packet / 'record.raw').write_bytes(b'{}')
+        request = self.request(evidence_mode='historical', source_packet=packet)
+        config = __import__('paper_workbench_core').resolved_review_config(request)
+        self.assertEqual(config['evidence_policy'], 'frozen')
+        self.assertEqual(config['evidence_mode'], 'historical')
+        self.assertEqual(set(config['source_packet_manifest']), {'index.json', 'record.raw'})
+        def fake_engine(workspace, output, *args, **kwargs):
+            write(output / 'editor-package.json', {'summary': 'Example', 'findings': []})
+        with patch('paper_workspace.reviewer.review', side_effect=fake_engine) as engine:
+            result = run_review(request)
+        self.assertEqual(engine.call_args.kwargs['evidence_mode'], 'historical')
+        self.assertEqual(engine.call_args.kwargs['source_packet'], packet.resolve())
+        self.assertEqual(result['source_packet_manifest_before'],
+                         result['source_packet_manifest_after'])
+
+    def test_frozen_source_packet_rejects_structure_and_mutation(self):
+        packet = self.root / 'packet'
+        packet.mkdir()
+        (packet / 'record.raw').write_bytes(b'{}')
+        nested = packet / 'nested'
+        nested.mkdir()
+        with self.assertRaisesRegex(ValueError, 'flat'):
+            self.request(source_packet=packet)
+        nested.rmdir()
+        link = packet / 'link.raw'
+        link.symlink_to(packet / 'record.raw')
+        with self.assertRaisesRegex(ValueError, 'symlinks'):
+            self.request(source_packet=packet)
+        link.unlink()
+        request = self.request(source_packet=packet)
+        def mutate(workspace, output, *args, **kwargs):
+            write(output / 'editor-package.json', {'summary': 'Example', 'findings': []})
+            (packet / 'record.raw').write_bytes(b'changed')
+        with patch('paper_workspace.reviewer.review', side_effect=mutate):
+            with self.assertRaisesRegex(ValueError, 'changed'):
+                run_review(request)
+
 
 if __name__=='__main__':unittest.main()

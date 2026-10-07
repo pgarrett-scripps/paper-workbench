@@ -101,6 +101,21 @@ Each new candidate must embed its own decision object and one component object. 
     return revision_prompt(paper, manuscript, ledger, source_cards) + procedure
 
 
+def ordinary_synthesis_prompt(paper, manuscript, ledger, source_cards=None):
+    """Reconcile saved reviews directly, without an adversarial reasoning frame."""
+    known = [issue['issue_id'] for issue in ledger['issues']]
+    cards = '' if source_cards is None else '\nSOURCE CARDS:\n' + json.dumps(source_cards, ensure_ascii=False)
+    return '''Synthesize the supplied independent manuscript reviews into one concise editor report.
+Assess each candidate against the manuscript and supplied evidence. Merge duplicates, narrow overbroad wording, retain distinct supported concerns, and omit claims that the available source material does not support. Do not treat reviewer agreement as proof. Use at most two optional source tool calls when missing context could change a consequential decision.
+Preserve every known issue in the decisions array. The known issue IDs are: ''' + json.dumps(known, ensure_ascii=False) + '''.
+For every issue, record its scientific status, editorial presentation, evidence, explanation, and the treatment of every supplied component. A preserved component must map to a selected final finding. A resolved component requires source evidence. A deferred component remains available as a secondary concern. Editorial omission does not make a concern scientifically contradicted.
+Select at most five distinct consequential findings and keep final comments within 900 words. Every finding needs an exact unique manuscript anchor and valid evidence blocks. Phrase unresolved matters as specific questions. Do not invent methods, results, numerical values, citations, or author intent.
+You may add at most five genuinely new manuscript-supported candidates using reserved IDs new-1 through new-5. Do not use a new candidate to restate a known issue. Each new candidate needs an exact unique manuscript anchor, evidence blocks, one embedded decision, and one whole-comment component. Keep supported secondary concerns with adjudicated author-facing wording in secondary_finding. Set secondary_finding to null otherwise.
+Return one decision for every known issue and every new candidate. Preserve concrete requested actions when merging. Keep decision explanations brief. The component ledger is an audit record.
+TITLE:
+''' + paper['title'] + '\nCANDIDATE LEDGER:\n' + json.dumps(ledger, ensure_ascii=False) + cards + '\nFULL MANUSCRIPT:\n' + manuscript
+
+
 def _new_issues(value, ledger, paper, source_cards):
     candidates = value.get('new_candidates', [])
     if not isinstance(candidates, list) or len(candidates) > 5:

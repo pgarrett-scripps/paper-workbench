@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "paper-workbench"
-version = "0.1.2"
+version = "0.1.3"
 description = "An evidence-linked workspace for manuscript review and revision"
 readme = "README.md"
 requires-python = ">=3.11"

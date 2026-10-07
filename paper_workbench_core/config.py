@@ -45,6 +45,13 @@ _PRESETS = MappingProxyType({preset.name: preset for preset in (
         evidence_profile='workspace-and-bounded-evidence-tools', synthesis_policy='audited-debate-v1',
         revision_policy='findings-only-no-automatic-revision',
     ),
+    ReviewPreset(
+        name='workspace-ensemble-ordinary-v1', workflow='ensemble', reviewers=2,
+        model='gpt-5.6-terra', token_budget=750000,
+        prompt_profile='independent-discovery-v1', manuscript_access='workspace-bounded',
+        evidence_profile='workspace-and-bounded-evidence-tools', synthesis_policy='ordinary-synthesis-v1',
+        revision_policy='findings-only-no-automatic-revision',
+    ),
 )})
 
 
@@ -77,9 +84,21 @@ def resolved_review_config(request):
         }
     else:
         preset = get_review_preset(request.preset)
-        if (request.workflow, request.reviewers) != (preset.workflow, preset.reviewers):
-            raise ValueError('Request workflow and reviewer count do not match its preset')
+        expected_synthesis = 'ordinary' if preset.synthesis_policy == 'ordinary-synthesis-v1' else 'debate'
+        if ((request.workflow, request.reviewers) != (preset.workflow, preset.reviewers)
+                or request.synthesis_policy != expected_synthesis):
+            raise ValueError('Request workflow, reviewer count, and synthesis policy do not match its preset')
         base = preset.record()
         base['preset'] = base.pop('name')
+    packet = dict(request.source_packet_hashes)
+    from paper_workspace.storage import digest
+    import json
     return {**base, 'workflow': request.workflow, 'reviewers': request.reviewers,
-            'model': request.model, 'token_budget': request.token_budget}
+            'model': request.model, 'token_budget': request.token_budget,
+            'evidence_mode': request.evidence_mode,
+            'evidence_policy': ('none' if request.workflow == 'manuscript-only' else
+                                'frozen' if request.source_packet is not None else 'live'),
+            'source_packet_manifest': packet or None,
+            'source_packet_manifest_sha256': (digest(json.dumps(packet, sort_keys=True))
+                                              if packet else None),
+            'synthesis_policy': (request.synthesis_policy if request.workflow == 'ensemble' else 'none')}

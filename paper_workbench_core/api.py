@@ -16,6 +16,8 @@ def capabilities():
             'workflows': ['manuscript-only', 'independent', 'ensemble'], 'provider': 'codex',
             'configuration_version': 'paper-workbench-config-v1',
             'presets': list(review_presets()),
+            'evidence_modes': ['current', 'historical'],
+            'evidence_policies': ['none', 'live', 'frozen'],
             'models': list(CODEX_MODELS), 'reasoning_effort': 'medium',
             'billing': 'verified_subscription_with_bounded_usage_policy',
             'tool_access': 'workflow-specific',
@@ -23,6 +25,8 @@ def capabilities():
                                         'independent': 'bounded_manuscript_tools',
                                         'ensemble': 'bounded_manuscript_tools'},
             'automatic_retries': False,
+            'saved_draft_synthesis': {'policy': 'ordinary', 'generation_calls': 1,
+                                      'discovery_calls': 0, 'tool_allowance': 2},
             'limitations': ['Manuscript-only mode has no review tools or external access.',
                            'Independent mode includes tools and is not a tool-free baseline.',
                            'Other providers and arbitrary models are not supported by this engine yet.',
@@ -58,6 +62,10 @@ class ReviewRequest:
     scaffold_root: Path | None = None
     source_images: tuple[Path, ...] = field(default_factory=tuple)
     preset: str | None = None
+    evidence_mode: Literal['current', 'historical'] = 'current'
+    source_packet: Path | None = None
+    source_packet_hashes: tuple[tuple[str, str], ...] = field(default_factory=tuple, init=False)
+    synthesis_policy: Literal['debate', 'ordinary'] = 'debate'
 
     def __post_init__(self):
         from datetime import date
@@ -73,9 +81,146 @@ class ReviewRequest:
             raise ValueError('Manuscript-only review requires exactly one reviewer')
         if self.preset is not None:
             get_review_preset(self.preset)
+        if self.evidence_mode not in ('current', 'historical'):
+            raise ValueError('Evidence mode must be current or historical')
+        if self.source_packet is not None:
+            if self.workflow == 'manuscript-only':
+                raise ValueError('Manuscript-only review cannot receive an external source packet')
+            from paper_workspace.source_packet import source_packet_manifest
+            manifest = source_packet_manifest(self.source_packet)
+            object.__setattr__(self, 'source_packet', Path(self.source_packet).resolve())
+            object.__setattr__(self, 'source_packet_hashes', tuple(sorted(manifest.items())))
+        if self.synthesis_policy not in ('debate', 'ordinary'):
+            raise ValueError('Synthesis policy must be debate or ordinary')
+        if self.workflow != 'ensemble' and self.synthesis_policy != 'debate':
+            raise ValueError('Ordinary synthesis is available only for ensemble review')
         date.fromisoformat(self.literature_cutoff)
         if Path(self.workspace).resolve() == Path(self.output).resolve():
             raise ValueError('Use a separate run output directory')
+
+
+@dataclass(frozen=True)
+class SavedDraftSynthesisRequest:
+    """One ordinary synthesis pass over the immutable drafts from an ensemble run."""
+    workspace: Path
+    original_output: Path
+    output: Path
+    billing_confirmation: Path
+    literature_cutoff: str
+    source_images: tuple[Path, ...]
+    source_packet: Path
+    model: str = 'gpt-5.6-terra'
+    token_budget: int = 750000
+    evidence_mode: Literal['current', 'historical'] = 'current'
+    synthesis_policy: Literal['ordinary'] = 'ordinary'
+
+    def __post_init__(self):
+        from datetime import date
+        if self.model not in capabilities()['models']:
+            raise ValueError('Unsupported Paper Workbench model. No fallback is permitted.')
+        if self.synthesis_policy != 'ordinary':
+            raise ValueError('Saved draft synthesis supports only the ordinary policy')
+        if self.evidence_mode not in ('current', 'historical'):
+            raise ValueError('Evidence mode must be current or historical')
+        if type(self.token_budget) is not int or self.token_budget <= 0:
+            raise ValueError('Token launch budget must be a positive integer')
+        if len(self.source_images) > 10 or any(not Path(path).is_file() for path in self.source_images):
+            raise ValueError('Supply the complete set of at most ten existing source images')
+        from paper_workspace.source_packet import source_packet_manifest
+        source_packet_manifest(self.source_packet)
+        date.fromisoformat(self.literature_cutoff)
+
+
+def _hash_files(paths):
+    from paper_workspace.storage import digest
+    return {str(Path(path).resolve()): digest(Path(path).read_bytes()) for path in paths}
+
+
+def run_saved_draft_synthesis(request: SavedDraftSynthesisRequest):
+    """Reuse a debate run's exact discovery drafts for one ordinary synthesis call."""
+    from paper_workspace.ensemble import debate_reviews, observed_usage
+    from paper_workspace.model_runtime import source_manifest
+    from paper_workspace.source_packet import source_packet_manifest, verify_source_packet
+    from paper_workspace.storage import read, write, digest
+    import paper_workspace
+    if not isinstance(request, SavedDraftSynthesisRequest):
+        raise TypeError('Expected SavedDraftSynthesisRequest')
+    workspace = Path(request.workspace).resolve()
+    original = Path(request.original_output).resolve()
+    output = Path(request.output).resolve()
+    if output.exists():
+        raise FileExistsError('Use a new run directory. The public API never retries an existing run.')
+    paper = load_manuscript(workspace)
+    source_manifest_sha = digest((workspace / 'manifest.json').read_bytes())
+    artifact = read(original / 'core-artifact.json')
+    current_engine = source_manifest(Path(paper_workspace.__file__).parent)
+    current_core = source_manifest(Path(__file__).parent)
+    if (artifact.get('api_version') != API_VERSION or
+            artifact.get('artifact_version') != capabilities()['artifact_version'] or
+            artifact.get('engine_source') != current_engine or artifact.get('core_source') != current_core):
+        raise ValueError('Original ensemble engine or public core changed')
+    if (artifact.get('paper_id') != paper['id'] or artifact.get('source_manifest_sha256') != source_manifest_sha
+            or artifact.get('workflow') != 'ensemble' or artifact.get('model_requested') != request.model):
+        raise ValueError('Saved drafts do not match the requested manuscript, workflow, or model')
+    if artifact.get('resolved_configuration', {}).get('synthesis_policy') != 'debate':
+        raise ValueError('Saved drafts must originate from the debate condition')
+    debate_root = original / 'debate'
+    records_path = debate_root / 'input-reviews.json'
+    stage_manifest = read(debate_root / 'manifest.json')
+    if digest(records_path.read_bytes()) != stage_manifest.get('review_input_sha256'):
+        raise ValueError('Saved input review hashes changed')
+    records = read(records_path)
+    expected_review_hashes = [row.get('provenance', {}).get('source_review_sha256') for row in records]
+    if any(not value for value in expected_review_hashes):
+        raise ValueError('Saved drafts lack original review hashes')
+    for row, expected in zip(records, expected_review_hashes):
+        if digest(json.dumps(row['review'], ensure_ascii=False, sort_keys=True)) == expected:
+            continue
+        source_path = Path(row['provenance'].get('source_review_path', ''))
+        if not source_path.is_file() or digest(source_path.read_bytes()) != expected:
+            raise ValueError('An original input review changed')
+    expected_images = stage_manifest.get('images')
+    supplied_images = _hash_files(request.source_images)
+    if not isinstance(expected_images, dict) or supplied_images != expected_images:
+        raise ValueError('Saved draft synthesis requires the complete original image set')
+    packet_before = source_packet_manifest(request.source_packet)
+    if artifact.get('source_packet_manifest_after') != packet_before:
+        raise ValueError('Saved draft synthesis requires the original frozen evidence packet')
+    protocol = read(debate_root / 'protocol.json')
+    if protocol.get('debate_tool_allowance') != 2 or protocol.get('token_launch_budget') != request.token_budget:
+        raise ValueError('Saved draft synthesis must match the original synthesis tool and token budget')
+    cache_roots = [original / f'reviewer-{index}' / 'source-cache' for index in range(1, len(records) + 1)]
+    cache_before = {str(path.resolve()): digest(path.read_bytes()) for root in cache_roots for path in root.glob('*') if path.is_file()}
+    raw_hashes = sorted({digest(path.read_bytes()) for root in [*cache_roots, Path(request.source_packet)]
+                         for path in root.glob('*.raw') if path.is_file()})
+    package = debate_reviews(workspace, output, request.billing_confirmation, request.literature_cutoff,
+        records, images=request.source_images, model=request.model, token_budget=request.token_budget,
+        evidence_mode=request.evidence_mode, cache_roots=cache_roots, source_packet=request.source_packet,
+        synthesis_policy='ordinary', reused_drafts=True)
+    verify_source_packet(request.source_packet, packet_before)
+    cache_after = {str(path.resolve()): digest(path.read_bytes()) for root in cache_roots for path in root.glob('*') if path.is_file()}
+    if cache_after != cache_before:
+        raise ValueError('Original reviewer evidence cache changed during synthesis')
+    package['synthesis_provenance'].update(reused_drafts=True, discovery_calls=0,
+        original_core_artifact_sha256=digest((original / 'core-artifact.json').read_bytes()),
+        original_input_reviews_sha256=digest(records_path.read_bytes()),
+        original_review_sha256=expected_review_hashes, source_packet_manifest=packet_before,
+        original_evidence_raw_sha256=raw_hashes, shared_images=supplied_images)
+    write(output / 'editor-package.json', package)
+    synthesis_usage = observed_usage(output)
+    result = {'api_version': API_VERSION, 'artifact_version': 'paper-workbench-run-v1',
+        'paper_id': paper['id'], 'source_manifest_sha256': source_manifest_sha,
+        'workflow': 'ensemble', 'execution_scope': 'saved-draft-synthesis', 'model_requested': request.model,
+        'resolved_configuration': {'synthesis_policy': 'ordinary', 'reused_drafts': True,
+            'discovery_calls': 0, 'synthesis_calls': 1, 'synthesis_tool_allowance': 2,
+            'token_launch_budget': request.token_budget, 'evidence_policy': 'frozen'},
+        'source_packet_manifest_before': packet_before, 'source_packet_manifest_after': packet_before,
+        'engine_source': current_engine, 'core_source': current_core, 'editor_package': package,
+        'usage': synthesis_usage, 'usage_scope': 'new_synthesis_stage_only',
+        'reused_discovery_usage': artifact.get('usage'), 'output_directory': str(output),
+        'limitation': 'Reused discovery usage is reported separately and is not counted as new synthesis usage.'}
+    write(output / 'core-artifact.json', result)
+    return result
 
 
 def run_review(request: ReviewRequest):
@@ -93,14 +238,25 @@ def run_review(request: ReviewRequest):
     paper = load_manuscript(workspace)
     source_hash = digest((workspace/'manifest.json').read_bytes())
     resolved_config = resolved_review_config(request)
+    packet_before = dict(request.source_packet_hashes)
+    packet_after = dict(packet_before)
+    if request.source_packet is not None:
+        from paper_workspace.source_packet import verify_source_packet
+        verify_source_packet(request.source_packet, packet_before)
     if request.workflow == 'manuscript-only':
         from .baseline import run_manuscript_only
         run_manuscript_only(request, paper, resolved_config)
     else:
-        review(workspace, output, request.billing_confirmation, request.literature_cutoff,
-               mode=request.workflow, model=request.model, reviewers=request.reviewers,
-               token_budget=request.token_budget, scaffold_root=request.scaffold_root,
-               shared_images=request.source_images)
+        try:
+            review(workspace, output, request.billing_confirmation, request.literature_cutoff,
+                   mode=request.workflow, model=request.model, reviewers=request.reviewers,
+                   token_budget=request.token_budget, scaffold_root=request.scaffold_root,
+                   shared_images=request.source_images, evidence_mode=request.evidence_mode,
+                   source_packet=request.source_packet,
+                   synthesis_policy=request.synthesis_policy)
+        finally:
+            if request.source_packet is not None:
+                packet_after = verify_source_packet(request.source_packet, packet_before)
     engine = source_manifest(Path(paper_workspace.__file__).parent)
     core_engine = source_manifest(Path(__file__).parent)
     artifact = {'api_version': API_VERSION, 'artifact_version': 'paper-workbench-run-v1',
@@ -108,6 +264,8 @@ def run_review(request: ReviewRequest):
                 'workflow': request.workflow, 'model_requested': request.model,
                 'resolved_configuration': resolved_config,
                 'resolved_configuration_sha256': digest(json.dumps(resolved_config, sort_keys=True)),
+                'source_packet_manifest_before': packet_before or None,
+                'source_packet_manifest_after': packet_after or None,
                 'engine_source': engine, 'core_source': core_engine,
                 'editor_package': read(output/'editor-package.json'),
                 'usage': observed_usage(output), 'output_directory': str(output),
@@ -118,9 +276,11 @@ def run_review(request: ReviewRequest):
 
 def review_request_from_preset(name, *, workspace, output, billing_confirmation,
                                literature_cutoff, model=None, token_budget=None,
-                               scaffold_root=None, source_images=()):
+                               scaffold_root=None, source_images=(), evidence_mode='current',
+                               source_packet=None, synthesis_policy=None):
     """Construct a request from one named preset, with explicit runtime overrides."""
     preset = get_review_preset(name)
+    preset_synthesis = 'ordinary' if preset.synthesis_policy == 'ordinary-synthesis-v1' else 'debate'
     return ReviewRequest(
         workspace=Path(workspace), output=Path(output),
         billing_confirmation=Path(billing_confirmation), literature_cutoff=literature_cutoff,
@@ -128,6 +288,8 @@ def review_request_from_preset(name, *, workspace, output, billing_confirmation,
         reviewers=preset.reviewers,
         token_budget=preset.token_budget if token_budget is None else token_budget,
         scaffold_root=scaffold_root, source_images=tuple(source_images), preset=name,
+        evidence_mode=evidence_mode, source_packet=source_packet,
+        synthesis_policy=preset_synthesis if synthesis_policy is None else synthesis_policy,
     )
 
 

@@ -221,12 +221,13 @@ def editor_package(final,reviews,paper=None):
     return result
 
 
-def review(workspace,output,billing,cutoff,mode='panel',scaffold_root=None,domain_support=True,evidence_mode='current',source_packet=None,shared_images=None,historical_snapshots=None,model='gpt-5.6-sol',reviewers=2,token_budget=750000):
+def review(workspace,output,billing,cutoff,mode='panel',scaffold_root=None,domain_support=True,evidence_mode='current',source_packet=None,shared_images=None,historical_snapshots=None,model='gpt-5.6-sol',reviewers=2,token_budget=750000,synthesis_policy='debate'):
     if mode=='ensemble':
         from .ensemble import ensemble_review
         return ensemble_review(workspace,output,billing,cutoff,reviewers=reviewers,token_budget=token_budget,
             scaffold_root=scaffold_root,domain_support=domain_support,evidence_mode=evidence_mode,
-            source_packet=source_packet,shared_images=shared_images,historical_snapshots=historical_snapshots,model=model)
+            source_packet=source_packet,shared_images=shared_images,historical_snapshots=historical_snapshots,model=model,
+            synthesis_policy=synthesis_policy)
     from .models import CODEX_MODELS
     if model not in CODEX_MODELS:
         raise ValueError('Select a supported subscription model explicitly')
@@ -265,9 +266,8 @@ def review(workspace,output,billing,cutoff,mode='panel',scaffold_root=None,domai
         domain_context = context(profile, packages)
         if source_packet is not None:
             source_packet = Path(source_packet).resolve()
-            if not source_packet.is_dir():
-                raise ValueError('Source packet directory is missing')
-            packet_manifest = {p.name: digest(p.read_bytes()) for p in sorted(source_packet.iterdir()) if p.is_file()}
+            from .source_packet import source_packet_manifest
+            packet_manifest = source_packet_manifest(source_packet)
         sources = SourceClient(out/'sources', out/'source-cache', 6, evidence_mode, cutoff,
                                frozen_cache=source_packet, frozen_hashes=packet_manifest)
         domain_context += '\nACTIVE EXACT-RECORD PROVIDERS: ' + json.dumps(PROVIDERS)
@@ -291,11 +291,12 @@ Use resolve_identifier for exact identifier mapping and search_literature for a 
             raise ValueError('Scaffold diagnostics changed. Use a new run directory.')
         write(diagnostic_path,diagnostics)
         diagnostic_context='\nADVISORY MANUSCRIPT CHECKS:\n'+json.dumps(compact_summary(diagnostics),ensure_ascii=False)
-    protocol={'provider':'codex','model':model,'effort':'medium','live_retrieval':True,'held_out_runs_authorized':False,
+    protocol={'provider':'codex','model':model,'effort':'medium','live_retrieval':source_packet is None,'held_out_runs_authorized':False,
               'max_calls_per_condition':2 if mode in ('panel','self-revision') else 1,'observed_token_stop':250000,'call_timeout_seconds':900,
               'mode':mode,'literature_cutoff':cutoff,'paper_id':paper['id'],
               'investigation_version':'candidate-inventory-v1','investigator_tool_limit':4 if domain_support and mode in ('panel','self-revision','independent') else 6 if domain_support else 3,
               'debate_version':'debate-v3' if mode=='panel' else None}
+    protocol['evidence_policy'] = 'frozen' if source_packet is not None else 'live'
     if domain_support:
         protocol.update(domain_version='domains-v1', evidence_mode=evidence_mode, external_request_limit=6,
                         result_map_version='result-map-v1', targeted_source_version='targeted-sources-v1')
@@ -370,6 +371,9 @@ Use resolve_identifier for exact identifier mapping and search_literature for a 
             raise ValueError('Review implementation changed during this run')
         if history_manifest is not None and source_manifest(historical_snapshots) != history_manifest:
             raise ValueError('Historical snapshot files changed during this run')
+        if packet_manifest is not None:
+            from .source_packet import verify_source_packet
+            verify_source_packet(source_packet, packet_manifest)
         config = {'paper': str(root), 'output': str(out/'investigations'/label),
                   'cache': str(out/'literature-cache'), 'tool_limit': limit, 'literature_cutoff': cutoff,
                   'evidence_handles':True}
