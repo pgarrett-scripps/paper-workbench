@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "paper-workbench"
-version = "0.1.0"
+version = "0.1.2"
 description = "An evidence-linked workspace for manuscript review and revision"
 readme = "README.md"
 requires-python = ">=3.11"
@@ -13,7 +13,7 @@ dependencies = []
 
 [project.optional-dependencies]
 documents = ["rustypaper==0.2.1", "Pillow", "python-docx", "lxml"]
-test = ["Pillow", "python-docx", "lxml"]
+test = ["Pillow", "python-docx", "lxml", "pypdf", "openpyxl"]
 
 [project.scripts]
 paper-workbench = "paper_workspace.__main__:main"

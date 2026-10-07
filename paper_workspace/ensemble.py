@@ -66,8 +66,8 @@ def combine_reviews(paper,records):
 def _prepare(out,billing,protocol):
     if out.exists():raise ValueError('Use a fresh ensemble output directory')
     verification=read(billing)
-    if not verification.get('no_paid_credits_verified') or not 0<=time.time()-verification.get('checked_at',0)<86400:
-        raise ValueError('Recent subscription and zero-paid-credit verification required')
+    from .billing import verify_billing
+    verify_billing(verification)
     out.mkdir(parents=True)
     write(out/'protocol.json',protocol)
     shutil.copy2(billing,out/'billing_confirmation.json')
@@ -75,7 +75,8 @@ def _prepare(out,billing,protocol):
 
 
 def _protocol(model,reviewers,token_budget):
-    if model not in ('gpt-5.6-sol','gpt-5.6-terra'):raise ValueError('Select Sol or Terra explicitly')
+    from .models import CODEX_MODELS
+    if model not in CODEX_MODELS:raise ValueError('Select a supported subscription model explicitly')
     return {'provider':'codex','model':model,'effort':'medium','held_out_runs_authorized':False,
         'max_calls_per_condition':1,'observed_token_stop':token_budget,'call_timeout_seconds':900,
         'max_source_images':10,'image_budget_version':'evidence-v1','mode':'ensemble',

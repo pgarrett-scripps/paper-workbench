@@ -38,7 +38,7 @@ request = ReviewRequest(
 
 `run_review` uses the existing engine. It rejects existing output directories, unsupported models and unsupported workflows. It returns a `paper-workbench-run-v1` artifact containing the editor package, requested model, workflow, manuscript identity, engine file hashes and observed usage. Unknown usage and execution failures remain errors with underlying run files preserved. Token budgets are launch guards, not hard within-session caps. Independent mode retains its existing per-session guard.
 
-The current supported workflows are `independent` and `ensemble`. Both have manuscript tools. Independent is not a tool-free baseline. The current transport supports only Codex subscription execution with Terra and Sol at medium effort. Arbitrary models and provider APIs require a separately designed transport extension. Do not silently route unsupported candidates through a different pipeline.
+The supported workflows are `manuscript-only`, `independent` and `ensemble`. Manuscript-only mode receives extracted text and supplied source images with review tools disabled. Independent and ensemble modes have manuscript tools. The current transport supports only Codex subscription execution with Astra, Sol, Terra, Luna, and GPT-5.5 at medium effort. Arbitrary models and provider APIs require a separately designed transport extension. Do not silently route unsupported candidates through a different pipeline.
 
 The older PeerReviewAgents graph is a distinct benchmark backend. Its scores must retain a different workflow identifier. Pin the pipeline commit, model settings, source inputs and evidence access when comparing models.
 
@@ -47,3 +47,59 @@ The older PeerReviewAgents graph is a distinct benchmark backend. Its scores mus
 The initial distribution bundles the engine and app resources, but importing the core does not import the web server or require document exporters. Document dependencies are optional. Keeping the existing `paper_workspace` modules avoids a risky physical move while the stable integration surface is established.
 
 Before 1.0, consumers should pin a Git commit rather than follow the main branch. Changes to prompts, schemas, tool access or selection policy require a new benchmark condition, even when Python function signatures remain unchanged.
+
+## Subscription model comparisons and structured calls
+
+Version 0.1.1 advertises five explicitly supported Codex subscription models:
+Astra, Sol, Terra, Luna, and GPT-5.5. Check `capabilities()["models"]` for their
+exact request IDs, then verify the current account can select those models.
+Medium reasoning remains fixed. No unknown model is substituted or retried.
+
+`StructuredRequest` and `run_structured` expose one tool-free structured call
+through the same subscription transport. External benchmarks own grading
+prompts and JSON schemas. The request contains `output`, `billing_confirmation`,
+`model`, `prompt`, and `schema`, with optional positive `token_budget` and
+`timeout_seconds`. The output directory must be new. Authentication and recent
+zero-paid-credit verification are required. No manuscript tools are enabled.
+
+The returned artifact preserves the requested model, structured value, and
+observed usage. `usage_summary(output)` also reads durable receipts for failed
+or interrupted workflows. A usage summary is not proof of successful inference.
+Unknown usage must not be interpreted as zero. Codex events do not currently
+expose the resolved model ID, so requested-model pinning remains the available
+identity evidence.
+
+
+## Versioned review presets
+
+`review_presets()` describes three presets. `review_request_from_preset()`
+constructs a validated request. Each completed run preserves its resolved
+configuration, configuration hash and both core and engine source hashes.
+The preset names are `manuscript-only-single-v1`, `workspace-independent-v1`
+and `workspace-ensemble-v1`. Current presets are bounded strategies, not an
+arbitrary workflow language or demonstrated multi-provider framework.
+
+Manuscript-only execution denies review tools and external access. Source
+images are checked, deduplicated by content and capped at ten without silent
+truncation. Missing visual content is recorded. Preparation must establish
+whether the delivered packet is scientifically sufficient for a comparison.
+`StructuredRequest.source_images` gives external judges the same image access.
+
+## Included allowance execution policy
+
+The legacy recent zero-credit verification remains supported. Accounts with
+available credits can instead supply an `included-allowance-v1` record from the
+Codex app usage tool. It must be less than five minutes old, report Pro or Plus
+included limits, show every available window below 25 percent used, and report
+no reached spending or usage limit. Missing or invalid evidence fails closed.
+The record does not assert that the credit balance is zero.
+
+The coordinator refreshes this evidence before every workflow, maintains a
+separate cumulative study budget and checks usage between workflows. This is
+a conservative launch guard, not a provider-side hard spending cap. A running
+call may exceed its launch estimate. This policy never purchases credits,
+uses a reset, enables API billing or changes account settings.
+
+Pricing behavior is documented at https://learn.chatgpt.com/docs/pricing.
+Account-specific included allowance comes from the current usage snapshot,
+not from converting token counts to estimated subscription dollars.

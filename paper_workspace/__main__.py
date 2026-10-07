@@ -1,6 +1,7 @@
 import argparse
 from pathlib import Path
 from .storage import read
+from .models import CODEX_MODELS
 
 
 def main():
@@ -72,7 +73,7 @@ def main():
     p.add_argument('--mode',choices=('ensemble','independent','plain','workspace','panel','self-revision'),default='ensemble')
     p.add_argument('--reviewers',type=int,default=2,help='Independent discovery reviewers for ensemble mode, from 1 to 16 (default 2)')
     p.add_argument('--token-budget',type=int,default=750000,help='Ensemble observed-token launch ceiling, not a hard cap on a running call')
-    p.add_argument('--model',choices=('gpt-5.6-terra','gpt-5.6-sol'),default='gpt-5.6-terra')
+    p.add_argument('--model',choices=CODEX_MODELS,default='gpt-5.6-terra')
     p.add_argument('--source-image',action='append',default=[],help='Original manuscript figure page to attach, at most three')
     p.add_argument('--scaffold-root',help='Use offline advisory checks from this Paper Scaffold checkout')
     p.add_argument('--legacy-tools',action='store_true',help='Use the older fixed tool profile without domain skills')
@@ -86,7 +87,7 @@ def main():
     p.add_argument('--block',action='append',required=True,help='Whole source block to include, repeat up to sixteen times')
     p.add_argument('--billing-confirmation',required=True)
     p.add_argument('--literature-cutoff',required=True)
-    p.add_argument('--model',choices=('gpt-5.6-terra','gpt-5.6-sol'),default='gpt-5.6-terra')
+    p.add_argument('--model',choices=CODEX_MODELS,default='gpt-5.6-terra')
     p=sub.add_parser('checks')
     p.add_argument('workspace')
     p.add_argument('--scaffold-root',required=True)

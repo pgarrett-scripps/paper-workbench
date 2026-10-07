@@ -32,7 +32,7 @@ class CoreAPI(unittest.TestCase):
     def test_import_does_not_start_or_import_provider_or_web_server(self):
         code='import sys, paper_workbench_core; assert "paper_workspace.server" not in sys.modules; assert "paper_workspace.model_runtime" not in sys.modules'
         subprocess.run([sys.executable,'-c',code],check=True,capture_output=True)
-        self.assertEqual(capabilities()['models'],['gpt-5.6-terra','gpt-5.6-sol'])
+        self.assertEqual(set(capabilities()['models']), {'gpt-5.6-terra', 'gpt-5.6-sol', 'gpt-6-astra', 'gpt-5.6-luna', 'gpt-5.5'})
 
     def test_offline_identity_evidence_and_review_validation(self):
         self.assertEqual(load_manuscript(self.workspace)['id'],'example')

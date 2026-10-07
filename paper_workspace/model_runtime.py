@@ -18,6 +18,7 @@ import sys
 import time
 
 from pathlib import Path
+from .models import CODEX_MODELS
 
 class StudyBlocked(RuntimeError):
     pass
@@ -102,15 +103,20 @@ def require_subscription(root):
         raise StudyBlocked("Subscription authentication was not verified. Refusing API-backed execution.")
     billing_path = Path(root) / "billing_confirmation.json"
     if provider == "codex":
-        if not billing_path.exists() or not read_json(billing_path).get("no_paid_credits_verified"):
-            raise StudyBlocked("Record the verified Codex account credit status before execution.")
+        from .billing import verify_billing
+        if not billing_path.exists():
+            raise StudyBlocked("Record current Codex subscription usage before execution.")
+        try:
+            verify_billing(read_json(billing_path))
+        except ValueError as error:
+            raise StudyBlocked(str(error)) from error
         return status
     if not billing_path.exists() or not read_json(billing_path).get("extra_usage_disabled"):
         raise StudyBlocked("Confirm paid extra usage is disabled in Claude settings, then record it with confirm-billing.")
     return status
 
 def validate_protocol(protocol):
-    pinned = {"claude-code": (MODEL,), "codex": (CODEX_MODEL, "gpt-5.6-terra")}
+    pinned = {"claude-code": (MODEL,), "codex": CODEX_MODELS}
     if protocol.get("provider") not in pinned or protocol.get("model") not in pinned[protocol["provider"]]:
         raise StudyBlocked("Unapproved provider or model. No automatic fallback is permitted.")
     if protocol.get("held_out_runs_authorized"):

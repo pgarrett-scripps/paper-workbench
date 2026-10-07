@@ -20,7 +20,7 @@ paper-workbench import manuscript.pdf workspaces/example --xml manuscript.xml
 paper-workbench serve workspaces/example --port 38744
 ```
 
-Model execution is an explicit separate action. The current engine supports authenticated Codex subscription sessions with Terra or Sol at medium effort and a recent zero-paid-credit verification. Importing the package, inspecting a workspace or running offline tests does not start model inference.
+Model execution is an explicit separate action. The current engine supports authenticated Codex subscription sessions with Astra, Sol, Terra, Luna, or GPT-5.5 at medium effort and a recent zero-paid-credit verification. Importing the package, inspecting a workspace or running offline tests does not start model inference.
 
 ## Shared core
 

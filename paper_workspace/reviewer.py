@@ -21,6 +21,16 @@ HANDLE_INSTRUCTION = '''SOURCE REFERENCE FORMAT: Select the supplied immutable h
 SELF_REVISION = '''SECOND PASS: Reconsider and improve your own draft review against the entire supplied manuscript and figures. Check scientific validity, specificity and proportionality. Resolve misunderstandings or unsupported premises. Look for important omissions as well as mistakes in the draft. Keep useful concerns, refine or remove weak ones, and add issues only when the available evidence supports them. Return your best final scientific review, with at most five findings under the same overall word budget. Use ordinary self-revision, without simulating multiple reviewers or a debate. Your prior draft is fallible and is not source evidence. Reselect source handles for the final output. You have at most two tool calls in this pass.'''
 SELF_REVISION+='\n'+CLARIFICATION_POLICY
 
+MAX_SOURCE_IMAGES = 10
+
+
+def shared_source_images(paths):
+    """Resolve the complete bounded image set without truncation."""
+    images = [Path(path).resolve() for path in (paths or [])]
+    if len(images) > MAX_SOURCE_IMAGES or any(not path.is_file() for path in images):
+        raise ValueError(f'Supply at most {MAX_SOURCE_IMAGES} existing shared source images')
+    return images
+
 
 def handle_manuscript(paper):
     registry = build_registry(paper)
@@ -217,8 +227,9 @@ def review(workspace,output,billing,cutoff,mode='panel',scaffold_root=None,domai
         return ensemble_review(workspace,output,billing,cutoff,reviewers=reviewers,token_budget=token_budget,
             scaffold_root=scaffold_root,domain_support=domain_support,evidence_mode=evidence_mode,
             source_packet=source_packet,shared_images=shared_images,historical_snapshots=historical_snapshots,model=model)
-    if model not in ('gpt-5.6-sol', 'gpt-5.6-terra'):
-        raise ValueError('Review model must be explicitly pinned to Sol or Terra')
+    from .models import CODEX_MODELS
+    if model not in CODEX_MODELS:
+        raise ValueError('Select a supported subscription model explicitly')
     if mode not in ('plain','workspace','panel','self-revision','independent'):
         raise ValueError('Unknown review mode')
     root=Path(workspace).resolve()
@@ -227,13 +238,11 @@ def review(workspace,output,billing,cutoff,mode='panel',scaffold_root=None,domai
     paper=verify_workspace(root)
     from .result_map import build_result_map, inspect_results, INSTRUCTION as RESULT_INSTRUCTION
     result_map = build_result_map(paper) if domain_support else None
-    shared_images = [Path(p).resolve() for p in (shared_images or [])]
-    if len(shared_images) > 3 or any(not p.is_file() for p in shared_images):
-        raise ValueError('Supply at most three existing shared source images')
+    shared_images = shared_source_images(shared_images)
     if paper['statistics']['total_words']>35000:raise ValueError('Review input is limited to 35,000 extracted words including supplements')
     verification=read(billing)
-    if time.time()-verification.get('checked_at',0)>86400 or not verification.get('no_paid_credits_verified'):
-        raise ValueError('A subscription and zero-paid-credit check from the last 24 hours is required')
+    from .billing import verify_billing
+    verify_billing(verification)
     out.mkdir(parents=True,exist_ok=True)
     domain_context = ''
     profile = None

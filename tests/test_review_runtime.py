@@ -10,14 +10,28 @@ from paper_workspace import model_runtime as runtime
 
 
 class ReviewRuntime(unittest.TestCase):
+    def test_shared_source_images_accepts_ten_and_never_truncates(self):
+        from paper_workspace.reviewer import shared_source_images
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            images = []
+            for index in range(11):
+                path = root / f'{index}.png'
+                path.write_bytes(str(index).encode())
+                images.append(path)
+            self.assertEqual(shared_source_images(images[:10]),
+                             [path.resolve() for path in images[:10]])
+            with self.assertRaisesRegex(ValueError, 'at most 10'):
+                shared_source_images(images)
+
     def test_explicit_model_selection_has_no_automatic_fallback(self):
         from paper_workspace.reviewer import review
-        for model in ('gpt-5.6-sol', 'gpt-5.6-terra'):
+        for model in ('gpt-5.6-sol', 'gpt-5.6-terra', 'gpt-6-astra', 'gpt-5.6-luna', 'gpt-5.5'):
             runtime.validate_protocol({**self.protocol, 'model': model})
         with self.assertRaises(runtime.StudyBlocked):
-            runtime.validate_protocol({**self.protocol, 'model': 'gpt-6-astra'})
-        with self.assertRaisesRegex(ValueError, 'explicitly pinned'):
-            review(None, None, None, None, model='gpt-6-astra')
+            runtime.validate_protocol({**self.protocol, 'model': 'unknown-model'})
+        with self.assertRaisesRegex(ValueError, 'explicitly'):
+            review(None, None, None, None, model='unknown-model')
 
     def setUp(self):
         self.protocol = {
