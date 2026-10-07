@@ -200,6 +200,18 @@ def observed_codex_tokens(events):
     return sum(int(event.get("usage", {}).get(key) or 0)
                for event in completed for key in keys)
 
+def terminal_codex_failures(events):
+    """Return terminal failures, retaining non-reconnect errors fail closed."""
+    completed_positions = [index for index, event in enumerate(events)
+                           if event.get("type") == "turn.completed"]
+    last_completion = completed_positions[-1] if completed_positions else -1
+    return [event for index, event in enumerate(events)
+            if event.get("type") == "turn.failed"
+            or (event.get("type") == "error" and (
+                index > last_completion
+                or not str(event.get("message", "")).startswith("Reconnecting... ")
+            ))]
+
 def recover_codex_call(out, identity, started):
     calls = Path(out) / "calls"
     events_path = calls / f"{identity}.events.jsonl"
@@ -213,7 +225,7 @@ def recover_codex_call(out, identity, started):
         except json.JSONDecodeError:
             pass
     completed = [event for event in events if event.get("type") == "turn.completed"]
-    failures = [event for event in events if event.get("type") in {"error", "turn.failed"}]
+    failures = terminal_codex_failures(events)
     tool_calls = [event.get("item", {}) for event in events
                   if event.get("type") == "item.completed"
                   and event.get("item", {}).get("type") == "mcp_tool_call"]
@@ -367,7 +379,7 @@ def model_call(protocol, out, prompt, schema, *, tools=False, label="call", imag
             if tokens is not None:
                 record["observed_tokens"] = tokens
                 record["usage_unknown"] = False
-            failures = [e for e in events if e.get("type") in {"error", "turn.failed"}]
+            failures = terminal_codex_failures(events)
             if result.returncode or not completed or failures:
                 raise StudyBlocked(f"Codex failed. No automatic retry. {failures[-1:]}")
             tool_calls = [e.get("item", {}) for e in events if e.get("type") == "item.completed"

@@ -73,6 +73,83 @@ class ReviewRuntime(unittest.TestCase):
             self.assertEqual(rows[0]["observed_tokens"], 10)
             self.assertFalse(rows[0]["usage_unknown"])
 
+    def test_completed_turn_accepts_earlier_reconnect_errors(self):
+        with tempfile.TemporaryDirectory() as directory:
+            out = Path(directory)
+
+            def run(command, **kwargs):
+                answer = Path(command[command.index("--output-last-message") + 1])
+                answer.write_text('{"answer": "recovered transport"}')
+                events = [
+                    {"type": "thread.started"},
+                    {"type": "turn.started"},
+                    {"type": "error", "message": "Reconnecting... 4/5"},
+                    {"type": "error", "message": "Reconnecting... 5/5"},
+                    {"type": "item.started", "item": {"type": "mcp_tool_call", "status": "in_progress"}},
+                    {"type": "item.completed", "item": {"type": "mcp_tool_call", "status": "completed"}},
+                    {"type": "item.completed", "item": {"type": "agent_message"}},
+                    {"type": "turn.completed", "usage": {"input_tokens": 12, "output_tokens": 5}},
+                ]
+                kwargs["stdout"].write("\n".join(json.dumps(event) for event in events) + "\n")
+                return SimpleNamespace(returncode=0)
+
+            with patch.object(runtime.subprocess, "run", side_effect=run):
+                value = runtime.model_call(self.protocol, out, "prompt", self.schema)
+            self.assertEqual(value, {"answer": "recovered transport"})
+            receipt = runtime.jsonl(out / "usage.jsonl")[0]
+            self.assertTrue(receipt["ok"])
+            self.assertEqual(receipt["observed_tokens"], 17)
+
+    def test_error_after_completed_turn_remains_terminal(self):
+        with tempfile.TemporaryDirectory() as directory:
+            out = Path(directory)
+
+            def run(command, **kwargs):
+                answer = Path(command[command.index("--output-last-message") + 1])
+                answer.write_text('{"answer": "must not be accepted"}')
+                events = [
+                    {"type": "turn.completed", "usage": {"input_tokens": 8, "output_tokens": 2}},
+                    {"type": "error", "message": "terminal transport failure"},
+                ]
+                kwargs["stdout"].write("\n".join(json.dumps(event) for event in events) + "\n")
+                return SimpleNamespace(returncode=0)
+
+            with patch.object(runtime.subprocess, "run", side_effect=run):
+                with self.assertRaisesRegex(runtime.StudyBlocked, "Codex failed"):
+                    runtime.model_call(self.protocol, out, "prompt", self.schema)
+
+    def test_turn_failed_before_completed_turn_remains_terminal(self):
+        events = [
+            {"type": "turn.failed", "error": {"message": "generation failed"}},
+            {"type": "turn.completed", "usage": {"input_tokens": 8, "output_tokens": 2}},
+        ]
+        self.assertEqual(runtime.terminal_codex_failures(events), [events[0]])
+
+    def test_non_reconnect_error_before_completed_turn_remains_terminal(self):
+        events = [
+            {"type": "error", "message": "authentication failed"},
+            {"type": "turn.completed", "usage": {"input_tokens": 8, "output_tokens": 2}},
+        ]
+        self.assertEqual(runtime.terminal_codex_failures(events), [events[0]])
+
+    def test_malformed_answer_after_completed_turn_remains_failed(self):
+        with tempfile.TemporaryDirectory() as directory:
+            out = Path(directory)
+
+            def run(command, **kwargs):
+                answer = Path(command[command.index("--output-last-message") + 1])
+                answer.write_text("not json")
+                event = {"type": "turn.completed", "usage": {"input_tokens": 8, "output_tokens": 2}}
+                kwargs["stdout"].write(json.dumps(event) + "\n")
+                return SimpleNamespace(returncode=0)
+
+            with patch.object(runtime.subprocess, "run", side_effect=run):
+                with self.assertRaises(json.JSONDecodeError):
+                    runtime.model_call(self.protocol, out, "prompt", self.schema)
+            receipt = runtime.jsonl(out / "usage.jsonl")[0]
+            self.assertFalse(receipt["ok"])
+            self.assertEqual(receipt["observed_tokens"], 10)
+
     def test_recovery_only_cannot_launch_or_change_a_request(self):
         with tempfile.TemporaryDirectory() as directory:
             out = Path(directory)
@@ -159,6 +236,38 @@ class ReviewRuntime(unittest.TestCase):
                 "type": "turn.completed",
                 "usage": {"input_tokens": 11, "output_tokens": 4},
             }) + "\n")
+            with patch.object(runtime.subprocess, "run") as invoke:
+                value = runtime.model_call(self.protocol, out, "prompt", self.schema)
+            invoke.assert_not_called()
+            self.assertEqual(value, {"answer": "recovered"})
+            receipt = runtime.read_json(calls / f"{identity}.json")
+            self.assertTrue(receipt["recovered_after_interruption"])
+            self.assertEqual(receipt["observed_tokens"], 15)
+
+    def test_interrupted_call_with_reconnect_errors_recovers_completed_turn(self):
+        with tempfile.TemporaryDirectory() as directory:
+            out = Path(directory)
+            work = out / "workspace"
+            work.mkdir(parents=True)
+            identity = runtime.request_identity(self.protocol, "prompt", self.schema, False, [], work)
+            calls = out / "calls"
+            calls.mkdir()
+            runtime.write_json(calls / f"{identity}.started.json", {
+                "request_sha256": identity,
+                "started_at": 1,
+                "ok": False,
+                "usage_unknown": True,
+            })
+            runtime.write_json(calls / f"{identity}.answer.json", {"answer": "recovered"})
+            events = [
+                {"type": "error", "message": "Reconnecting... 5/5"},
+                {"type": "item.completed", "item": {"type": "mcp_tool_call", "status": "completed"}},
+                {"type": "item.completed", "item": {"type": "agent_message"}},
+                {"type": "turn.completed", "usage": {"input_tokens": 11, "output_tokens": 4}},
+            ]
+            (calls / f"{identity}.events.jsonl").write_text(
+                "\n".join(json.dumps(event) for event in events) + "\n"
+            )
             with patch.object(runtime.subprocess, "run") as invoke:
                 value = runtime.model_call(self.protocol, out, "prompt", self.schema)
             invoke.assert_not_called()
