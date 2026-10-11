@@ -180,7 +180,10 @@ def _validate_secondary_finding(finding, blocks, source_cards):
         raise ValueError('Secondary concern requires an adjudicated finding')
     required = set(SECONDARY_FINDING['required'])
     if set(finding) != required:
-        raise ValueError('Adjudicated secondary finding has an invalid shape')
+        raise ValueError('Adjudicated secondary finding has an invalid shape. Missing fields: '
+                         + ', '.join(sorted(required - set(finding)))
+                         + '. Unexpected fields: ' + ', '.join(sorted(set(finding) - required))
+                         + '. Supply the required fields. Use empty source arrays only when no external sources were used. Do not drop required secondary wording.')
     if not isinstance(finding.get('comment'), str) or not finding['comment'].strip():
         raise ValueError('Adjudicated secondary finding needs a nonempty comment')
     if finding.get('replacement'):
@@ -240,7 +243,10 @@ def adjudicated_secondary(value, ledger, paper, source_cards=None):
         if secondary:
             if decision.get('issue_id') not in issues:
                 raise ValueError('Secondary concern refers to an unknown issue')
-            _validate_secondary_finding(finding, blocks, source_cards)
+            try:
+                _validate_secondary_finding(finding, blocks, source_cards)
+            except ValueError as error:
+                raise ValueError(str(error) + ' [issue_id=' + str(decision.get('issue_id')) + ']') from None
             result.append({'issue_id': decision['issue_id'], 'finding': copy.deepcopy(finding)})
         elif finding is not None:
             raise ValueError('Only retained secondary concerns may have adjudicated wording')

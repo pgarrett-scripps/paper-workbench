@@ -110,7 +110,7 @@ def recover(value, ledger, paper, source_cards=None):
     elif checked.get('original', {}).get('status') == 'valid':
         recovered = repaired
     else:
-        return {**initial, 'recovered': None, 'audit': checked.get('audit'),
+        return {**initial, 'recovered': None, 'audit': checked.get('audit') or checked.get('original'),
                 'changed_fields': all_receipts}
     return {'original': initial['original'], 'recovered': recovered,
             'audit': checked.get('audit'), 'changed_fields': all_receipts,

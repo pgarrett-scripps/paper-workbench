@@ -93,6 +93,7 @@ def debate_reviews(workspace,out,billing,cutoff,records,*,images=(),model='gpt-5
                                   normalize_new_decisions, adjudicated_secondary,
                                   audit_only_secondary, attach_adjudicated_secondary)
     from .reviewer import handle_manuscript,HANDLE_INSTRUCTION
+    from .synthesis_validation import INSTRUCTION, VERSION, destination_diagnostics, preflight_receipts
     root,out=Path(workspace).resolve(),Path(out).resolve()
     if synthesis_policy not in ('debate', 'ordinary'):
         raise ValueError('Synthesis policy must be debate or ordinary')
@@ -108,7 +109,8 @@ def debate_reviews(workspace,out,billing,cutoff,records,*,images=(),model='gpt-5
         protocol.update(mode='saved-draft-synthesis', total_generation_calls=1, discovery_calls=0)
     protocol.update(evidence_mode=evidence_mode,
                     evidence_policy='frozen' if source_packet is not None else 'live',
-                    live_retrieval=source_packet is None, synthesis_policy=synthesis_policy)
+                    live_retrieval=source_packet is None, synthesis_policy=synthesis_policy,
+                    synthesis_preflight=VERSION, synthesis_validation_checks=2)
     memos=[]
     memo_images=[]
     if len(evidence_memos)>2:raise ValueError('Supply at most two focused evidence memos')
@@ -164,6 +166,7 @@ def debate_reviews(workspace,out,billing,cutoff,records,*,images=(),model='gpt-5
         card_context=[{**c,'evidence_handles':[h.model_record() for h in source_card_handles(c)]} for c in cards.values()]
         prompt_builder = ensemble_prompt if synthesis_policy == 'debate' else ordinary_synthesis_prompt
         prompt=prompt_builder(paper,handle_manuscript(paper),ledger,source_cards=card_context if sources else None)
+        prompt+=INSTRUCTION
         prompt+='\nEach reviewer may supply up to ten candidates. The pooled ledger can exceed ten. Decide every supplied issue.\n'+HANDLE_INSTRUCTION
         if memos:
             memo_instruction = ('Assess how each memo affects the support and remaining uncertainty for its issue.'
@@ -173,7 +176,8 @@ def debate_reviews(workspace,out,billing,cutoff,records,*,images=(),model='gpt-5
         prompt+='\nATTACHED MANUSCRIPT IMAGES, in order:\n'+'\n'.join(p.name for p in image_paths)
         stage = 'debate' if synthesis_policy == 'debate' else 'ordinary-synthesis'
         config={'paper':str(root),'output':str(out/'investigations'/stage),'cache':str(out/'source-cache'),
-                'tool_limit':2,'literature_cutoff':cutoff,'evidence_handles':True}
+                'tool_limit':2,'literature_cutoff':cutoff,'evidence_handles':True,
+                'synthesis_ledger':str(out/'debate-ledger.json')}
         if sources:config.update(tool_profile='domains-v1',source_state=str(out/'sources'),external_request_limit=2,evidence_mode=evidence_mode)
         if source_packet:config.update(source_packet=str(source_packet),source_packet_manifest=packet_manifest)
         if historical_snapshots:config['historical_snapshots']=str(Path(historical_snapshots).resolve())
@@ -196,6 +200,12 @@ def debate_reviews(workspace,out,billing,cutoff,records,*,images=(),model='gpt-5
                                  require_adjudicated_secondary=True)
         write(out/'augmented-ledger.json',augmented)
         presentation=recover(final,augmented,paper,sources.cards() if sources else None)
+        write(out/'synthesis-validation.json', {
+            'version':VERSION, 'valid':presentation['recovered'] is not None or presentation['original']['status']=='valid',
+            'problems':destination_diagnostics(final,augmented,presentation.get('changed_fields',[]))
+                if presentation['recovered'] is None and presentation['original']['status']=='failure' else [],
+            'reference_recovery':{k:v for k,v in presentation.items() if k!='recovered'},
+            'preflight':preflight_receipts(out/'investigations'/stage/'synthesis-preflight',raw)})
         write(out/'presentation-audit.json',{k:v for k,v in presentation.items() if k!='recovered'})
         if presentation['recovered'] is not None:final=presentation['recovered']
         elif presentation['original']['status']=='failure':raise ValueError((presentation.get('audit') or presentation['original'])['error'])

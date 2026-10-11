@@ -1,0 +1,1649 @@
+{
+  "kind": "post_hoc_synthesis_validation_development",
+  "original_study_results_changed": false,
+  "maximum_new_synthesis_calls": 2,
+  "new_discovery_calls": 0,
+  "new_judge_calls": 0,
+  "checks": [
+    {
+      "run": "pwb-synthesis-preflight-check-20261011-v1",
+      "protocol": {
+        "kind": "post_hoc_development_synthesis_check",
+        "original_paper": "paper-0306943",
+        "selection": "Original empty-output failure, selected after outcome inspection",
+        "discovery_reused": true,
+        "new_synthesis_calls": 1,
+        "new_judge_calls": 0,
+        "automatic_retries": 0,
+        "model": "gpt-5.6-terra",
+        "effort": "medium",
+        "observed_token_launch_guard": 400000,
+        "source_reviews_sha256": "5b1cb06155383770617124bf76fa7bacbede4f6e2d814a4fa5f85cbc4c53fabb",
+        "source_response_sha256": "7768050894a2486231fd1cb9a643cfc9228e2c99a260390d99c4ae46c70d210c",
+        "source_receipt_sha256": "906c40bd8dd388e7937c16b51a888def3ae27981a4648cb83479e4c4af3963d6",
+        "original_results_unchanged": true,
+        "limitation": "One outcome-selected developmental check cannot estimate failure-rate improvement."
+      },
+      "result": {
+        "status": "failed",
+        "error": "Secondary concern requires an adjudicated finding",
+        "new_usage": {
+          "calls": 1,
+          "receipts": 1,
+          "observed_tokens": 242917,
+          "unknown": false
+        }
+      },
+      "preflight_receipts": [
+        {
+          "receipt": "synthesis/investigations/debate/synthesis-preflight/check-1.json",
+          "sha256": "a105e41d98928e225ce6bce73b562c3fc97823b963a12756f40c3726c1da9661",
+          "status": "complete",
+          "result": {
+            "version": "synthesis-preflight-v1",
+            "draft_sha256": "f4b31cb1e38d86172dbcd228fdf45197019885361b9c9cea49f2f34eefdea8d7",
+            "valid": false,
+            "problems": [],
+            "limitation": "Structural check only. Scientific correctness and semantic preservation require assessment.",
+            "error": "Adjudicated secondary finding has an invalid shape",
+            "check": 1,
+            "remaining_checks": 1,
+            "tool_receipt": {
+              "tool": "validate_synthesis",
+              "call_index": 1,
+              "allowance": "synthesis-preflight-v1"
+            }
+          }
+        },
+        {
+          "receipt": "synthesis/investigations/debate/synthesis-preflight/check-2.json",
+          "sha256": "5e4e8817e78639e51a54fbb6b9bd1643cc532e2fe5e3018873b418a9fc8c7170",
+          "status": "complete",
+          "result": {
+            "version": "synthesis-preflight-v1",
+            "draft_sha256": "b89b53e5f304c042b2073820fcf25d819949492c09e784db4c90491cf0e2ca20",
+            "valid": false,
+            "problems": [],
+            "limitation": "Structural check only. Scientific correctness and semantic preservation require assessment.",
+            "error": "Adjudicated secondary finding has an invalid shape",
+            "check": 2,
+            "remaining_checks": 0,
+            "tool_receipt": {
+              "tool": "validate_synthesis",
+              "call_index": 2,
+              "allowance": "synthesis-preflight-v1"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "run": "pwb-synthesis-preflight-check-20261011-v2",
+      "protocol": {
+        "kind": "post_hoc_development_synthesis_check",
+        "original_paper": "paper-0306943",
+        "selection": "Original empty-output failure, selected after outcome inspection",
+        "discovery_reused": true,
+        "new_synthesis_calls": 1,
+        "development_check_number": 2,
+        "maximum_development_checks": 2,
+        "prior_check": "pwb-synthesis-preflight-check-20261011-v1",
+        "new_judge_calls": 0,
+        "automatic_retries": 0,
+        "model": "gpt-5.6-terra",
+        "effort": "medium",
+        "observed_token_launch_guard": 400000,
+        "source_reviews_sha256": "5b1cb06155383770617124bf76fa7bacbede4f6e2d814a4fa5f85cbc4c53fabb",
+        "source_response_sha256": "7768050894a2486231fd1cb9a643cfc9228e2c99a260390d99c4ae46c70d210c",
+        "source_receipt_sha256": "906c40bd8dd388e7937c16b51a888def3ae27981a4648cb83479e4c4af3963d6",
+        "original_results_unchanged": true,
+        "limitation": "One outcome-selected developmental check cannot estimate failure-rate improvement."
+      },
+      "result": {
+        "status": "complete",
+        "findings": 5,
+        "validation": {
+          "version": "synthesis-preflight-v1",
+          "valid": true,
+          "problems": [],
+          "reference_recovery": {
+            "original": {
+              "status": "valid"
+            },
+            "audit": {
+              "structural_validity": true,
+              "issues": 15,
+              "discarded_hypotheses": 4,
+              "restored_hypotheses": 0,
+              "components": 45,
+              "selected_findings": 5,
+              "limitation": "Accounting and exact quotations are validated. Scientific correctness and semantic preservation are not mechanically established.",
+              "epistemic_audit": {
+                "version": "debate-epistemic-audit-v1",
+                "issues": [
+                  {
+                    "issue_id": "r1-issue-1",
+                    "origin": "candidate_finding",
+                    "assertion_status": "source_linked_clarification",
+                    "selection_status": "selected",
+                    "declared_scientific_status": "supported_clarification",
+                    "presentation": "primary",
+                    "source_link_status": "exact_quotes_validated",
+                    "source_reference_counts": {
+                      "finding_anchors": 1,
+                      "decision": 1,
+                      "components": 4
+                    },
+                    "scientific_truth_status": "not_mechanically_determined",
+                    "restored_from_hypothesis": false,
+                    "qualifications": [
+                      "The study includes both flow cytometry and representative immunostaining, which offers orthogonal visual context, but the reported quantitative definition remains Sytox positivity within the cell-marker gates.",
+                      "The study also includes representative imaging."
+                    ],
+                    "decision_history": [
+                      {
+                        "decision_id": "decision-053e52de503421c4",
+                        "inherited": false,
+                        "declared_scientific_status": "supported_clarification",
+                        "presentation": "primary",
+                        "strongest_criticism": "A Sytox-positive marker gate alone does not establish NET release.",
+                        "strongest_author_defense": "The study also includes representative imaging.",
+                        "decisive_question": "What validation distinguishes NET structures from membrane-compromised cells or debris?",
+                        "decision_reason": "The endpoint is explicitly a triple-positive gated-cell count."
+                      }
+                    ]
+                  },
+                  {
+                    "issue_id": "r1-issue-2",
+                    "origin": "candidate_finding",
+                    "assertion_status": "source_linked_clarification",
+                    "selection_status": "selected",
+                    "declared_scientific_status": "supported_clarification",
+                    "presentation": "merged",
+                    "source_link_status": "exact_quotes_validated",
+                    "source_reference_counts": {
+                      "finding_anchors": 1,
+                      "decision": 1,
+                      "components": 4
+                    },
+                    "scientific_truth_status": "not_mechanically_determined",
+                    "restored_from_hypothesis": false,
+                    "qualifications": [
+                      "The authors acknowledge LDG heterogeneity and use a stated marker definition consistently across tissues. This supports a reproducible phenotypic population, but not necessarily its density-based identity.",
+                      "Definitions are consistent and LDG heterogeneity is acknowledged."
+                    ],
+                    "decision_history": [
+                      {
+                        "decision_id": "decision-ac91b903578d17c7",
+                        "inherited": false,
+                        "declared_scientific_status": "supported_clarification",
+                        "presentation": "merged",
+                        "strongest_criticism": "The marker gate does not itself establish density-based LDG identity.",
+                        "strongest_author_defense": "Definitions are consistent and LDG heterogeneity is acknowledged.",
+                        "decisive_question": "What validates the LDG label?",
+                        "decision_reason": "The flow-count gate is CD15+CD14low in R1."
+                      }
+                    ]
+                  },
+                  {
+                    "issue_id": "r1-issue-3",
+                    "origin": "candidate_finding",
+                    "assertion_status": "source_linked_clarification",
+                    "selection_status": "selected",
+                    "declared_scientific_status": "supported_clarification",
+                    "presentation": "merged",
+                    "source_link_status": "exact_quotes_validated",
+                    "source_reference_counts": {
+                      "finding_anchors": 1,
+                      "decision": 1,
+                      "components": 3
+                    },
+                    "scientific_truth_status": "not_mechanically_determined",
+                    "restored_from_hypothesis": false,
+                    "qualifications": [
+                      "The authors counted some tissue suspensions before flow cytometry, which may have supported normalization, but the calculation and denominator are not reported.",
+                      "Some tissue suspensions were counted before flow cytometry."
+                    ],
+                    "decision_history": [
+                      {
+                        "decision_id": "decision-d10754f1bcf3e9f4",
+                        "inherited": false,
+                        "declared_scientific_status": "supported_clarification",
+                        "presentation": "merged",
+                        "strongest_criticism": "Absolute cell-number normalization is unspecified.",
+                        "strongest_author_defense": "Some tissue suspensions were counted before flow cytometry.",
+                        "decisive_question": "How were displayed values normalized?",
+                        "decision_reason": "Unequal blood volumes are stated without a calculation method."
+                      }
+                    ]
+                  },
+                  {
+                    "issue_id": "r1-issue-4",
+                    "origin": "candidate_finding",
+                    "assertion_status": "source_linked_clarification",
+                    "selection_status": "selected",
+                    "declared_scientific_status": "supported_clarification",
+                    "presentation": "merged",
+                    "source_link_status": "exact_quotes_validated",
+                    "source_reference_counts": {
+                      "finding_anchors": 1,
+                      "decision": 1,
+                      "components": 4
+                    },
+                    "scientific_truth_status": "not_mechanically_determined",
+                    "restored_from_hypothesis": false,
+                    "qualifications": [
+                      "The saline group and pre-injection samples provide valuable controls, and several reported contrasts are large. The issue is the inferential treatment and reporting, not the existence of the control data.",
+                      "The controls are useful."
+                    ],
+                    "decision_history": [
+                      {
+                        "decision_id": "decision-df2672b60e42ac9b",
+                        "inherited": false,
+                        "declared_scientific_status": "supported_clarification",
+                        "presentation": "merged",
+                        "strongest_criticism": "Repeated baseline observations and multiplicity are not described.",
+                        "strongest_author_defense": "The controls are useful.",
+                        "decisive_question": "Were baseline comparisons paired and was multiplicity addressed?",
+                        "decision_reason": "All animals contributed baseline blood, while stated tests are Kruskal-Wallis and Mann-Whitney."
+                      }
+                    ]
+                  },
+                  {
+                    "issue_id": "r1-issue-5",
+                    "origin": "candidate_finding",
+                    "assertion_status": "source_linked_concern",
+                    "selection_status": "selected",
+                    "declared_scientific_status": "supported_concern",
+                    "presentation": "primary",
+                    "source_link_status": "exact_quotes_validated",
+                    "source_reference_counts": {
+                      "finding_anchors": 1,
+                      "decision": 1,
+                      "components": 3
+                    },
+                    "scientific_truth_status": "not_mechanically_determined",
+                    "restored_from_hypothesis": false,
+                    "qualifications": [
+                      "The early sampling is a strength for demonstrating temporal precedence over established lupus features. It cannot by itself determine whether the response is necessary or sufficient for subsequent disease.",
+                      "Early sampling establishes temporal precedence."
+                    ],
+                    "decision_history": [
+                      {
+                        "decision_id": "decision-9bbe7f00066096a4",
+                        "inherited": false,
+                        "declared_scientific_status": "supported_concern",
+                        "presentation": "primary",
+                        "strongest_criticism": "Day-5 observational data do not establish a primary causal event in later lupus.",
+                        "strongest_author_defense": "Early sampling establishes temporal precedence.",
+                        "decisive_question": "Are later outcomes or causal interventions reported?",
+                        "decision_reason": "The conclusion exceeds the stated observation window."
+                      }
+                    ]
+                  },
+                  {
+                    "issue_id": "r1-hypothesis-1",
+                    "origin": "discarded_hypothesis",
+                    "assertion_status": "hypothesis_with_recorded_counterevidence",
+                    "selection_status": "not_selected",
+                    "declared_scientific_status": "contradicted",
+                    "presentation": "omitted",
+                    "source_link_status": "exact_quotes_validated",
+                    "source_reference_counts": {
+                      "finding_anchors": 0,
+                      "decision": 1,
+                      "components": 2
+                    },
+                    "scientific_truth_status": "not_mechanically_determined",
+                    "restored_from_hypothesis": false,
+                    "qualifications": [
+                      "The discussion explicitly acknowledges the exception."
+                    ],
+                    "decision_history": [
+                      {
+                        "decision_id": "decision-c166aec52baf9f7c",
+                        "inherited": false,
+                        "declared_scientific_status": "contradicted",
+                        "presentation": "omitted",
+                        "strongest_criticism": "Spleen results might appear inconsistent.",
+                        "strongest_author_defense": "The discussion explicitly acknowledges the exception.",
+                        "decisive_question": "Is the exception disclosed?",
+                        "decision_reason": "Yes."
+                      }
+                    ]
+                  },
+                  {
+                    "issue_id": "r1-hypothesis-2",
+                    "origin": "discarded_hypothesis",
+                    "assertion_status": "unverified_hypothesis",
+                    "selection_status": "not_selected",
+                    "declared_scientific_status": "unresolved",
+                    "presentation": "omitted",
+                    "source_link_status": "exact_quotes_validated",
+                    "source_reference_counts": {
+                      "finding_anchors": 0,
+                      "decision": 1,
+                      "components": 2
+                    },
+                    "scientific_truth_status": "not_mechanically_determined",
+                    "restored_from_hypothesis": false,
+                    "qualifications": [
+                      "No contrary numeric evidence is supplied."
+                    ],
+                    "decision_history": [
+                      {
+                        "decision_id": "decision-79510d39e065c59a",
+                        "inherited": false,
+                        "declared_scientific_status": "unresolved",
+                        "presentation": "omitted",
+                        "strongest_criticism": "A plot-table mismatch could matter.",
+                        "strongest_author_defense": "No contrary numeric evidence is supplied.",
+                        "decisive_question": "Do all plotted and tabulated values correspond?",
+                        "decision_reason": "No mismatch is established."
+                      }
+                    ]
+                  },
+                  {
+                    "issue_id": "r2-issue-1",
+                    "origin": "candidate_finding",
+                    "assertion_status": "source_linked_clarification",
+                    "selection_status": "selected",
+                    "declared_scientific_status": "supported_clarification",
+                    "presentation": "merged",
+                    "source_link_status": "exact_quotes_validated",
+                    "source_reference_counts": {
+                      "finding_anchors": 1,
+                      "decision": 1,
+                      "components": 3
+                    },
+                    "scientific_truth_status": "not_mechanically_determined",
+                    "restored_from_hypothesis": false,
+                    "qualifications": [
+                      "CD11b can increase on activation."
+                    ],
+                    "decision_history": [
+                      {
+                        "decision_id": "decision-3a8af74db4e7e8cc",
+                        "inherited": false,
+                        "declared_scientific_status": "supported_clarification",
+                        "presentation": "merged",
+                        "strongest_criticism": "The gate does not alone prove activation.",
+                        "strongest_author_defense": "CD11b can increase on activation.",
+                        "decisive_question": "Was activation defined by intensity or validation?",
+                        "decision_reason": "Only double positivity is described."
+                      }
+                    ]
+                  },
+                  {
+                    "issue_id": "r2-issue-2",
+                    "origin": "candidate_finding",
+                    "assertion_status": "source_linked_clarification",
+                    "selection_status": "selected",
+                    "declared_scientific_status": "supported_clarification",
+                    "presentation": "merged",
+                    "source_link_status": "exact_quotes_validated",
+                    "source_reference_counts": {
+                      "finding_anchors": 1,
+                      "decision": 1,
+                      "components": 4
+                    },
+                    "scientific_truth_status": "not_mechanically_determined",
+                    "restored_from_hypothesis": false,
+                    "qualifications": [
+                      "Definitions are consistently applied."
+                    ],
+                    "decision_history": [
+                      {
+                        "decision_id": "decision-351bc05c10a4d929",
+                        "inherited": false,
+                        "declared_scientific_status": "supported_clarification",
+                        "presentation": "merged",
+                        "strongest_criticism": "Marker-only LDG designation may not establish density identity.",
+                        "strongest_author_defense": "Definitions are consistently applied.",
+                        "decisive_question": "Was density or independent validation performed?",
+                        "decision_reason": "Counts use CD15+CD14low in R1."
+                      }
+                    ]
+                  },
+                  {
+                    "issue_id": "r2-issue-3",
+                    "origin": "candidate_finding",
+                    "assertion_status": "source_linked_clarification",
+                    "selection_status": "selected",
+                    "declared_scientific_status": "supported_clarification",
+                    "presentation": "merged",
+                    "source_link_status": "exact_quotes_validated",
+                    "source_reference_counts": {
+                      "finding_anchors": 1,
+                      "decision": 1,
+                      "components": 4
+                    },
+                    "scientific_truth_status": "not_mechanically_determined",
+                    "restored_from_hypothesis": false,
+                    "qualifications": [
+                      "Imaging provides qualitative context."
+                    ],
+                    "decision_history": [
+                      {
+                        "decision_id": "decision-1881e88c5bcd6c72",
+                        "inherited": false,
+                        "declared_scientific_status": "supported_clarification",
+                        "presentation": "merged",
+                        "strongest_criticism": "Sytox positivity may not distinguish NET release.",
+                        "strongest_author_defense": "Imaging provides qualitative context.",
+                        "decisive_question": "What validation establishes NET-derived extracellular DNA?",
+                        "decision_reason": "The reported endpoint is marker-positive plus Sytox-positive."
+                      }
+                    ]
+                  },
+                  {
+                    "issue_id": "r2-issue-4",
+                    "origin": "candidate_finding",
+                    "assertion_status": "source_linked_concern",
+                    "selection_status": "selected",
+                    "declared_scientific_status": "supported_concern",
+                    "presentation": "merged",
+                    "source_link_status": "exact_quotes_validated",
+                    "source_reference_counts": {
+                      "finding_anchors": 1,
+                      "decision": 1,
+                      "components": 4
+                    },
+                    "scientific_truth_status": "not_mechanically_determined",
+                    "restored_from_hypothesis": false,
+                    "qualifications": [
+                      "A labeling convention could explain it."
+                    ],
+                    "decision_history": [
+                      {
+                        "decision_id": "decision-96bf331246db2591",
+                        "inherited": false,
+                        "declared_scientific_status": "supported_concern",
+                        "presentation": "merged",
+                        "strongest_criticism": "The stated mean is incompatible with its stated n and range.",
+                        "strongest_author_defense": "A labeling convention could explain it.",
+                        "decisive_question": "Are n, range, and mean correctly labeled?",
+                        "decision_reason": "The minimum possible mean is 428.83."
+                      }
+                    ]
+                  },
+                  {
+                    "issue_id": "r2-issue-5",
+                    "origin": "candidate_finding",
+                    "assertion_status": "source_linked_clarification",
+                    "selection_status": "selected",
+                    "declared_scientific_status": "supported_clarification",
+                    "presentation": "merged",
+                    "source_link_status": "exact_quotes_validated",
+                    "source_reference_counts": {
+                      "finding_anchors": 1,
+                      "decision": 1,
+                      "components": 4
+                    },
+                    "scientific_truth_status": "not_mechanically_determined",
+                    "restored_from_hypothesis": false,
+                    "qualifications": [
+                      "The design includes controls."
+                    ],
+                    "decision_history": [
+                      {
+                        "decision_id": "decision-454a2144e1ba863a",
+                        "inherited": false,
+                        "declared_scientific_status": "supported_clarification",
+                        "presentation": "merged",
+                        "strongest_criticism": "Baseline may combine repeated and independent observations.",
+                        "strongest_author_defense": "The design includes controls.",
+                        "decisive_question": "How was animal-level pairing handled?",
+                        "decision_reason": "All animals provided baseline blood."
+                      }
+                    ]
+                  },
+                  {
+                    "issue_id": "r2-issue-6",
+                    "origin": "candidate_finding",
+                    "assertion_status": "source_linked_concern",
+                    "selection_status": "selected",
+                    "declared_scientific_status": "supported_concern",
+                    "presentation": "merged",
+                    "source_link_status": "exact_quotes_validated",
+                    "source_reference_counts": {
+                      "finding_anchors": 1,
+                      "decision": 1,
+                      "components": 2
+                    },
+                    "scientific_truth_status": "not_mechanically_determined",
+                    "restored_from_hypothesis": false,
+                    "qualifications": [
+                      "Early sampling supports temporal precedence."
+                    ],
+                    "decision_history": [
+                      {
+                        "decision_id": "decision-6589cc662323c91a",
+                        "inherited": false,
+                        "declared_scientific_status": "supported_concern",
+                        "presentation": "merged",
+                        "strongest_criticism": "The causal claim exceeds a single early observation.",
+                        "strongest_author_defense": "Early sampling supports temporal precedence.",
+                        "decisive_question": "Are later outcomes or causal tests reported?",
+                        "decision_reason": "They are not described."
+                      }
+                    ]
+                  },
+                  {
+                    "issue_id": "r2-hypothesis-1",
+                    "origin": "discarded_hypothesis",
+                    "assertion_status": "hypothesis_with_recorded_counterevidence",
+                    "selection_status": "not_selected",
+                    "declared_scientific_status": "contradicted",
+                    "presentation": "omitted",
+                    "source_link_status": "exact_quotes_validated",
+                    "source_reference_counts": {
+                      "finding_anchors": 0,
+                      "decision": 1,
+                      "components": 1
+                    },
+                    "scientific_truth_status": "not_mechanically_determined",
+                    "restored_from_hypothesis": false,
+                    "qualifications": [
+                      "The exception is disclosed."
+                    ],
+                    "decision_history": [
+                      {
+                        "decision_id": "decision-f95dcf4222c6c7d5",
+                        "inherited": false,
+                        "declared_scientific_status": "contradicted",
+                        "presentation": "omitted",
+                        "strongest_criticism": "Spleen results might be inconsistent.",
+                        "strongest_author_defense": "The exception is disclosed.",
+                        "decisive_question": "Is it acknowledged?",
+                        "decision_reason": "Yes."
+                      }
+                    ]
+                  },
+                  {
+                    "issue_id": "r2-hypothesis-2",
+                    "origin": "discarded_hypothesis",
+                    "assertion_status": "unverified_hypothesis",
+                    "selection_status": "not_selected",
+                    "declared_scientific_status": "unresolved",
+                    "presentation": "omitted",
+                    "source_link_status": "exact_quotes_validated",
+                    "source_reference_counts": {
+                      "finding_anchors": 0,
+                      "decision": 1,
+                      "components": 1
+                    },
+                    "scientific_truth_status": "not_mechanically_determined",
+                    "restored_from_hypothesis": false,
+                    "qualifications": [
+                      "Nonreporting does not establish absence."
+                    ],
+                    "decision_history": [
+                      {
+                        "decision_id": "decision-6639ee55e3cbe12c",
+                        "inherited": false,
+                        "declared_scientific_status": "unresolved",
+                        "presentation": "omitted",
+                        "strongest_criticism": "Unreported randomization or blinding could affect bias assessment.",
+                        "strongest_author_defense": "Nonreporting does not establish absence.",
+                        "decisive_question": "Were these procedures used?",
+                        "decision_reason": "No source establishes their absence."
+                      }
+                    ]
+                  }
+                ],
+                "limitations": [
+                  "Exact quotations establish traceability, not scientific truth.",
+                  "Selection records editorial inclusion, not confirmation of a defect.",
+                  "A restored hypothesis remains unverified unless independent scientific assessment establishes more.",
+                  "Statuses summarize model decisions and deterministic checks. They are not expert adjudication."
+                ]
+              }
+            },
+            "changed_fields": []
+          },
+          "preflight": {
+            "checks": [
+              {
+                "file": "check-1.json",
+                "status": "complete",
+                "valid": false,
+                "matches_submitted_draft": false
+              },
+              {
+                "file": "check-2.json",
+                "status": "complete",
+                "valid": true,
+                "matches_submitted_draft": false
+              }
+            ],
+            "submitted_draft_sha256": "bd3501f9cfe07fb8c4ddb5da38face1bc7b1d70fae6351c75ef5b6365d5adc36",
+            "submitted_draft_preflight_passed": false
+          }
+        },
+        "new_usage": {
+          "calls": 1,
+          "receipts": 1,
+          "observed_tokens": 249886,
+          "unknown": false
+        }
+      },
+      "preflight_receipts": [
+        {
+          "receipt": "synthesis/investigations/debate/synthesis-preflight/check-1.json",
+          "sha256": "cb16044dd0f4198e1098b4ed0136e4726bb23f3e2705d81ab755de5d35cf1f06",
+          "status": "complete",
+          "result": {
+            "version": "synthesis-preflight-v1",
+            "draft_sha256": "6d3bdc107113a6088aaea5bd070f28dac568fb559e8318245f6c045ed36a7161",
+            "valid": false,
+            "problems": [
+              {
+                "issue_id": "r1-issue-1",
+                "component_id": "r1-issue-1-part-3",
+                "code": "missing_final_quote",
+                "final_finding_number": 1,
+                "message": "Copy an exact substantive span from this final comment. Do not invent a destination."
+              },
+              {
+                "issue_id": "r2-issue-4",
+                "component_id": "r2-issue-4-part-3",
+                "code": "missing_final_quote",
+                "final_finding_number": 3,
+                "message": "Copy an exact substantive span from this final comment. Do not invent a destination."
+              }
+            ],
+            "limitation": "Structural check only. Scientific correctness and semantic preservation require assessment.",
+            "reference_recovery": {
+              "original": {
+                "status": "failure",
+                "error": "Preserved component lacks an exact final-review destination"
+              },
+              "audit": null,
+              "changed_fields": []
+            },
+            "error": "Preserved component lacks an exact final-review destination",
+            "check": 1,
+            "remaining_checks": 1,
+            "tool_receipt": {
+              "tool": "validate_synthesis",
+              "call_index": 1,
+              "allowance": "synthesis-preflight-v1"
+            }
+          }
+        },
+        {
+          "receipt": "synthesis/investigations/debate/synthesis-preflight/check-2.json",
+          "sha256": "0ea8071d788816531876f6d0bd2f3da64bc9756a2abcc56451c55ea4d7f39b07",
+          "status": "complete",
+          "result": {
+            "version": "synthesis-preflight-v1",
+            "draft_sha256": "07ec51aa0f8b6fcbca5b890386be27b05cfe42ce02ba5017c8a2f2279fff2c83",
+            "valid": true,
+            "problems": [],
+            "limitation": "Structural check only. Scientific correctness and semantic preservation require assessment.",
+            "reference_recovery": {
+              "original": {
+                "status": "valid"
+              },
+              "audit": {
+                "structural_validity": true,
+                "issues": 15,
+                "discarded_hypotheses": 4,
+                "restored_hypotheses": 0,
+                "components": 45,
+                "selected_findings": 5,
+                "limitation": "Accounting and exact quotations are validated. Scientific correctness and semantic preservation are not mechanically established.",
+                "epistemic_audit": {
+                  "version": "debate-epistemic-audit-v1",
+                  "issues": [
+                    {
+                      "issue_id": "r1-issue-1",
+                      "origin": "candidate_finding",
+                      "assertion_status": "source_linked_clarification",
+                      "selection_status": "selected",
+                      "declared_scientific_status": "supported_clarification",
+                      "presentation": "primary",
+                      "source_link_status": "exact_quotes_validated",
+                      "source_reference_counts": {
+                        "finding_anchors": 1,
+                        "decision": 1,
+                        "components": 4
+                      },
+                      "scientific_truth_status": "not_mechanically_determined",
+                      "restored_from_hypothesis": false,
+                      "qualifications": [
+                        "The study includes both flow cytometry and representative immunostaining, which offers orthogonal visual context, but the reported quantitative definition remains Sytox positivity within the cell-marker gates.",
+                        "The manuscript provides the stated experimental context and controls."
+                      ],
+                      "decision_history": [
+                        {
+                          "decision_id": "decision-3da151b0c6906e3c",
+                          "inherited": false,
+                          "declared_scientific_status": "supported_clarification",
+                          "presentation": "primary",
+                          "strongest_criticism": "The reported evidence leaves the stated interpretation uncertain.",
+                          "strongest_author_defense": "The manuscript provides the stated experimental context and controls.",
+                          "decisive_question": "What reported method or result resolves the narrowed concern?",
+                          "decision_reason": "The decision reflects the manuscript evidence and the narrower remaining question."
+                        }
+                      ]
+                    },
+                    {
+                      "issue_id": "r1-issue-2",
+                      "origin": "candidate_finding",
+                      "assertion_status": "source_linked_clarification",
+                      "selection_status": "selected",
+                      "declared_scientific_status": "supported_clarification",
+                      "presentation": "merged",
+                      "source_link_status": "exact_quotes_validated",
+                      "source_reference_counts": {
+                        "finding_anchors": 1,
+                        "decision": 1,
+                        "components": 4
+                      },
+                      "scientific_truth_status": "not_mechanically_determined",
+                      "restored_from_hypothesis": false,
+                      "qualifications": [
+                        "The authors acknowledge LDG heterogeneity and use a stated marker definition consistently across tissues. This supports a reproducible phenotypic population, but not necessarily its density-based identity.",
+                        "The manuscript provides the stated experimental context and controls."
+                      ],
+                      "decision_history": [
+                        {
+                          "decision_id": "decision-0c4849e44e5f41b2",
+                          "inherited": false,
+                          "declared_scientific_status": "supported_clarification",
+                          "presentation": "merged",
+                          "strongest_criticism": "The reported evidence leaves the stated interpretation uncertain.",
+                          "strongest_author_defense": "The manuscript provides the stated experimental context and controls.",
+                          "decisive_question": "What reported method or result resolves the narrowed concern?",
+                          "decision_reason": "The decision reflects the manuscript evidence and the narrower remaining question."
+                        }
+                      ]
+                    },
+                    {
+                      "issue_id": "r1-issue-3",
+                      "origin": "candidate_finding",
+                      "assertion_status": "source_linked_clarification",
+                      "selection_status": "selected",
+                      "declared_scientific_status": "supported_clarification",
+                      "presentation": "merged",
+                      "source_link_status": "exact_quotes_validated",
+                      "source_reference_counts": {
+                        "finding_anchors": 1,
+                        "decision": 1,
+                        "components": 3
+                      },
+                      "scientific_truth_status": "not_mechanically_determined",
+                      "restored_from_hypothesis": false,
+                      "qualifications": [
+                        "The authors counted some tissue suspensions before flow cytometry, which may have supported normalization, but the calculation and denominator are not reported.",
+                        "The manuscript provides the stated experimental context and controls."
+                      ],
+                      "decision_history": [
+                        {
+                          "decision_id": "decision-d1717c314b7daf9b",
+                          "inherited": false,
+                          "declared_scientific_status": "supported_clarification",
+                          "presentation": "merged",
+                          "strongest_criticism": "The reported evidence leaves the stated interpretation uncertain.",
+                          "strongest_author_defense": "The manuscript provides the stated experimental context and controls.",
+                          "decisive_question": "What reported method or result resolves the narrowed concern?",
+                          "decision_reason": "The decision reflects the manuscript evidence and the narrower remaining question."
+                        }
+                      ]
+                    },
+                    {
+                      "issue_id": "r1-issue-4",
+                      "origin": "candidate_finding",
+                      "assertion_status": "source_linked_clarification",
+                      "selection_status": "selected",
+                      "declared_scientific_status": "supported_clarification",
+                      "presentation": "merged",
+                      "source_link_status": "exact_quotes_validated",
+                      "source_reference_counts": {
+                        "finding_anchors": 1,
+                        "decision": 1,
+                        "components": 4
+                      },
+                      "scientific_truth_status": "not_mechanically_determined",
+                      "restored_from_hypothesis": false,
+                      "qualifications": [
+                        "The saline group and pre-injection samples provide valuable controls, and several reported contrasts are large. The issue is the inferential treatment and reporting, not the existence of the control data.",
+                        "The manuscript provides the stated experimental context and controls."
+                      ],
+                      "decision_history": [
+                        {
+                          "decision_id": "decision-60571d91d8123f15",
+                          "inherited": false,
+                          "declared_scientific_status": "supported_clarification",
+                          "presentation": "merged",
+                          "strongest_criticism": "The reported evidence leaves the stated interpretation uncertain.",
+                          "strongest_author_defense": "The manuscript provides the stated experimental context and controls.",
+                          "decisive_question": "What reported method or result resolves the narrowed concern?",
+                          "decision_reason": "The decision reflects the manuscript evidence and the narrower remaining question."
+                        }
+                      ]
+                    },
+                    {
+                      "issue_id": "r1-issue-5",
+                      "origin": "candidate_finding",
+                      "assertion_status": "source_linked_concern",
+                      "selection_status": "selected",
+                      "declared_scientific_status": "supported_concern",
+                      "presentation": "primary",
+                      "source_link_status": "exact_quotes_validated",
+                      "source_reference_counts": {
+                        "finding_anchors": 1,
+                        "decision": 1,
+                        "components": 3
+                      },
+                      "scientific_truth_status": "not_mechanically_determined",
+                      "restored_from_hypothesis": false,
+                      "qualifications": [
+                        "The early sampling is a strength for demonstrating temporal precedence over established lupus features. It cannot by itself determine whether the response is necessary or sufficient for subsequent disease.",
+                        "The manuscript provides the stated experimental context and controls."
+                      ],
+                      "decision_history": [
+                        {
+                          "decision_id": "decision-159782fd0a02cd3d",
+                          "inherited": false,
+                          "declared_scientific_status": "supported_concern",
+                          "presentation": "primary",
+                          "strongest_criticism": "The reported evidence leaves the stated interpretation uncertain.",
+                          "strongest_author_defense": "The manuscript provides the stated experimental context and controls.",
+                          "decisive_question": "What reported method or result resolves the narrowed concern?",
+                          "decision_reason": "The decision reflects the manuscript evidence and the narrower remaining question."
+                        }
+                      ]
+                    },
+                    {
+                      "issue_id": "r1-hypothesis-1",
+                      "origin": "discarded_hypothesis",
+                      "assertion_status": "hypothesis_with_recorded_counterevidence",
+                      "selection_status": "not_selected",
+                      "declared_scientific_status": "contradicted",
+                      "presentation": "omitted",
+                      "source_link_status": "exact_quotes_validated",
+                      "source_reference_counts": {
+                        "finding_anchors": 0,
+                        "decision": 1,
+                        "components": 2
+                      },
+                      "scientific_truth_status": "not_mechanically_determined",
+                      "restored_from_hypothesis": false,
+                      "qualifications": [
+                        "The manuscript provides the stated experimental context and controls."
+                      ],
+                      "decision_history": [
+                        {
+                          "decision_id": "decision-365ec06f399bd976",
+                          "inherited": false,
+                          "declared_scientific_status": "contradicted",
+                          "presentation": "omitted",
+                          "strongest_criticism": "The reported evidence leaves the stated interpretation uncertain.",
+                          "strongest_author_defense": "The manuscript provides the stated experimental context and controls.",
+                          "decisive_question": "What reported method or result resolves the narrowed concern?",
+                          "decision_reason": "The decision reflects the manuscript evidence and the narrower remaining question."
+                        }
+                      ]
+                    },
+                    {
+                      "issue_id": "r1-hypothesis-2",
+                      "origin": "discarded_hypothesis",
+                      "assertion_status": "unverified_hypothesis",
+                      "selection_status": "not_selected",
+                      "declared_scientific_status": "unresolved",
+                      "presentation": "omitted",
+                      "source_link_status": "exact_quotes_validated",
+                      "source_reference_counts": {
+                        "finding_anchors": 0,
+                        "decision": 1,
+                        "components": 2
+                      },
+                      "scientific_truth_status": "not_mechanically_determined",
+                      "restored_from_hypothesis": false,
+                      "qualifications": [
+                        "The manuscript provides the stated experimental context and controls."
+                      ],
+                      "decision_history": [
+                        {
+                          "decision_id": "decision-be5b4073e5cf9398",
+                          "inherited": false,
+                          "declared_scientific_status": "unresolved",
+                          "presentation": "omitted",
+                          "strongest_criticism": "The reported evidence leaves the stated interpretation uncertain.",
+                          "strongest_author_defense": "The manuscript provides the stated experimental context and controls.",
+                          "decisive_question": "What reported method or result resolves the narrowed concern?",
+                          "decision_reason": "The decision reflects the manuscript evidence and the narrower remaining question."
+                        }
+                      ]
+                    },
+                    {
+                      "issue_id": "r2-issue-1",
+                      "origin": "candidate_finding",
+                      "assertion_status": "source_linked_clarification",
+                      "selection_status": "selected",
+                      "declared_scientific_status": "supported_clarification",
+                      "presentation": "merged",
+                      "source_link_status": "exact_quotes_validated",
+                      "source_reference_counts": {
+                        "finding_anchors": 1,
+                        "decision": 1,
+                        "components": 3
+                      },
+                      "scientific_truth_status": "not_mechanically_determined",
+                      "restored_from_hypothesis": false,
+                      "qualifications": [
+                        "The manuscript provides the stated experimental context and controls."
+                      ],
+                      "decision_history": [
+                        {
+                          "decision_id": "decision-c90f66d881293c50",
+                          "inherited": false,
+                          "declared_scientific_status": "supported_clarification",
+                          "presentation": "merged",
+                          "strongest_criticism": "The reported evidence leaves the stated interpretation uncertain.",
+                          "strongest_author_defense": "The manuscript provides the stated experimental context and controls.",
+                          "decisive_question": "What reported method or result resolves the narrowed concern?",
+                          "decision_reason": "The decision reflects the manuscript evidence and the narrower remaining question."
+                        }
+                      ]
+                    },
+                    {
+                      "issue_id": "r2-issue-2",
+                      "origin": "candidate_finding",
+                      "assertion_status": "source_linked_clarification",
+                      "selection_status": "selected",
+                      "declared_scientific_status": "supported_clarification",
+                      "presentation": "merged",
+                      "source_link_status": "exact_quotes_validated",
+                      "source_reference_counts": {
+                        "finding_anchors": 1,
+                        "decision": 1,
+                        "components": 4
+                      },
+                      "scientific_truth_status": "not_mechanically_determined",
+                      "restored_from_hypothesis": false,
+                      "qualifications": [
+                        "The manuscript provides the stated experimental context and controls."
+                      ],
+                      "decision_history": [
+                        {
+                          "decision_id": "decision-c73d511de7726a8f",
+                          "inherited": false,
+                          "declared_scientific_status": "supported_clarification",
+                          "presentation": "merged",
+                          "strongest_criticism": "The reported evidence leaves the stated interpretation uncertain.",
+                          "strongest_author_defense": "The manuscript provides the stated experimental context and controls.",
+                          "decisive_question": "What reported method or result resolves the narrowed concern?",
+                          "decision_reason": "The decision reflects the manuscript evidence and the narrower remaining question."
+                        }
+                      ]
+                    },
+                    {
+                      "issue_id": "r2-issue-3",
+                      "origin": "candidate_finding",
+                      "assertion_status": "source_linked_clarification",
+                      "selection_status": "selected",
+                      "declared_scientific_status": "supported_clarification",
+                      "presentation": "merged",
+                      "source_link_status": "exact_quotes_validated",
+                      "source_reference_counts": {
+                        "finding_anchors": 1,
+                        "decision": 1,
+                        "components": 4
+                      },
+                      "scientific_truth_status": "not_mechanically_determined",
+                      "restored_from_hypothesis": false,
+                      "qualifications": [
+                        "The manuscript provides the stated experimental context and controls."
+                      ],
+                      "decision_history": [
+                        {
+                          "decision_id": "decision-06cb078851265bcc",
+                          "inherited": false,
+                          "declared_scientific_status": "supported_clarification",
+                          "presentation": "merged",
+                          "strongest_criticism": "The reported evidence leaves the stated interpretation uncertain.",
+                          "strongest_author_defense": "The manuscript provides the stated experimental context and controls.",
+                          "decisive_question": "What reported method or result resolves the narrowed concern?",
+                          "decision_reason": "The decision reflects the manuscript evidence and the narrower remaining question."
+                        }
+                      ]
+                    },
+                    {
+                      "issue_id": "r2-issue-4",
+                      "origin": "candidate_finding",
+                      "assertion_status": "source_linked_concern",
+                      "selection_status": "selected",
+                      "declared_scientific_status": "supported_concern",
+                      "presentation": "merged",
+                      "source_link_status": "exact_quotes_validated",
+                      "source_reference_counts": {
+                        "finding_anchors": 1,
+                        "decision": 1,
+                        "components": 4
+                      },
+                      "scientific_truth_status": "not_mechanically_determined",
+                      "restored_from_hypothesis": false,
+                      "qualifications": [
+                        "The manuscript provides the stated experimental context and controls."
+                      ],
+                      "decision_history": [
+                        {
+                          "decision_id": "decision-c412e0fdcca36020",
+                          "inherited": false,
+                          "declared_scientific_status": "supported_concern",
+                          "presentation": "merged",
+                          "strongest_criticism": "The reported evidence leaves the stated interpretation uncertain.",
+                          "strongest_author_defense": "The manuscript provides the stated experimental context and controls.",
+                          "decisive_question": "What reported method or result resolves the narrowed concern?",
+                          "decision_reason": "The decision reflects the manuscript evidence and the narrower remaining question."
+                        }
+                      ]
+                    },
+                    {
+                      "issue_id": "r2-issue-5",
+                      "origin": "candidate_finding",
+                      "assertion_status": "source_linked_clarification",
+                      "selection_status": "selected",
+                      "declared_scientific_status": "supported_clarification",
+                      "presentation": "merged",
+                      "source_link_status": "exact_quotes_validated",
+                      "source_reference_counts": {
+                        "finding_anchors": 1,
+                        "decision": 1,
+                        "components": 4
+                      },
+                      "scientific_truth_status": "not_mechanically_determined",
+                      "restored_from_hypothesis": false,
+                      "qualifications": [
+                        "The manuscript provides the stated experimental context and controls."
+                      ],
+                      "decision_history": [
+                        {
+                          "decision_id": "decision-af7da9ee39068bd6",
+                          "inherited": false,
+                          "declared_scientific_status": "supported_clarification",
+                          "presentation": "merged",
+                          "strongest_criticism": "The reported evidence leaves the stated interpretation uncertain.",
+                          "strongest_author_defense": "The manuscript provides the stated experimental context and controls.",
+                          "decisive_question": "What reported method or result resolves the narrowed concern?",
+                          "decision_reason": "The decision reflects the manuscript evidence and the narrower remaining question."
+                        }
+                      ]
+                    },
+                    {
+                      "issue_id": "r2-issue-6",
+                      "origin": "candidate_finding",
+                      "assertion_status": "source_linked_concern",
+                      "selection_status": "selected",
+                      "declared_scientific_status": "supported_concern",
+                      "presentation": "merged",
+                      "source_link_status": "exact_quotes_validated",
+                      "source_reference_counts": {
+                        "finding_anchors": 1,
+                        "decision": 1,
+                        "components": 2
+                      },
+                      "scientific_truth_status": "not_mechanically_determined",
+                      "restored_from_hypothesis": false,
+                      "qualifications": [
+                        "The manuscript provides the stated experimental context and controls."
+                      ],
+                      "decision_history": [
+                        {
+                          "decision_id": "decision-8f4caf0b18a47c9c",
+                          "inherited": false,
+                          "declared_scientific_status": "supported_concern",
+                          "presentation": "merged",
+                          "strongest_criticism": "The reported evidence leaves the stated interpretation uncertain.",
+                          "strongest_author_defense": "The manuscript provides the stated experimental context and controls.",
+                          "decisive_question": "What reported method or result resolves the narrowed concern?",
+                          "decision_reason": "The decision reflects the manuscript evidence and the narrower remaining question."
+                        }
+                      ]
+                    },
+                    {
+                      "issue_id": "r2-hypothesis-1",
+                      "origin": "discarded_hypothesis",
+                      "assertion_status": "hypothesis_with_recorded_counterevidence",
+                      "selection_status": "not_selected",
+                      "declared_scientific_status": "contradicted",
+                      "presentation": "omitted",
+                      "source_link_status": "exact_quotes_validated",
+                      "source_reference_counts": {
+                        "finding_anchors": 0,
+                        "decision": 1,
+                        "components": 1
+                      },
+                      "scientific_truth_status": "not_mechanically_determined",
+                      "restored_from_hypothesis": false,
+                      "qualifications": [
+                        "The manuscript provides the stated experimental context and controls."
+                      ],
+                      "decision_history": [
+                        {
+                          "decision_id": "decision-a409680c01317015",
+                          "inherited": false,
+                          "declared_scientific_status": "contradicted",
+                          "presentation": "omitted",
+                          "strongest_criticism": "The reported evidence leaves the stated interpretation uncertain.",
+                          "strongest_author_defense": "The manuscript provides the stated experimental context and controls.",
+                          "decisive_question": "What reported method or result resolves the narrowed concern?",
+                          "decision_reason": "The decision reflects the manuscript evidence and the narrower remaining question."
+                        }
+                      ]
+                    },
+                    {
+                      "issue_id": "r2-hypothesis-2",
+                      "origin": "discarded_hypothesis",
+                      "assertion_status": "unverified_hypothesis",
+                      "selection_status": "not_selected",
+                      "declared_scientific_status": "unresolved",
+                      "presentation": "omitted",
+                      "source_link_status": "exact_quotes_validated",
+                      "source_reference_counts": {
+                        "finding_anchors": 0,
+                        "decision": 1,
+                        "components": 1
+                      },
+                      "scientific_truth_status": "not_mechanically_determined",
+                      "restored_from_hypothesis": false,
+                      "qualifications": [
+                        "The manuscript provides the stated experimental context and controls."
+                      ],
+                      "decision_history": [
+                        {
+                          "decision_id": "decision-6994ac84a4db2cbc",
+                          "inherited": false,
+                          "declared_scientific_status": "unresolved",
+                          "presentation": "omitted",
+                          "strongest_criticism": "The reported evidence leaves the stated interpretation uncertain.",
+                          "strongest_author_defense": "The manuscript provides the stated experimental context and controls.",
+                          "decisive_question": "What reported method or result resolves the narrowed concern?",
+                          "decision_reason": "The decision reflects the manuscript evidence and the narrower remaining question."
+                        }
+                      ]
+                    }
+                  ],
+                  "limitations": [
+                    "Exact quotations establish traceability, not scientific truth.",
+                    "Selection records editorial inclusion, not confirmation of a defect.",
+                    "A restored hypothesis remains unverified unless independent scientific assessment establishes more.",
+                    "Statuses summarize model decisions and deterministic checks. They are not expert adjudication."
+                  ]
+                }
+              },
+              "changed_fields": []
+            },
+            "check": 2,
+            "remaining_checks": 0,
+            "tool_receipt": {
+              "tool": "validate_synthesis",
+              "call_index": 2,
+              "allowance": "synthesis-preflight-v1"
+            }
+          }
+        }
+      ]
+    }
+  ],
+  "limitation": "Two developmental checks on the same outcome-selected paper do not estimate a population failure rate or review quality.",
+  "new_observed_tokens": 492803,
+  "raw_archive": {
+    "name": "pwb-synthesis-validation-development-20261011.tar.gz",
+    "sha256": "21466bc06d64cba00c13022fe455ba38c6135e42222c6aa45dcec8096bf54ad3",
+    "bytes": 9037853,
+    "files": {
+      "pwb-synthesis-preflight-check-20261011-v1/diagnostic-protocol.json": "4255c279ae6130b19078e9557dfbe43313cba79399c60b868bb7d08347eed3d3",
+      "pwb-synthesis-preflight-check-20261011-v1/diagnostic-result.json": "fd86badfb3e627d395b333da03f4dec75e57a70c187354eee8143d0ed2e4ffb8",
+      "pwb-synthesis-preflight-check-20261011-v1/diagnostic-runner.py": "0ab93c1eb65fbd6922b185d94af6a468fcec90e501646e004142fbf075ef127b",
+      "pwb-synthesis-preflight-check-20261011-v1/frozen-paper-workspace/README.md": "1239c6c8853e808a7b33405154b7f3470d734559aff26984d54afe1f3b37b228",
+      "pwb-synthesis-preflight-check-20261011-v1/frozen-paper-workspace/__init__.py": "c526dd82f9e22d1ce1585259a5ef19a368f096f1b7e7eed57cbf30b9f4095f00",
+      "pwb-synthesis-preflight-check-20261011-v1/frozen-paper-workspace/__main__.py": "7bd5a9b48dfd66449fab5bb54f3f904d84a579d6db724366670bd390cb84cd54",
+      "pwb-synthesis-preflight-check-20261011-v1/frozen-paper-workspace/annotations.py": "ae2aa29e39b144337653a8903f4235394f8a79af5d384431d00ff8d259d52ace",
+      "pwb-synthesis-preflight-check-20261011-v1/frozen-paper-workspace/calculator.py": "8c7bfe5a6ce4b87ea48499151f52759b578f969a0bbe5b61ecd8cb7aab77d978",
+      "pwb-synthesis-preflight-check-20261011-v1/frozen-paper-workspace/claim_checks.py": "7ff555502bf5509e0f14e72633bfcd5845506312110e360a72ff0e3fcc990e02",
+      "pwb-synthesis-preflight-check-20261011-v1/frozen-paper-workspace/debate_epistemics.py": "7126fc791392296627b4fa52e88737c47bb34775471d65bc5494dd9629f84cef",
+      "pwb-synthesis-preflight-check-20261011-v1/frozen-paper-workspace/debate_evidence.py": "58752b111ede96a3e9994c78821ea91b51f74224e1765709f4438b7d0cefed42",
+      "pwb-synthesis-preflight-check-20261011-v1/frozen-paper-workspace/debate_presentation.py": "334812a988b2f72888a7aac5e1ece71c96c5efc3bb277d454235fe65ee21581e",
+      "pwb-synthesis-preflight-check-20261011-v1/frozen-paper-workspace/debate_revision.py": "1402b5ef1053dcc9cea433b286bdccb58f0245d56528c035fb98c89262b75509",
+      "pwb-synthesis-preflight-check-20261011-v1/frozen-paper-workspace/debate_tools.py": "1521be43eca6a925b069506c80f28329a5703ed8a6a3ead1df0fc6bc49a69b04",
+      "pwb-synthesis-preflight-check-20261011-v1/frozen-paper-workspace/discovery.py": "94967dadd412d152f3b1cafad8ff3152357526a82dc399d0d50d4e31d63f90bd",
+      "pwb-synthesis-preflight-check-20261011-v1/frozen-paper-workspace/document_render.py": "e8bfaeffcd78289632eb8c03c3ea2b2fd04594a13d8ac2b167733725a995a967",
+      "pwb-synthesis-preflight-check-20261011-v1/frozen-paper-workspace/domain_registry.py": "18706c2430725d8217af66c32de9181a18db5bdb0efec4b987cd2d2157a432d0",
+      "pwb-synthesis-preflight-check-20261011-v1/frozen-paper-workspace/domains/astronomy-space/fixtures/cases.json": "978b00714224bfefb92f89f6afe31e6631122af50a603a73c10d066f74e5c6f2",
+      "pwb-synthesis-preflight-check-20261011-v1/frozen-paper-workspace/domains/astronomy-space/manifest.json": "6e83eabdde1110368428ecdecc9bc8b8c43b2c9dfc9cc732b6b238e91527a87e",
+      "pwb-synthesis-preflight-check-20261011-v1/frozen-paper-workspace/domains/astronomy-space/skills/astronomy-space/SKILL.md": "c26e1ee2dcf3007247cacb9912d05b12713a242b088cd04c1d665b01269ef722",
+      "pwb-synthesis-preflight-check-20261011-v1/frozen-paper-workspace/domains/chemistry-pharmacology/fixtures/cases.json": "940b8feccccda19755d942cca43fce9ae1f97ef03df3afb95817ce74b99efb17",
+      "pwb-synthesis-preflight-check-20261011-v1/frozen-paper-workspace/domains/chemistry-pharmacology/manifest.json": "9acbe1f375fdffea3d92f2fa8068d02e93c5a3054af5a34f8f75f2b991d1392c",
+      "pwb-synthesis-preflight-check-20261011-v1/frozen-paper-workspace/domains/chemistry-pharmacology/skills/chemistry-pharmacology/SKILL.md": "010cf06fb2eb76ae35185a975779ff6182fb2fef723072ec508e59baca2fd0ae",
+      "pwb-synthesis-preflight-check-20261011-v1/frozen-paper-workspace/domains/clinical-interventions/fixtures/cases.json": "f57f8b8390891a7f058bafb67b340bf21f5a991c6a705fe4a3e5ad7df2bdf9b5",
+      "pwb-synthesis-preflight-check-20261011-v1/frozen-paper-workspace/domains/clinical-interventions/manifest.json": "b468909d7b314d4268756b0ee784b19c0c48f4e0cbad7b7ec1fc0c54afaddc46",
+      "pwb-synthesis-preflight-check-20261011-v1/frozen-paper-workspace/domains/clinical-interventions/skills/clinical-interventions/SKILL.md": "2d9ac7a6c889d691e3bbeea4c256689264256f74530c957b87724c59ee9f192e",
+      "pwb-synthesis-preflight-check-20261011-v1/frozen-paper-workspace/domains/earth-climate/fixtures/cases.json": "aa6271cc89268e2f3802fc0147855462d3a16625cbc2a5ef7ac86b31d0c15da9",
+      "pwb-synthesis-preflight-check-20261011-v1/frozen-paper-workspace/domains/earth-climate/manifest.json": "d7d3066f63e2770215a7d4e822aa3669568f72a73637160169345605b66f3841",
+      "pwb-synthesis-preflight-check-20261011-v1/frozen-paper-workspace/domains/earth-climate/skills/earth-climate/SKILL.md": "7733297da6f607f124e2c9c052750eb1f10349631caff18a40031426a0216755",
+      "pwb-synthesis-preflight-check-20261011-v1/frozen-paper-workspace/domains/ecology-conservation/fixtures/cases.json": "8a1b4131f1488c71815b62c99b294f5d96897de4a22f0849c4300de59b3d4a4a",
+      "pwb-synthesis-preflight-check-20261011-v1/frozen-paper-workspace/domains/ecology-conservation/manifest.json": "e5219f09c5a27583d3d67468f907504afca77026f2f346f5cafd44434bd4cfa4",
+      "pwb-synthesis-preflight-check-20261011-v1/frozen-paper-workspace/domains/ecology-conservation/skills/ecology-conservation/SKILL.md": "f4b08a1873fe7e00bb69eba4e85a4526de18459609f51b52cb0d3bbf49800dc0",
+      "pwb-synthesis-preflight-check-20261011-v1/frozen-paper-workspace/domains/economics-social-science/fixtures/cases.json": "648bd1ba227fc31f43488796a4947a69f49b6a6ca789cc101aeadc2ad0fea7b0",
+      "pwb-synthesis-preflight-check-20261011-v1/frozen-paper-workspace/domains/economics-social-science/manifest.json": "38ff3e4b58d5d7f109c1a0fdb092f8ece10be59e84960c1ea5e9b61072ab96a1",
+      "pwb-synthesis-preflight-check-20261011-v1/frozen-paper-workspace/domains/economics-social-science/skills/economics-social-science/SKILL.md": "e732b02b013b9cab1606f5e3849f558d22eb0b12615aa1e0505217ea6d727417",
+      "pwb-synthesis-preflight-check-20261011-v1/frozen-paper-workspace/domains/epidemiology-public-health/fixtures/cases.json": "12a719b848416aca2d80d7a214fb2b8a5f1a57d2f3a65d061052a8f416a53be3",
+      "pwb-synthesis-preflight-check-20261011-v1/frozen-paper-workspace/domains/epidemiology-public-health/manifest.json": "65c9ddb79d0600f08d904963dda73ac02c663b07d6f66345d04bbb3220d62aa1",
+      "pwb-synthesis-preflight-check-20261011-v1/frozen-paper-workspace/domains/epidemiology-public-health/skills/epidemiology-public-health/SKILL.md": "6c312ea4635a496a5d9387197245bbe632893a44967669a8212ca59746dd67ff",
+      "pwb-synthesis-preflight-check-20261011-v1/frozen-paper-workspace/domains/genetics-genomics/fixtures/cases.json": "c63b06a1e8558f3e5223bbf88be72e19977a76c128ae6e4d81144a203a05f85d",
+      "pwb-synthesis-preflight-check-20261011-v1/frozen-paper-workspace/domains/genetics-genomics/manifest.json": "50c82fc4236eb2cd20495ac9ed573a6af3d463bbe446514bc2c241e2ff4664a4",
+      "pwb-synthesis-preflight-check-20261011-v1/frozen-paper-workspace/domains/genetics-genomics/skills/genetics-genomics/SKILL.md": "7bbcc0e1ea412dc7b4ce48dd01c9ba646607abb4644038b2e135045dbf7c1eb9",
+      "pwb-synthesis-preflight-check-20261011-v1/frozen-paper-workspace/domains/humanities-interpretive/fixtures/cases.json": "13b3a10fc9399287fc8b14e62062f1d882f0727f6f2b8381f513add4f5641d8d",
+      "pwb-synthesis-preflight-check-20261011-v1/frozen-paper-workspace/domains/humanities-interpretive/manifest.json": "dc43c00e935bea53d02ad6cd1f226a5296a72f2c1ed342a72c7f2b2c992c5130",
+      "pwb-synthesis-preflight-check-20261011-v1/frozen-paper-workspace/domains/humanities-interpretive/skills/humanities-interpretive/SKILL.md": "25da9cdb3412f551de438be493255e464223f0ec7a55021c875e044a5ebbed9e",
+      "pwb-synthesis-preflight-check-20261011-v1/frozen-paper-workspace/domains/materials-crystallography/fixtures/cases.json": "be9c0965d54145463bd3e366d51af33412623bdf04aa4fbe29c33b97c73d54e6",
+      "pwb-synthesis-preflight-check-20261011-v1/frozen-paper-workspace/domains/materials-crystallography/manifest.json": "fa4b5ce6ab5a5213c3dcad405ba476811b1ca2ffeec5f5dab3d18eb9b5a6c083",
+      "pwb-synthesis-preflight-check-20261011-v1/frozen-paper-workspace/domains/materials-crystallography/skills/materials-crystallography/SKILL.md": "9961265f37e07752bfc3b6fe1a7f81ce7c0d861f468c96ae525045cee65e0e88",
+      "pwb-synthesis-preflight-check-20261011-v1/frozen-paper-workspace/domains/mathematics-computing/fixtures/cases.json": "e5d988753cd2575755828422dcd67994cbe0b90fbc7786c900c07ddb5df17b2a",
+      "pwb-synthesis-preflight-check-20261011-v1/frozen-paper-workspace/domains/mathematics-computing/manifest.json": "9fd0e840cf7dd548cd59a20c6d0a766cfe00a1f2ac27c1f1605d9e15afb9b47c",
+      "pwb-synthesis-preflight-check-20261011-v1/frozen-paper-workspace/domains/mathematics-computing/skills/mathematics-computing/SKILL.md": "a2b6337955ce586a6b4ff8f45a050da17740b223882df6ac01e94a5f27f9a80d",
+      "pwb-synthesis-preflight-check-20261011-v1/frozen-paper-workspace/domains/microbiology/fixtures/cases.json": "28864e50a2cd27d6680f1fac824091464bdb4842820a1b5052a590418736e1ea",
+      "pwb-synthesis-preflight-check-20261011-v1/frozen-paper-workspace/domains/microbiology/manifest.json": "751583f4db4cd35b64eb97e9713042a93660ab668f1c8d65696d19904302e338",
+      "pwb-synthesis-preflight-check-20261011-v1/frozen-paper-workspace/domains/microbiology/skills/microbiology/SKILL.md": "ad71e73345383e5f0b4373bb6567b4bb674405873f50308afcf8f663c83c23af",
+      "pwb-synthesis-preflight-check-20261011-v1/frozen-paper-workspace/domains/molecular-biology/fixtures/cases.json": "ae6a9d5ccbce90db06751743ef0b5766989af4859bac9efb388c8ba55aeea87f",
+      "pwb-synthesis-preflight-check-20261011-v1/frozen-paper-workspace/domains/molecular-biology/manifest.json": "0fbdd05ed3c5abe0baa71c2527854e93161b9674e8ad7c0de738c9665730906e",
+      "pwb-synthesis-preflight-check-20261011-v1/frozen-paper-workspace/domains/molecular-biology/skills/molecular-biology/SKILL.md": "52eb71311e1b9a83a9ee00c18ef19ece5463eb524cb83f508f670bb9509dd8ad",
+      "pwb-synthesis-preflight-check-20261011-v1/frozen-paper-workspace/domains/neuroscience/fixtures/cases.json": "f4b7d819759bde7e49f590f5280777613aee14d74597ffa78009682982e1424b",
+      "pwb-synthesis-preflight-check-20261011-v1/frozen-paper-workspace/domains/neuroscience/manifest.json": "2517cab9423c17bca736c6e1cb6b7fa0c244f2a4c567363875fc23dec47dbc40",
+      "pwb-synthesis-preflight-check-20261011-v1/frozen-paper-workspace/domains/neuroscience/skills/neuroscience/SKILL.md": "fd34be48f667913185e26b48f762ec865612e9a7bb81b5680a82706131e780e9",
+      "pwb-synthesis-preflight-check-20261011-v1/frozen-paper-workspace/domains/physics-engineering-metrology/fixtures/cases.json": "7fba3b2a9054f75a0d61b1ed43f17119693d93a99b15c6d10ae59cd76ae6100b",
+      "pwb-synthesis-preflight-check-20261011-v1/frozen-paper-workspace/domains/physics-engineering-metrology/manifest.json": "3525ddb41e968b8441576e8a5949e1083956e6469eb15cbac7df240d01d6740d",
+      "pwb-synthesis-preflight-check-20261011-v1/frozen-paper-workspace/domains/physics-engineering-metrology/skills/physics-engineering-metrology/SKILL.md": "61f26cecb6d45eee7f804fc917dd48a1389f56d3b8f1c4ed172fa37bbaa6a586",
+      "pwb-synthesis-preflight-check-20261011-v1/frozen-paper-workspace/domains/physiology/fixtures/cases.json": "7f2a0b0b0f500d6a942296d18fb72dddb1af39e4f187dc28d3269651f284c9ad",
+      "pwb-synthesis-preflight-check-20261011-v1/frozen-paper-workspace/domains/physiology/manifest.json": "e7bcff633ed97dd4e3e32468b8f557b125deca2692387b8056bd203246c84d8f",
+      "pwb-synthesis-preflight-check-20261011-v1/frozen-paper-workspace/domains/physiology/skills/physiology/SKILL.md": "1e4b973d8d1d49a58270d9a0ad47252c965a5327b1965eef29f5cf33de1f8c37",
+      "pwb-synthesis-preflight-check-20261011-v1/frozen-paper-workspace/domains/plant-biology/fixtures/cases.json": "6826a0a0c4b8b001406fd7f3a2a00a86d80416f209f94aa246514a6548bb9c4f",
+      "pwb-synthesis-preflight-check-20261011-v1/frozen-paper-workspace/domains/plant-biology/manifest.json": "74d6bdc537bffb5fb93c814195b8c3f2f5e49f9fdf6565eef90931354ee31979",
+      "pwb-synthesis-preflight-check-20261011-v1/frozen-paper-workspace/domains/plant-biology/skills/plant-biology/SKILL.md": "3146f0c3acb872250492fbe042ed90fba33fb73ebff20604cb6861d5ecd21226",
+      "pwb-synthesis-preflight-check-20261011-v1/frozen-paper-workspace/domains/proteomics-ptm/fixtures/cases.json": "fffd89face64b1a248fea4706865f4fb83d244247587e2a3fb6d39b3c1018f15",
+      "pwb-synthesis-preflight-check-20261011-v1/frozen-paper-workspace/domains/proteomics-ptm/manifest.json": "ba97fa1dd725afa70d495393987c780e63e14e8e9d4ebd489600226fa147c5bc",
+      "pwb-synthesis-preflight-check-20261011-v1/frozen-paper-workspace/domains/proteomics-ptm/skills/proteomics-ptm/SKILL.md": "a1ef1a1b1bca56b6d193a13812a60cb205eca253588d05d9f23c12e405f95c35",
+      "pwb-synthesis-preflight-check-20261011-v1/frozen-paper-workspace/domains/psychology-behavior/fixtures/cases.json": "cbfdf7c67a6625dab75eb3ddc6779f532b48a7de728053d3947d4290f3aae961",
+      "pwb-synthesis-preflight-check-20261011-v1/frozen-paper-workspace/domains/psychology-behavior/manifest.json": "55bee33100aee205a3fca9bde6a19c2fd898190902c08602a387ebbac0a1942a",
+      "pwb-synthesis-preflight-check-20261011-v1/frozen-paper-workspace/domains/psychology-behavior/skills/psychology-behavior/SKILL.md": "d252ecbe746a568bbfcd0649837ee9750bcd558aa3a842ef8e92a20a305a8484",
+      "pwb-synthesis-preflight-check-20261011-v1/frozen-paper-workspace/domains/qualitative-mixed-methods/fixtures/cases.json": "c39b9c05e867a67d376edeff13b50d7d01b7fc2bdc290b4a337bd5cf00d39ae6",
+      "pwb-synthesis-preflight-check-20261011-v1/frozen-paper-workspace/domains/qualitative-mixed-methods/manifest.json": "957f0ba77388dd730b98fcacd4d1c42abaca0ac8b47303d4729fa1a97d78fb2c",
+      "pwb-synthesis-preflight-check-20261011-v1/frozen-paper-workspace/domains/qualitative-mixed-methods/skills/qualitative-mixed-methods/SKILL.md": "06dbadf29f36476d0509fb4ad3a63c559b9a1b54ed31eed3f26473cfc9d998a3",
+      "pwb-synthesis-preflight-check-20261011-v1/frozen-paper-workspace/domains/structural-biology/fixtures/cases.json": "56dac071a10a8eea94cfdad6219f974fb97fdaf4e4525982c5704a3d47c4f525",
+      "pwb-synthesis-preflight-check-20261011-v1/frozen-paper-workspace/domains/structural-biology/manifest.json": "60cd85911f7ae077beb30628e8418263ba2604d146e61dfc076a5bcdff2f31f8",
+      "pwb-synthesis-preflight-check-20261011-v1/frozen-paper-workspace/domains/structural-biology/skills/structural-biology/SKILL.md": "5b6f340c5bfbee281bd75934334c09884478eeb7bb6dbd5f66fb632bb373829f",
+      "pwb-synthesis-preflight-check-20261011-v1/frozen-paper-workspace/ensemble.py": "27309ec4aa9207e0c650ec4f7986de24f6efeae620b3c8670fc0fef3ba426534",
+      "pwb-synthesis-preflight-check-20261011-v1/frozen-paper-workspace/ensemble_debate.py": "d02bf7188f9301b6b42618762be0e957d1d62b78392be0b88f347b0d3e84f97a",
+      "pwb-synthesis-preflight-check-20261011-v1/frozen-paper-workspace/ensemble_references.py": "3bafbd5f9bb419e9b783daf522ac62364a42078f87374a1243b2b41d3b67cb90",
+      "pwb-synthesis-preflight-check-20261011-v1/frozen-paper-workspace/evidence_handles.py": "6b429c0b1d792a47b1b63ca05412aaad772ff7be98c722fe4fa74d5209994484",
+      "pwb-synthesis-preflight-check-20261011-v1/frozen-paper-workspace/evidence_tasks.py": "f3d8fdb6abf2ff0d697d5f9cb04cec7e0233ff2b337fd3de2496492802a26428",
+      "pwb-synthesis-preflight-check-20261011-v1/frozen-paper-workspace/export_evidence.py": "e54ea29da80bb5df8511356b9f5a4fbe8d8e8d6315fe60f3630fe02c3af45412",
+      "pwb-synthesis-preflight-check-20261011-v1/frozen-paper-workspace/external_evidence.py": "cfb80c14c44b831233b74ba0627bc0856da7eb17ce3e5cfd29a6ea960327f539",
+      "pwb-synthesis-preflight-check-20261011-v1/frozen-paper-workspace/focused_investigation.py": "b68a1cdd48af44fb9816f2a48200ede0a546cf2e406cae8849a7a55306fb165d",
+      "pwb-synthesis-preflight-check-20261011-v1/frozen-paper-workspace/ingest.py": "9436cde55ff2905a26c3d3fcfb373e3276bb6ca3e9cd41a580aa0745459de277",
+      "pwb-synthesis-preflight-check-20261011-v1/frozen-paper-workspace/investigation.py": "bcdace4d4817bc17a4404d19004678ac287eea6e14880e12e4ed51fdb7dd0e01",
+      "pwb-synthesis-preflight-check-20261011-v1/frozen-paper-workspace/investigation_policy.py": "3fc4ea23fdd212435056ad78fd86050cc8b7a36e4801714df7142d12237e33dd",
+      "pwb-synthesis-preflight-check-20261011-v1/frozen-paper-workspace/judge_evidence.py": "47d6fd45bfb0a084374fdef0e81adfddeb271e176d731bbc53c2823d38291b1a",
+      "pwb-synthesis-preflight-check-20261011-v1/frozen-paper-workspace/manuscript_tools.py": "083fc1d63bb40ca0792b93d0b2cf99137e782976c4d50f06ec1cf87962197f37",
+      "pwb-synthesis-preflight-check-20261011-v1/frozen-paper-workspace/model_runtime.py": "2a36b43278e375d71505e8ccccc10f8bc68fb79b4f85ecbd2656089b096bd509",
+      "pwb-synthesis-preflight-check-20261011-v1/frozen-paper-workspace/models.py": "f5d28e86de5ec861833b89766e1f65b449fdc2290157bc6243a42fd7f4760831",
+      "pwb-synthesis-preflight-check-20261011-v1/frozen-paper-workspace/reconciliation_tasks.py": "400a95f45bfa1e43e5664d45a6fb0b5de4f46aea51e1f4f19e541bb8463dcc3a",
+      "pwb-synthesis-preflight-check-20261011-v1/frozen-paper-workspace/result_map.py": "f4caf1e33f89e4e14498b473acbb74cc636e6c292aea3d60255213b40849a9bd",
+      "pwb-synthesis-preflight-check-20261011-v1/frozen-paper-workspace/review_schema.py": "b73fb959408db8141c68f7ce6e0072ed63131aa93d883ccc829894ff32d6e11b",
+      "pwb-synthesis-preflight-check-20261011-v1/frozen-paper-workspace/reviewer.py": "7d8a414f2e399e8bf729d4885763e2df3d0c293f4c9eb41b3040775769b6c109",
+      "pwb-synthesis-preflight-check-20261011-v1/frozen-paper-workspace/revisions.py": "482b93c9235f01c98777c68cd80928494abc93a325a949a2b6302299c3d8f77b",
+      "pwb-synthesis-preflight-check-20261011-v1/frozen-paper-workspace/run_state.py": "c5925c3623bc99fdb487e3114aa27969441c5ab50ff732a51f89880d378ca6e8",
+      "pwb-synthesis-preflight-check-20261011-v1/frozen-paper-workspace/scaffold_checks.py": "e3e9c31a1d2cf462f5ff2aa56dac8ec3556cacebc1f3695914cc3a39ecdcc8f8",
+      "pwb-synthesis-preflight-check-20261011-v1/frozen-paper-workspace/scaffold_export.py": "932adf644d89105db71598e404d8ded553a1c7e0c43d5c8da59833a16c1072b8",
+      "pwb-synthesis-preflight-check-20261011-v1/frozen-paper-workspace/scaffold_import.py": "c60bdf84e91d94c4a04846d984729a0e8ead93ff6fd5e50f4c7612a05a8fae82",
+      "pwb-synthesis-preflight-check-20261011-v1/frozen-paper-workspace/scaffold_port.py": "e4593a756a06c216300999a64f150db2b649cb2aeb161f796b78264464c7f891",
+      "pwb-synthesis-preflight-check-20261011-v1/frozen-paper-workspace/server.py": "f0cc418610f02be8b262dd21846b6c808bd5a8218ca012ac48bba3104f5ae495",
+      "pwb-synthesis-preflight-check-20261011-v1/frozen-paper-workspace/source_adapters.py": "3e875448809d95d94b0e6d65d0e57f850fe778219c5993473e7e4e91c9b23860",
+      "pwb-synthesis-preflight-check-20261011-v1/frozen-paper-workspace/source_adapters_extra.py": "7c4beb275b86c505f7ab1afe79120bca8b2c22ccff88d72cd5613f3ef923ae84",
+      "pwb-synthesis-preflight-check-20261011-v1/frozen-paper-workspace/source_edits.py": "074726fe229a4968d0e68b94666bebcb796d1e78a86bf3e234bd974f6d30e93d",
+      "pwb-synthesis-preflight-check-20261011-v1/frozen-paper-workspace/source_packet.py": "f1e470c32cbc1e880eef8b901fd7287f09169009cbd71c922d7c9092769cc427",
+      "pwb-synthesis-preflight-check-20261011-v1/frozen-paper-workspace/source_payload.py": "ab6892d254da54fa19ab71788f3f3aec5bf4c0e90a5d609d10194cc36d93117b",
+      "pwb-synthesis-preflight-check-20261011-v1/frozen-paper-workspace/storage.py": "8b96d504c8ae2dd1fe9bf5e36ac175ec43d5cd6464af12567147a3f938adb91f",
+      "pwb-synthesis-preflight-check-20261011-v1/frozen-paper-workspace/supplement_view.py": "4b8ceb379cea12c99fb6bf1caf9e35333f5ce68d16fd4054619f4ec30a976234",
+      "pwb-synthesis-preflight-check-20261011-v1/frozen-paper-workspace/synthesis_validation.py": "7b48839938f66af66be71dde714b5cd2323da3520bf75c6643bdabe1bf6d525a",
+      "pwb-synthesis-preflight-check-20261011-v1/frozen-paper-workspace/table_evidence.py": "60d9c1f6d24e22335adba27c097c8580d37fd773fa581b25d1fd7fa32d6ec6e4",
+      "pwb-synthesis-preflight-check-20261011-v1/frozen-paper-workspace/table_structure.py": "e7b6d065f725dbcfdceb74068da532ee817e8f1cab50ecff75038ad2713ab344",
+      "pwb-synthesis-preflight-check-20261011-v1/frozen-paper-workspace/targeted_sources.py": "c6414eff2bbaced2248eac436a08d40435b101f18042e6600147f9f5d0e97f0e",
+      "pwb-synthesis-preflight-check-20261011-v1/frozen-paper-workspace/web/app.js": "f528e2cfa0c1d4a9866b5202afd107a9842939c0271761355be35b5b62f8297d",
+      "pwb-synthesis-preflight-check-20261011-v1/frozen-paper-workspace/web/index.html": "3a57faf98a9157c0313c99895a2ca28c84bd883219c61d431b4403c1380dd435",
+      "pwb-synthesis-preflight-check-20261011-v1/frozen-paper-workspace/web/style.css": "e11c25c671c37e92618eeaedbcb32a2ee720f9b373c054b990214a684a4f1c46",
+      "pwb-synthesis-preflight-check-20261011-v1/frozen-paper-workspace/word_review.py": "20c7a5e7a1e2602307fbdc6da101ce35eab1c6fbdb2bc43d7d75809b733d1c5a",
+      "pwb-synthesis-preflight-check-20261011-v1/synthesis/debate-ledger.json": "528d3691b54f87bfe0db4549a9463e34888e89dc0df872b8e4870316a3d7c1f5",
+      "pwb-synthesis-preflight-check-20261011-v1/synthesis/execution/calls/e1981f073ff39ea6bb79f71bbdf1d72edd9db22ac569d0a85d60deb38df7dd19.answer.json": "3b64c0c89e455ff3c047b53739bd84d0777926f53d01ffdc3a221b8f80d4b962",
+      "pwb-synthesis-preflight-check-20261011-v1/synthesis/execution/calls/e1981f073ff39ea6bb79f71bbdf1d72edd9db22ac569d0a85d60deb38df7dd19.events.jsonl": "e8df27a221b98aa273dd13a0634cdd9f07c7c6d2712093e9383000cb43e90912",
+      "pwb-synthesis-preflight-check-20261011-v1/synthesis/execution/calls/e1981f073ff39ea6bb79f71bbdf1d72edd9db22ac569d0a85d60deb38df7dd19.json": "f155801b7bf1346c17a0682544eaafcb8421ab19697dcf745689def3e6081944",
+      "pwb-synthesis-preflight-check-20261011-v1/synthesis/execution/calls/e1981f073ff39ea6bb79f71bbdf1d72edd9db22ac569d0a85d60deb38df7dd19.request.json": "3d454f035bb6e17f33a81a2d70f58589508192c593a8795260c9ab25a1097614",
+      "pwb-synthesis-preflight-check-20261011-v1/synthesis/execution/calls/e1981f073ff39ea6bb79f71bbdf1d72edd9db22ac569d0a85d60deb38df7dd19.schema.json": "f5151324cbcefe90e68489d7789c111c553ca8dd54e0e3b8c1e1768293a571f1",
+      "pwb-synthesis-preflight-check-20261011-v1/synthesis/execution/calls/e1981f073ff39ea6bb79f71bbdf1d72edd9db22ac569d0a85d60deb38df7dd19.started.json": "a5e6263a2a7d8ac09dc34bfdaad4d36cc422d020213ae40ad048524c87a383e8",
+      "pwb-synthesis-preflight-check-20261011-v1/synthesis/execution/calls/e1981f073ff39ea6bb79f71bbdf1d72edd9db22ac569d0a85d60deb38df7dd19.stderr.txt": "e51bb5bc7b0fa15f85c2e24dc83fec52c01e00738e6596c6ca4967e94a59e49b",
+      "pwb-synthesis-preflight-check-20261011-v1/synthesis/execution/usage.jsonl": "7a9c0a3595a036f34cb1e531672dfb9893b3b9ab94dca877966443aac6b9c6ec",
+      "pwb-synthesis-preflight-check-20261011-v1/synthesis/execution/workspace/tool-config.json": "57c9fdc4d3c8510e49f47980d13c0f4a190e35c1dd3f8ece0ee14ba55603061b",
+      "pwb-synthesis-preflight-check-20261011-v1/synthesis/input-reviews.json": "5b1cb06155383770617124bf76fa7bacbede4f6e2d814a4fa5f85cbc4c53fabb",
+      "pwb-synthesis-preflight-check-20261011-v1/synthesis/investigations/debate/synthesis-preflight/check-1.json": "a105e41d98928e225ce6bce73b562c3fc97823b963a12756f40c3726c1da9661",
+      "pwb-synthesis-preflight-check-20261011-v1/synthesis/investigations/debate/synthesis-preflight/check-2.json": "5e4e8817e78639e51a54fbb6b9bd1643cc532e2fe5e3018873b418a9fc8c7170",
+      "pwb-synthesis-preflight-check-20261011-v1/synthesis/investigations/debate/tool-discovery.jsonl": "1b3189a30c0fffb5dfe2b1f4f2e3ca1ebc865c1703b7e867f5baf021e3751079",
+      "pwb-synthesis-preflight-check-20261011-v1/synthesis/manifest.json": "51491e7e639404fb1f44ac9d23012c241f1ca0c75fc221fefd41df5ef2a04024",
+      "pwb-synthesis-preflight-check-20261011-v1/synthesis/progress.json": "0c5601a03d3b1d7fea0c28b29ab8c6453a2e4be0ef25a7aaa0d8149b3202b45e",
+      "pwb-synthesis-preflight-check-20261011-v1/synthesis/protocol.json": "ed6b8b39fc66faa802572922493baed5f9a6776cd7697da2760c5788da5fb2db",
+      "pwb-synthesis-preflight-check-20261011-v1/synthesis/responses/debate-model.json": "cc5c090136d45207bd8818d0fc18ff13e6e6d84c8be71f7288682a4dde92986d",
+      "pwb-synthesis-preflight-check-20261011-v1/synthesis/responses/debate.json": "928acd06772d4d27d12306e1e87cbdb60216cc502334e9a1553d19fdaa3beeaf",
+      "pwb-synthesis-preflight-check-20261011-v1/synthesis/sources/cards.json": "37517e5f3dc66819f61f5a7bb8ace1921282415f10551d2defa5c3eb0985b570",
+      "pwb-synthesis-preflight-check-20261011-v1/workspace/converter.json": "7b2721b0594478b87730968377e6f7b6f425ff123abe1ab39623ce7295e8e81f",
+      "pwb-synthesis-preflight-check-20261011-v1/workspace/converter.md": "f53f82a7fcf3afb9e5b7bc4cd4758a409a6818bc1d40dbea1c39195ce7f36b05",
+      "pwb-synthesis-preflight-check-20261011-v1/workspace/manifest.json": "b67481d6c9658d89c6c515bb8f131eb35dc3465358805bb2b4ad4f57bb444123",
+      "pwb-synthesis-preflight-check-20261011-v1/workspace/manuscript.md": "9b3e4c9c9d2e6eafbc865d44730e8ed11547bb36801054d42493c1b7a5d8868d",
+      "pwb-synthesis-preflight-check-20261011-v1/workspace/original.pdf": "be8ab0c9df84aebb2cdce08fa49b4e4efa806ef586427423a72b553f5bbb883d",
+      "pwb-synthesis-preflight-check-20261011-v1/workspace/original.xml": "50af2b4b9f3d8b6fbe583b74fb208918f9500904fdc21ea28ad5c1b4eaf8efac",
+      "pwb-synthesis-preflight-check-20261011-v1/workspace/pages/001.txt": "98c3131ff1130885807a10a18bede993b04a3200da38f68ad7f8f3440aef7847",
+      "pwb-synthesis-preflight-check-20261011-v1/workspace/pages/002.txt": "f38de5c4cb69cfce484a60a65aeff4dae7e7c534766c0c0b2a310b98196e6610",
+      "pwb-synthesis-preflight-check-20261011-v1/workspace/pages/003.txt": "b41aa333c2e3955e75e9b39b47a9dd3578b31a6f8ab117056e2065f272120c4e",
+      "pwb-synthesis-preflight-check-20261011-v1/workspace/pages/004.txt": "1c06ac20ae1827920c97e86b3a347651e68234060754163703f4fc5e518ed735",
+      "pwb-synthesis-preflight-check-20261011-v1/workspace/pages/005.txt": "d55ddc0cc26392b883eda43217f6d2f3fff6e0f35239ee71ed897ae413fd9348",
+      "pwb-synthesis-preflight-check-20261011-v1/workspace/pages/006.txt": "432407e25ab662e6ba384aaa7fdfe3dee84815fe94e6e2a8883ae181edb5dda5",
+      "pwb-synthesis-preflight-check-20261011-v1/workspace/pages/007.txt": "7c2f4a3ed5121d5495ce64f9390ce78b3988430cf088ba228c63ccc01904e052",
+      "pwb-synthesis-preflight-check-20261011-v1/workspace/pages/008.txt": "346910d8c502c52ac5afcf2cd0b019804c6b8efc56fdd71517a2bd700bb11fe4",
+      "pwb-synthesis-preflight-check-20261011-v1/workspace/pages/009.txt": "d16c39b397b5c553e539dfa328a1721b736148a99da154c77c36652f8e5cb294",
+      "pwb-synthesis-preflight-check-20261011-v1/workspace/pages/010.txt": "dd355c283f39b2f70092c1d491212a5f0f832a771c39a957ccc4596a30b282c1",
+      "pwb-synthesis-preflight-check-20261011-v1/workspace/pages/011.txt": "258e5343eb919bdec0cf082f84f1b2d210ab69af4b44c28a1d224ab43436e86a",
+      "pwb-synthesis-preflight-check-20261011-v1/workspace/pages/source-images/01-main.png": "7a41d998a9ed3e496de00ae084724bbd7efb8a52a0623a83bf151def25c856b2",
+      "pwb-synthesis-preflight-check-20261011-v1/workspace/pages/source-images/02-main.png": "a6e1d17a1636d2f7a2a6caf0ec0f5b12a6d5d66522508d500e6fc5f2c0bd4fb8",
+      "pwb-synthesis-preflight-check-20261011-v1/workspace/pages/source-images/03-main.png": "a4e00d2e7f99b2d2931e7579c8aa6aa44733f8ba990ddd7f78434ab1c77ea159",
+      "pwb-synthesis-preflight-check-20261011-v1/workspace/pages/source-images/04-supplement.png": "08958d65ea89bb7670eada64d05b6bcabe3c22eec798d66a8c1f00b192be7dac",
+      "pwb-synthesis-preflight-check-20261011-v1/workspace/paper.json": "1e5ff1e8ace25d0ba0b6d3ecda545d9f8a8ebb27f0fe01f36ebdb9bc5a54a740",
+      "pwb-synthesis-preflight-check-20261011-v1/workspace/references.json": "8882164d3351e7b9d2f9e09f529d145fb7720c02c26801b345828a54db844065",
+      "pwb-synthesis-preflight-check-20261011-v1/workspace/statistics.json": "336bc1d2d1289d5a392333318a3fd5ea5154fabe06740f6b0b4da8d45784cdcf",
+      "pwb-synthesis-preflight-check-20261011-v1/workspace/supplements/s001.docx": "c5b97defa387101ee00ad11bb8f73b4b2c595b7fe770b1a3bf0ce5b0822e9f4e",
+      "pwb-synthesis-preflight-check-20261011-v1/workspace/supplements/s002.png": "08958d65ea89bb7670eada64d05b6bcabe3c22eec798d66a8c1f00b192be7dac",
+      "pwb-synthesis-preflight-check-20261011-v1/workspace/supplements/s002.tiff": "ca867555d89d7efe89a99ebb56a78dfdea34eb765480c48a6a832447a80d41b1",
+      "pwb-synthesis-preflight-check-20261011-v2/diagnostic-protocol.json": "bd831593624eb715426c02350d6a14c4a899bae4471de239f278e86c0de42c00",
+      "pwb-synthesis-preflight-check-20261011-v2/diagnostic-result.json": "5224959d549d23f6d62d96e3996deabd0592252fc9a1433f951efd8fce12274d",
+      "pwb-synthesis-preflight-check-20261011-v2/diagnostic-runner.py": "701540774fca0461325686f640ac44ec8543073b955955482502b295bddfc7c1",
+      "pwb-synthesis-preflight-check-20261011-v2/frozen-paper-workspace/README.md": "1239c6c8853e808a7b33405154b7f3470d734559aff26984d54afe1f3b37b228",
+      "pwb-synthesis-preflight-check-20261011-v2/frozen-paper-workspace/__init__.py": "c526dd82f9e22d1ce1585259a5ef19a368f096f1b7e7eed57cbf30b9f4095f00",
+      "pwb-synthesis-preflight-check-20261011-v2/frozen-paper-workspace/__main__.py": "7bd5a9b48dfd66449fab5bb54f3f904d84a579d6db724366670bd390cb84cd54",
+      "pwb-synthesis-preflight-check-20261011-v2/frozen-paper-workspace/annotations.py": "ae2aa29e39b144337653a8903f4235394f8a79af5d384431d00ff8d259d52ace",
+      "pwb-synthesis-preflight-check-20261011-v2/frozen-paper-workspace/calculator.py": "8c7bfe5a6ce4b87ea48499151f52759b578f969a0bbe5b61ecd8cb7aab77d978",
+      "pwb-synthesis-preflight-check-20261011-v2/frozen-paper-workspace/claim_checks.py": "7ff555502bf5509e0f14e72633bfcd5845506312110e360a72ff0e3fcc990e02",
+      "pwb-synthesis-preflight-check-20261011-v2/frozen-paper-workspace/debate_epistemics.py": "7126fc791392296627b4fa52e88737c47bb34775471d65bc5494dd9629f84cef",
+      "pwb-synthesis-preflight-check-20261011-v2/frozen-paper-workspace/debate_evidence.py": "58752b111ede96a3e9994c78821ea91b51f74224e1765709f4438b7d0cefed42",
+      "pwb-synthesis-preflight-check-20261011-v2/frozen-paper-workspace/debate_presentation.py": "334812a988b2f72888a7aac5e1ece71c96c5efc3bb277d454235fe65ee21581e",
+      "pwb-synthesis-preflight-check-20261011-v2/frozen-paper-workspace/debate_revision.py": "1402b5ef1053dcc9cea433b286bdccb58f0245d56528c035fb98c89262b75509",
+      "pwb-synthesis-preflight-check-20261011-v2/frozen-paper-workspace/debate_tools.py": "1521be43eca6a925b069506c80f28329a5703ed8a6a3ead1df0fc6bc49a69b04",
+      "pwb-synthesis-preflight-check-20261011-v2/frozen-paper-workspace/discovery.py": "94967dadd412d152f3b1cafad8ff3152357526a82dc399d0d50d4e31d63f90bd",
+      "pwb-synthesis-preflight-check-20261011-v2/frozen-paper-workspace/document_render.py": "e8bfaeffcd78289632eb8c03c3ea2b2fd04594a13d8ac2b167733725a995a967",
+      "pwb-synthesis-preflight-check-20261011-v2/frozen-paper-workspace/domain_registry.py": "18706c2430725d8217af66c32de9181a18db5bdb0efec4b987cd2d2157a432d0",
+      "pwb-synthesis-preflight-check-20261011-v2/frozen-paper-workspace/domains/astronomy-space/fixtures/cases.json": "978b00714224bfefb92f89f6afe31e6631122af50a603a73c10d066f74e5c6f2",
+      "pwb-synthesis-preflight-check-20261011-v2/frozen-paper-workspace/domains/astronomy-space/manifest.json": "6e83eabdde1110368428ecdecc9bc8b8c43b2c9dfc9cc732b6b238e91527a87e",
+      "pwb-synthesis-preflight-check-20261011-v2/frozen-paper-workspace/domains/astronomy-space/skills/astronomy-space/SKILL.md": "c26e1ee2dcf3007247cacb9912d05b12713a242b088cd04c1d665b01269ef722",
+      "pwb-synthesis-preflight-check-20261011-v2/frozen-paper-workspace/domains/chemistry-pharmacology/fixtures/cases.json": "940b8feccccda19755d942cca43fce9ae1f97ef03df3afb95817ce74b99efb17",
+      "pwb-synthesis-preflight-check-20261011-v2/frozen-paper-workspace/domains/chemistry-pharmacology/manifest.json": "9acbe1f375fdffea3d92f2fa8068d02e93c5a3054af5a34f8f75f2b991d1392c",
+      "pwb-synthesis-preflight-check-20261011-v2/frozen-paper-workspace/domains/chemistry-pharmacology/skills/chemistry-pharmacology/SKILL.md": "010cf06fb2eb76ae35185a975779ff6182fb2fef723072ec508e59baca2fd0ae",
+      "pwb-synthesis-preflight-check-20261011-v2/frozen-paper-workspace/domains/clinical-interventions/fixtures/cases.json": "f57f8b8390891a7f058bafb67b340bf21f5a991c6a705fe4a3e5ad7df2bdf9b5",
+      "pwb-synthesis-preflight-check-20261011-v2/frozen-paper-workspace/domains/clinical-interventions/manifest.json": "b468909d7b314d4268756b0ee784b19c0c48f4e0cbad7b7ec1fc0c54afaddc46",
+      "pwb-synthesis-preflight-check-20261011-v2/frozen-paper-workspace/domains/clinical-interventions/skills/clinical-interventions/SKILL.md": "2d9ac7a6c889d691e3bbeea4c256689264256f74530c957b87724c59ee9f192e",
+      "pwb-synthesis-preflight-check-20261011-v2/frozen-paper-workspace/domains/earth-climate/fixtures/cases.json": "aa6271cc89268e2f3802fc0147855462d3a16625cbc2a5ef7ac86b31d0c15da9",
+      "pwb-synthesis-preflight-check-20261011-v2/frozen-paper-workspace/domains/earth-climate/manifest.json": "d7d3066f63e2770215a7d4e822aa3669568f72a73637160169345605b66f3841",
+      "pwb-synthesis-preflight-check-20261011-v2/frozen-paper-workspace/domains/earth-climate/skills/earth-climate/SKILL.md": "7733297da6f607f124e2c9c052750eb1f10349631caff18a40031426a0216755",
+      "pwb-synthesis-preflight-check-20261011-v2/frozen-paper-workspace/domains/ecology-conservation/fixtures/cases.json": "8a1b4131f1488c71815b62c99b294f5d96897de4a22f0849c4300de59b3d4a4a",
+      "pwb-synthesis-preflight-check-20261011-v2/frozen-paper-workspace/domains/ecology-conservation/manifest.json": "e5219f09c5a27583d3d67468f907504afca77026f2f346f5cafd44434bd4cfa4",
+      "pwb-synthesis-preflight-check-20261011-v2/frozen-paper-workspace/domains/ecology-conservation/skills/ecology-conservation/SKILL.md": "f4b08a1873fe7e00bb69eba4e85a4526de18459609f51b52cb0d3bbf49800dc0",
+      "pwb-synthesis-preflight-check-20261011-v2/frozen-paper-workspace/domains/economics-social-science/fixtures/cases.json": "648bd1ba227fc31f43488796a4947a69f49b6a6ca789cc101aeadc2ad0fea7b0",
+      "pwb-synthesis-preflight-check-20261011-v2/frozen-paper-workspace/domains/economics-social-science/manifest.json": "38ff3e4b58d5d7f109c1a0fdb092f8ece10be59e84960c1ea5e9b61072ab96a1",
+      "pwb-synthesis-preflight-check-20261011-v2/frozen-paper-workspace/domains/economics-social-science/skills/economics-social-science/SKILL.md": "e732b02b013b9cab1606f5e3849f558d22eb0b12615aa1e0505217ea6d727417",
+      "pwb-synthesis-preflight-check-20261011-v2/frozen-paper-workspace/domains/epidemiology-public-health/fixtures/cases.json": "12a719b848416aca2d80d7a214fb2b8a5f1a57d2f3a65d061052a8f416a53be3",
+      "pwb-synthesis-preflight-check-20261011-v2/frozen-paper-workspace/domains/epidemiology-public-health/manifest.json": "65c9ddb79d0600f08d904963dda73ac02c663b07d6f66345d04bbb3220d62aa1",
+      "pwb-synthesis-preflight-check-20261011-v2/frozen-paper-workspace/domains/epidemiology-public-health/skills/epidemiology-public-health/SKILL.md": "6c312ea4635a496a5d9387197245bbe632893a44967669a8212ca59746dd67ff",
+      "pwb-synthesis-preflight-check-20261011-v2/frozen-paper-workspace/domains/genetics-genomics/fixtures/cases.json": "c63b06a1e8558f3e5223bbf88be72e19977a76c128ae6e4d81144a203a05f85d",
+      "pwb-synthesis-preflight-check-20261011-v2/frozen-paper-workspace/domains/genetics-genomics/manifest.json": "50c82fc4236eb2cd20495ac9ed573a6af3d463bbe446514bc2c241e2ff4664a4",
+      "pwb-synthesis-preflight-check-20261011-v2/frozen-paper-workspace/domains/genetics-genomics/skills/genetics-genomics/SKILL.md": "7bbcc0e1ea412dc7b4ce48dd01c9ba646607abb4644038b2e135045dbf7c1eb9",
+      "pwb-synthesis-preflight-check-20261011-v2/frozen-paper-workspace/domains/humanities-interpretive/fixtures/cases.json": "13b3a10fc9399287fc8b14e62062f1d882f0727f6f2b8381f513add4f5641d8d",
+      "pwb-synthesis-preflight-check-20261011-v2/frozen-paper-workspace/domains/humanities-interpretive/manifest.json": "dc43c00e935bea53d02ad6cd1f226a5296a72f2c1ed342a72c7f2b2c992c5130",
+      "pwb-synthesis-preflight-check-20261011-v2/frozen-paper-workspace/domains/humanities-interpretive/skills/humanities-interpretive/SKILL.md": "25da9cdb3412f551de438be493255e464223f0ec7a55021c875e044a5ebbed9e",
+      "pwb-synthesis-preflight-check-20261011-v2/frozen-paper-workspace/domains/materials-crystallography/fixtures/cases.json": "be9c0965d54145463bd3e366d51af33412623bdf04aa4fbe29c33b97c73d54e6",
+      "pwb-synthesis-preflight-check-20261011-v2/frozen-paper-workspace/domains/materials-crystallography/manifest.json": "fa4b5ce6ab5a5213c3dcad405ba476811b1ca2ffeec5f5dab3d18eb9b5a6c083",
+      "pwb-synthesis-preflight-check-20261011-v2/frozen-paper-workspace/domains/materials-crystallography/skills/materials-crystallography/SKILL.md": "9961265f37e07752bfc3b6fe1a7f81ce7c0d861f468c96ae525045cee65e0e88",
+      "pwb-synthesis-preflight-check-20261011-v2/frozen-paper-workspace/domains/mathematics-computing/fixtures/cases.json": "e5d988753cd2575755828422dcd67994cbe0b90fbc7786c900c07ddb5df17b2a",
+      "pwb-synthesis-preflight-check-20261011-v2/frozen-paper-workspace/domains/mathematics-computing/manifest.json": "9fd0e840cf7dd548cd59a20c6d0a766cfe00a1f2ac27c1f1605d9e15afb9b47c",
+      "pwb-synthesis-preflight-check-20261011-v2/frozen-paper-workspace/domains/mathematics-computing/skills/mathematics-computing/SKILL.md": "a2b6337955ce586a6b4ff8f45a050da17740b223882df6ac01e94a5f27f9a80d",
+      "pwb-synthesis-preflight-check-20261011-v2/frozen-paper-workspace/domains/microbiology/fixtures/cases.json": "28864e50a2cd27d6680f1fac824091464bdb4842820a1b5052a590418736e1ea",
+      "pwb-synthesis-preflight-check-20261011-v2/frozen-paper-workspace/domains/microbiology/manifest.json": "751583f4db4cd35b64eb97e9713042a93660ab668f1c8d65696d19904302e338",
+      "pwb-synthesis-preflight-check-20261011-v2/frozen-paper-workspace/domains/microbiology/skills/microbiology/SKILL.md": "ad71e73345383e5f0b4373bb6567b4bb674405873f50308afcf8f663c83c23af",
+      "pwb-synthesis-preflight-check-20261011-v2/frozen-paper-workspace/domains/molecular-biology/fixtures/cases.json": "ae6a9d5ccbce90db06751743ef0b5766989af4859bac9efb388c8ba55aeea87f",
+      "pwb-synthesis-preflight-check-20261011-v2/frozen-paper-workspace/domains/molecular-biology/manifest.json": "0fbdd05ed3c5abe0baa71c2527854e93161b9674e8ad7c0de738c9665730906e",
+      "pwb-synthesis-preflight-check-20261011-v2/frozen-paper-workspace/domains/molecular-biology/skills/molecular-biology/SKILL.md": "52eb71311e1b9a83a9ee00c18ef19ece5463eb524cb83f508f670bb9509dd8ad",
+      "pwb-synthesis-preflight-check-20261011-v2/frozen-paper-workspace/domains/neuroscience/fixtures/cases.json": "f4b7d819759bde7e49f590f5280777613aee14d74597ffa78009682982e1424b",
+      "pwb-synthesis-preflight-check-20261011-v2/frozen-paper-workspace/domains/neuroscience/manifest.json": "2517cab9423c17bca736c6e1cb6b7fa0c244f2a4c567363875fc23dec47dbc40",
+      "pwb-synthesis-preflight-check-20261011-v2/frozen-paper-workspace/domains/neuroscience/skills/neuroscience/SKILL.md": "fd34be48f667913185e26b48f762ec865612e9a7bb81b5680a82706131e780e9",
+      "pwb-synthesis-preflight-check-20261011-v2/frozen-paper-workspace/domains/physics-engineering-metrology/fixtures/cases.json": "7fba3b2a9054f75a0d61b1ed43f17119693d93a99b15c6d10ae59cd76ae6100b",
+      "pwb-synthesis-preflight-check-20261011-v2/frozen-paper-workspace/domains/physics-engineering-metrology/manifest.json": "3525ddb41e968b8441576e8a5949e1083956e6469eb15cbac7df240d01d6740d",
+      "pwb-synthesis-preflight-check-20261011-v2/frozen-paper-workspace/domains/physics-engineering-metrology/skills/physics-engineering-metrology/SKILL.md": "61f26cecb6d45eee7f804fc917dd48a1389f56d3b8f1c4ed172fa37bbaa6a586",
+      "pwb-synthesis-preflight-check-20261011-v2/frozen-paper-workspace/domains/physiology/fixtures/cases.json": "7f2a0b0b0f500d6a942296d18fb72dddb1af39e4f187dc28d3269651f284c9ad",
+      "pwb-synthesis-preflight-check-20261011-v2/frozen-paper-workspace/domains/physiology/manifest.json": "e7bcff633ed97dd4e3e32468b8f557b125deca2692387b8056bd203246c84d8f",
+      "pwb-synthesis-preflight-check-20261011-v2/frozen-paper-workspace/domains/physiology/skills/physiology/SKILL.md": "1e4b973d8d1d49a58270d9a0ad47252c965a5327b1965eef29f5cf33de1f8c37",
+      "pwb-synthesis-preflight-check-20261011-v2/frozen-paper-workspace/domains/plant-biology/fixtures/cases.json": "6826a0a0c4b8b001406fd7f3a2a00a86d80416f209f94aa246514a6548bb9c4f",
+      "pwb-synthesis-preflight-check-20261011-v2/frozen-paper-workspace/domains/plant-biology/manifest.json": "74d6bdc537bffb5fb93c814195b8c3f2f5e49f9fdf6565eef90931354ee31979",
+      "pwb-synthesis-preflight-check-20261011-v2/frozen-paper-workspace/domains/plant-biology/skills/plant-biology/SKILL.md": "3146f0c3acb872250492fbe042ed90fba33fb73ebff20604cb6861d5ecd21226",
+      "pwb-synthesis-preflight-check-20261011-v2/frozen-paper-workspace/domains/proteomics-ptm/fixtures/cases.json": "fffd89face64b1a248fea4706865f4fb83d244247587e2a3fb6d39b3c1018f15",
+      "pwb-synthesis-preflight-check-20261011-v2/frozen-paper-workspace/domains/proteomics-ptm/manifest.json": "ba97fa1dd725afa70d495393987c780e63e14e8e9d4ebd489600226fa147c5bc",
+      "pwb-synthesis-preflight-check-20261011-v2/frozen-paper-workspace/domains/proteomics-ptm/skills/proteomics-ptm/SKILL.md": "a1ef1a1b1bca56b6d193a13812a60cb205eca253588d05d9f23c12e405f95c35",
+      "pwb-synthesis-preflight-check-20261011-v2/frozen-paper-workspace/domains/psychology-behavior/fixtures/cases.json": "cbfdf7c67a6625dab75eb3ddc6779f532b48a7de728053d3947d4290f3aae961",
+      "pwb-synthesis-preflight-check-20261011-v2/frozen-paper-workspace/domains/psychology-behavior/manifest.json": "55bee33100aee205a3fca9bde6a19c2fd898190902c08602a387ebbac0a1942a",
+      "pwb-synthesis-preflight-check-20261011-v2/frozen-paper-workspace/domains/psychology-behavior/skills/psychology-behavior/SKILL.md": "d252ecbe746a568bbfcd0649837ee9750bcd558aa3a842ef8e92a20a305a8484",
+      "pwb-synthesis-preflight-check-20261011-v2/frozen-paper-workspace/domains/qualitative-mixed-methods/fixtures/cases.json": "c39b9c05e867a67d376edeff13b50d7d01b7fc2bdc290b4a337bd5cf00d39ae6",
+      "pwb-synthesis-preflight-check-20261011-v2/frozen-paper-workspace/domains/qualitative-mixed-methods/manifest.json": "957f0ba77388dd730b98fcacd4d1c42abaca0ac8b47303d4729fa1a97d78fb2c",
+      "pwb-synthesis-preflight-check-20261011-v2/frozen-paper-workspace/domains/qualitative-mixed-methods/skills/qualitative-mixed-methods/SKILL.md": "06dbadf29f36476d0509fb4ad3a63c559b9a1b54ed31eed3f26473cfc9d998a3",
+      "pwb-synthesis-preflight-check-20261011-v2/frozen-paper-workspace/domains/structural-biology/fixtures/cases.json": "56dac071a10a8eea94cfdad6219f974fb97fdaf4e4525982c5704a3d47c4f525",
+      "pwb-synthesis-preflight-check-20261011-v2/frozen-paper-workspace/domains/structural-biology/manifest.json": "60cd85911f7ae077beb30628e8418263ba2604d146e61dfc076a5bcdff2f31f8",
+      "pwb-synthesis-preflight-check-20261011-v2/frozen-paper-workspace/domains/structural-biology/skills/structural-biology/SKILL.md": "5b6f340c5bfbee281bd75934334c09884478eeb7bb6dbd5f66fb632bb373829f",
+      "pwb-synthesis-preflight-check-20261011-v2/frozen-paper-workspace/ensemble.py": "27309ec4aa9207e0c650ec4f7986de24f6efeae620b3c8670fc0fef3ba426534",
+      "pwb-synthesis-preflight-check-20261011-v2/frozen-paper-workspace/ensemble_debate.py": "bee2a27705b9d42217fdfa7e3995a7a5ca66bc81e24a02041c0f1caf77441629",
+      "pwb-synthesis-preflight-check-20261011-v2/frozen-paper-workspace/ensemble_references.py": "3bafbd5f9bb419e9b783daf522ac62364a42078f87374a1243b2b41d3b67cb90",
+      "pwb-synthesis-preflight-check-20261011-v2/frozen-paper-workspace/evidence_handles.py": "6b429c0b1d792a47b1b63ca05412aaad772ff7be98c722fe4fa74d5209994484",
+      "pwb-synthesis-preflight-check-20261011-v2/frozen-paper-workspace/evidence_tasks.py": "f3d8fdb6abf2ff0d697d5f9cb04cec7e0233ff2b337fd3de2496492802a26428",
+      "pwb-synthesis-preflight-check-20261011-v2/frozen-paper-workspace/export_evidence.py": "e54ea29da80bb5df8511356b9f5a4fbe8d8e8d6315fe60f3630fe02c3af45412",
+      "pwb-synthesis-preflight-check-20261011-v2/frozen-paper-workspace/external_evidence.py": "cfb80c14c44b831233b74ba0627bc0856da7eb17ce3e5cfd29a6ea960327f539",
+      "pwb-synthesis-preflight-check-20261011-v2/frozen-paper-workspace/focused_investigation.py": "b68a1cdd48af44fb9816f2a48200ede0a546cf2e406cae8849a7a55306fb165d",
+      "pwb-synthesis-preflight-check-20261011-v2/frozen-paper-workspace/ingest.py": "9436cde55ff2905a26c3d3fcfb373e3276bb6ca3e9cd41a580aa0745459de277",
+      "pwb-synthesis-preflight-check-20261011-v2/frozen-paper-workspace/investigation.py": "bcdace4d4817bc17a4404d19004678ac287eea6e14880e12e4ed51fdb7dd0e01",
+      "pwb-synthesis-preflight-check-20261011-v2/frozen-paper-workspace/investigation_policy.py": "3fc4ea23fdd212435056ad78fd86050cc8b7a36e4801714df7142d12237e33dd",
+      "pwb-synthesis-preflight-check-20261011-v2/frozen-paper-workspace/judge_evidence.py": "47d6fd45bfb0a084374fdef0e81adfddeb271e176d731bbc53c2823d38291b1a",
+      "pwb-synthesis-preflight-check-20261011-v2/frozen-paper-workspace/manuscript_tools.py": "083fc1d63bb40ca0792b93d0b2cf99137e782976c4d50f06ec1cf87962197f37",
+      "pwb-synthesis-preflight-check-20261011-v2/frozen-paper-workspace/model_runtime.py": "2a36b43278e375d71505e8ccccc10f8bc68fb79b4f85ecbd2656089b096bd509",
+      "pwb-synthesis-preflight-check-20261011-v2/frozen-paper-workspace/models.py": "f5d28e86de5ec861833b89766e1f65b449fdc2290157bc6243a42fd7f4760831",
+      "pwb-synthesis-preflight-check-20261011-v2/frozen-paper-workspace/reconciliation_tasks.py": "400a95f45bfa1e43e5664d45a6fb0b5de4f46aea51e1f4f19e541bb8463dcc3a",
+      "pwb-synthesis-preflight-check-20261011-v2/frozen-paper-workspace/result_map.py": "f4caf1e33f89e4e14498b473acbb74cc636e6c292aea3d60255213b40849a9bd",
+      "pwb-synthesis-preflight-check-20261011-v2/frozen-paper-workspace/review_schema.py": "b73fb959408db8141c68f7ce6e0072ed63131aa93d883ccc829894ff32d6e11b",
+      "pwb-synthesis-preflight-check-20261011-v2/frozen-paper-workspace/reviewer.py": "7d8a414f2e399e8bf729d4885763e2df3d0c293f4c9eb41b3040775769b6c109",
+      "pwb-synthesis-preflight-check-20261011-v2/frozen-paper-workspace/revisions.py": "482b93c9235f01c98777c68cd80928494abc93a325a949a2b6302299c3d8f77b",
+      "pwb-synthesis-preflight-check-20261011-v2/frozen-paper-workspace/run_state.py": "c5925c3623bc99fdb487e3114aa27969441c5ab50ff732a51f89880d378ca6e8",
+      "pwb-synthesis-preflight-check-20261011-v2/frozen-paper-workspace/scaffold_checks.py": "e3e9c31a1d2cf462f5ff2aa56dac8ec3556cacebc1f3695914cc3a39ecdcc8f8",
+      "pwb-synthesis-preflight-check-20261011-v2/frozen-paper-workspace/scaffold_export.py": "932adf644d89105db71598e404d8ded553a1c7e0c43d5c8da59833a16c1072b8",
+      "pwb-synthesis-preflight-check-20261011-v2/frozen-paper-workspace/scaffold_import.py": "c60bdf84e91d94c4a04846d984729a0e8ead93ff6fd5e50f4c7612a05a8fae82",
+      "pwb-synthesis-preflight-check-20261011-v2/frozen-paper-workspace/scaffold_port.py": "e4593a756a06c216300999a64f150db2b649cb2aeb161f796b78264464c7f891",
+      "pwb-synthesis-preflight-check-20261011-v2/frozen-paper-workspace/server.py": "f0cc418610f02be8b262dd21846b6c808bd5a8218ca012ac48bba3104f5ae495",
+      "pwb-synthesis-preflight-check-20261011-v2/frozen-paper-workspace/source_adapters.py": "3e875448809d95d94b0e6d65d0e57f850fe778219c5993473e7e4e91c9b23860",
+      "pwb-synthesis-preflight-check-20261011-v2/frozen-paper-workspace/source_adapters_extra.py": "7c4beb275b86c505f7ab1afe79120bca8b2c22ccff88d72cd5613f3ef923ae84",
+      "pwb-synthesis-preflight-check-20261011-v2/frozen-paper-workspace/source_edits.py": "074726fe229a4968d0e68b94666bebcb796d1e78a86bf3e234bd974f6d30e93d",
+      "pwb-synthesis-preflight-check-20261011-v2/frozen-paper-workspace/source_packet.py": "f1e470c32cbc1e880eef8b901fd7287f09169009cbd71c922d7c9092769cc427",
+      "pwb-synthesis-preflight-check-20261011-v2/frozen-paper-workspace/source_payload.py": "ab6892d254da54fa19ab71788f3f3aec5bf4c0e90a5d609d10194cc36d93117b",
+      "pwb-synthesis-preflight-check-20261011-v2/frozen-paper-workspace/storage.py": "8b96d504c8ae2dd1fe9bf5e36ac175ec43d5cd6464af12567147a3f938adb91f",
+      "pwb-synthesis-preflight-check-20261011-v2/frozen-paper-workspace/supplement_view.py": "4b8ceb379cea12c99fb6bf1caf9e35333f5ce68d16fd4054619f4ec30a976234",
+      "pwb-synthesis-preflight-check-20261011-v2/frozen-paper-workspace/synthesis_validation.py": "076f2af870b91f35189a3d01ec1ed81df57db5517588d7604d175e95887dc336",
+      "pwb-synthesis-preflight-check-20261011-v2/frozen-paper-workspace/table_evidence.py": "60d9c1f6d24e22335adba27c097c8580d37fd773fa581b25d1fd7fa32d6ec6e4",
+      "pwb-synthesis-preflight-check-20261011-v2/frozen-paper-workspace/table_structure.py": "e7b6d065f725dbcfdceb74068da532ee817e8f1cab50ecff75038ad2713ab344",
+      "pwb-synthesis-preflight-check-20261011-v2/frozen-paper-workspace/targeted_sources.py": "c6414eff2bbaced2248eac436a08d40435b101f18042e6600147f9f5d0e97f0e",
+      "pwb-synthesis-preflight-check-20261011-v2/frozen-paper-workspace/web/app.js": "f528e2cfa0c1d4a9866b5202afd107a9842939c0271761355be35b5b62f8297d",
+      "pwb-synthesis-preflight-check-20261011-v2/frozen-paper-workspace/web/index.html": "3a57faf98a9157c0313c99895a2ca28c84bd883219c61d431b4403c1380dd435",
+      "pwb-synthesis-preflight-check-20261011-v2/frozen-paper-workspace/web/style.css": "e11c25c671c37e92618eeaedbcb32a2ee720f9b373c054b990214a684a4f1c46",
+      "pwb-synthesis-preflight-check-20261011-v2/frozen-paper-workspace/word_review.py": "20c7a5e7a1e2602307fbdc6da101ce35eab1c6fbdb2bc43d7d75809b733d1c5a",
+      "pwb-synthesis-preflight-check-20261011-v2/synthesis/augmented-ledger.json": "d78e4c578a14c825a56bf0bdf2393d0cc2a745a52e209740cc2fc7ca37aa50a5",
+      "pwb-synthesis-preflight-check-20261011-v2/synthesis/debate-audit.json": "0c24c54a3667a340959fcd49a56bf08ef9c9014899ceb4e53cdd8659c584d0d7",
+      "pwb-synthesis-preflight-check-20261011-v2/synthesis/debate-ledger.json": "528d3691b54f87bfe0db4549a9463e34888e89dc0df872b8e4870316a3d7c1f5",
+      "pwb-synthesis-preflight-check-20261011-v2/synthesis/editor-package.json": "acd1967cc351110682fc9fcc327472d368f43865bec7f822ea91bf544f89563f",
+      "pwb-synthesis-preflight-check-20261011-v2/synthesis/execution/calls/8844856da8aeebf9c162e0c406d38ae1875fe355651a76408596061e7b696cbd.answer.json": "7b5426998c56826c68969688c405958665cd83eb707dd452324bda7a7337cd6d",
+      "pwb-synthesis-preflight-check-20261011-v2/synthesis/execution/calls/8844856da8aeebf9c162e0c406d38ae1875fe355651a76408596061e7b696cbd.events.jsonl": "215e14f59519d1cf125c51ceb96980565f6ddd2574d9940d74fcb3fdb4dff021",
+      "pwb-synthesis-preflight-check-20261011-v2/synthesis/execution/calls/8844856da8aeebf9c162e0c406d38ae1875fe355651a76408596061e7b696cbd.json": "7c39af333905c85c79474fbbaa315393062c62c84e9e01d133273341c0324d89",
+      "pwb-synthesis-preflight-check-20261011-v2/synthesis/execution/calls/8844856da8aeebf9c162e0c406d38ae1875fe355651a76408596061e7b696cbd.request.json": "b2609a4f01462af3955c6e34a8ca2734618e9de90d1ddde312f50e5adbe8cbdd",
+      "pwb-synthesis-preflight-check-20261011-v2/synthesis/execution/calls/8844856da8aeebf9c162e0c406d38ae1875fe355651a76408596061e7b696cbd.schema.json": "f5151324cbcefe90e68489d7789c111c553ca8dd54e0e3b8c1e1768293a571f1",
+      "pwb-synthesis-preflight-check-20261011-v2/synthesis/execution/calls/8844856da8aeebf9c162e0c406d38ae1875fe355651a76408596061e7b696cbd.started.json": "3ee3d0c1df0b7f491bb6de8153b858dc5570c3ce1e30a040808a2cef17d6113b",
+      "pwb-synthesis-preflight-check-20261011-v2/synthesis/execution/calls/8844856da8aeebf9c162e0c406d38ae1875fe355651a76408596061e7b696cbd.stderr.txt": "93b7df9f6ae9ff9c81aef93b7cfced2cfa30a6f67bcf810ccee554d0ed2afc5f",
+      "pwb-synthesis-preflight-check-20261011-v2/synthesis/execution/usage.jsonl": "13447aecf65f43321db784e7107fa9c6a42492d4b22c7cb554f66b1ffa4d3170",
+      "pwb-synthesis-preflight-check-20261011-v2/synthesis/execution/workspace/tool-config.json": "5f5e2e80905ddb13d84a3770da916737ffa20704becea45597f85518c7f390c7",
+      "pwb-synthesis-preflight-check-20261011-v2/synthesis/input-reviews.json": "5b1cb06155383770617124bf76fa7bacbede4f6e2d814a4fa5f85cbc4c53fabb",
+      "pwb-synthesis-preflight-check-20261011-v2/synthesis/investigations/debate/synthesis-preflight/check-1.json": "cb16044dd0f4198e1098b4ed0136e4726bb23f3e2705d81ab755de5d35cf1f06",
+      "pwb-synthesis-preflight-check-20261011-v2/synthesis/investigations/debate/synthesis-preflight/check-2.json": "0ea8071d788816531876f6d0bd2f3da64bc9756a2abcc56451c55ea4d7f39b07",
+      "pwb-synthesis-preflight-check-20261011-v2/synthesis/investigations/debate/tool-discovery.jsonl": "a3e737a82074f930e83f9a581b9b92e4b4a88c867ecef1ff4e76c28bb41fd909",
+      "pwb-synthesis-preflight-check-20261011-v2/synthesis/manifest.json": "f58e3c2d1851a0d953814c65d6c2dd12579e529d4676e652ceb5aca7f0d1a051",
+      "pwb-synthesis-preflight-check-20261011-v2/synthesis/presentation-audit.json": "58a18f1eb0f755d8f0cad7a6c695a9fe624d7a3adb80fcf7b16b705ff6585704",
+      "pwb-synthesis-preflight-check-20261011-v2/synthesis/progress.json": "48ca168da5402eedc2c40ad0521454a9205534d918791e95092566098ac604ff",
+      "pwb-synthesis-preflight-check-20261011-v2/synthesis/protocol.json": "ed6b8b39fc66faa802572922493baed5f9a6776cd7697da2760c5788da5fb2db",
+      "pwb-synthesis-preflight-check-20261011-v2/synthesis/responses/debate-model.json": "577992a778dba8b592687f9e62b57a8c4ebc08325d828aa30f8e129e4cc3f350",
+      "pwb-synthesis-preflight-check-20261011-v2/synthesis/responses/debate.json": "361d58912258bc5c63a9d5388e878b8c8f1c360f884bca2f59ee467e10275bf8",
+      "pwb-synthesis-preflight-check-20261011-v2/synthesis/sources/cards.json": "37517e5f3dc66819f61f5a7bb8ace1921282415f10551d2defa5c3eb0985b570",
+      "pwb-synthesis-preflight-check-20261011-v2/synthesis/synthesis-validation.json": "7a3f94a81c36f504c67af9d1ab51186f335ba5883fc9254ee4c1751c7ed1affc",
+      "pwb-synthesis-preflight-check-20261011-v2/workspace/converter.json": "7b2721b0594478b87730968377e6f7b6f425ff123abe1ab39623ce7295e8e81f",
+      "pwb-synthesis-preflight-check-20261011-v2/workspace/converter.md": "f53f82a7fcf3afb9e5b7bc4cd4758a409a6818bc1d40dbea1c39195ce7f36b05",
+      "pwb-synthesis-preflight-check-20261011-v2/workspace/manifest.json": "b67481d6c9658d89c6c515bb8f131eb35dc3465358805bb2b4ad4f57bb444123",
+      "pwb-synthesis-preflight-check-20261011-v2/workspace/manuscript.md": "9b3e4c9c9d2e6eafbc865d44730e8ed11547bb36801054d42493c1b7a5d8868d",
+      "pwb-synthesis-preflight-check-20261011-v2/workspace/original.pdf": "be8ab0c9df84aebb2cdce08fa49b4e4efa806ef586427423a72b553f5bbb883d",
+      "pwb-synthesis-preflight-check-20261011-v2/workspace/original.xml": "50af2b4b9f3d8b6fbe583b74fb208918f9500904fdc21ea28ad5c1b4eaf8efac",
+      "pwb-synthesis-preflight-check-20261011-v2/workspace/pages/001.txt": "98c3131ff1130885807a10a18bede993b04a3200da38f68ad7f8f3440aef7847",
+      "pwb-synthesis-preflight-check-20261011-v2/workspace/pages/002.txt": "f38de5c4cb69cfce484a60a65aeff4dae7e7c534766c0c0b2a310b98196e6610",
+      "pwb-synthesis-preflight-check-20261011-v2/workspace/pages/003.txt": "b41aa333c2e3955e75e9b39b47a9dd3578b31a6f8ab117056e2065f272120c4e",
+      "pwb-synthesis-preflight-check-20261011-v2/workspace/pages/004.txt": "1c06ac20ae1827920c97e86b3a347651e68234060754163703f4fc5e518ed735",
+      "pwb-synthesis-preflight-check-20261011-v2/workspace/pages/005.txt": "d55ddc0cc26392b883eda43217f6d2f3fff6e0f35239ee71ed897ae413fd9348",
+      "pwb-synthesis-preflight-check-20261011-v2/workspace/pages/006.txt": "432407e25ab662e6ba384aaa7fdfe3dee84815fe94e6e2a8883ae181edb5dda5",
+      "pwb-synthesis-preflight-check-20261011-v2/workspace/pages/007.txt": "7c2f4a3ed5121d5495ce64f9390ce78b3988430cf088ba228c63ccc01904e052",
+      "pwb-synthesis-preflight-check-20261011-v2/workspace/pages/008.txt": "346910d8c502c52ac5afcf2cd0b019804c6b8efc56fdd71517a2bd700bb11fe4",
+      "pwb-synthesis-preflight-check-20261011-v2/workspace/pages/009.txt": "d16c39b397b5c553e539dfa328a1721b736148a99da154c77c36652f8e5cb294",
+      "pwb-synthesis-preflight-check-20261011-v2/workspace/pages/010.txt": "dd355c283f39b2f70092c1d491212a5f0f832a771c39a957ccc4596a30b282c1",
+      "pwb-synthesis-preflight-check-20261011-v2/workspace/pages/011.txt": "258e5343eb919bdec0cf082f84f1b2d210ab69af4b44c28a1d224ab43436e86a",
+      "pwb-synthesis-preflight-check-20261011-v2/workspace/pages/source-images/01-main.png": "7a41d998a9ed3e496de00ae084724bbd7efb8a52a0623a83bf151def25c856b2",
+      "pwb-synthesis-preflight-check-20261011-v2/workspace/pages/source-images/02-main.png": "a6e1d17a1636d2f7a2a6caf0ec0f5b12a6d5d66522508d500e6fc5f2c0bd4fb8",
+      "pwb-synthesis-preflight-check-20261011-v2/workspace/pages/source-images/03-main.png": "a4e00d2e7f99b2d2931e7579c8aa6aa44733f8ba990ddd7f78434ab1c77ea159",
+      "pwb-synthesis-preflight-check-20261011-v2/workspace/pages/source-images/04-supplement.png": "08958d65ea89bb7670eada64d05b6bcabe3c22eec798d66a8c1f00b192be7dac",
+      "pwb-synthesis-preflight-check-20261011-v2/workspace/paper.json": "1e5ff1e8ace25d0ba0b6d3ecda545d9f8a8ebb27f0fe01f36ebdb9bc5a54a740",
+      "pwb-synthesis-preflight-check-20261011-v2/workspace/references.json": "8882164d3351e7b9d2f9e09f529d145fb7720c02c26801b345828a54db844065",
+      "pwb-synthesis-preflight-check-20261011-v2/workspace/reviews/ensemble-debate-f9277638e4.json": "05608d4efa0b7635811d5751fbeaa72268ae6f7e449b6767d9a0741534ab1386",
+      "pwb-synthesis-preflight-check-20261011-v2/workspace/reviews/ensemble-f9277638e4.json": "80d36c4a29a8149185cb5e18ed05873f9d78fd10b22798de5a8aab4b5a2eecdb",
+      "pwb-synthesis-preflight-check-20261011-v2/workspace/statistics.json": "336bc1d2d1289d5a392333318a3fd5ea5154fabe06740f6b0b4da8d45784cdcf",
+      "pwb-synthesis-preflight-check-20261011-v2/workspace/supplements/s001.docx": "c5b97defa387101ee00ad11bb8f73b4b2c595b7fe770b1a3bf0ce5b0822e9f4e",
+      "pwb-synthesis-preflight-check-20261011-v2/workspace/supplements/s002.png": "08958d65ea89bb7670eada64d05b6bcabe3c22eec798d66a8c1f00b192be7dac",
+      "pwb-synthesis-preflight-check-20261011-v2/workspace/supplements/s002.tiff": "ca867555d89d7efe89a99ebb56a78dfdea34eb765480c48a6a832447a80d41b1"
+    },
+    "excluded_paths": [
+      "pwb-synthesis-preflight-check-20261011-v1/frozen-paper-workspace/__pycache__/__init__.cpython-314.pyc",
+      "pwb-synthesis-preflight-check-20261011-v1/frozen-paper-workspace/__pycache__/annotations.cpython-314.pyc",
+      "pwb-synthesis-preflight-check-20261011-v1/frozen-paper-workspace/__pycache__/billing.cpython-314.pyc",
+      "pwb-synthesis-preflight-check-20261011-v1/frozen-paper-workspace/__pycache__/calculator.cpython-314.pyc",
+      "pwb-synthesis-preflight-check-20261011-v1/frozen-paper-workspace/__pycache__/claim_checks.cpython-314.pyc",
+      "pwb-synthesis-preflight-check-20261011-v1/frozen-paper-workspace/__pycache__/debate_epistemics.cpython-314.pyc",
+      "pwb-synthesis-preflight-check-20261011-v1/frozen-paper-workspace/__pycache__/debate_evidence.cpython-314.pyc",
+      "pwb-synthesis-preflight-check-20261011-v1/frozen-paper-workspace/__pycache__/debate_presentation.cpython-314.pyc",
+      "pwb-synthesis-preflight-check-20261011-v1/frozen-paper-workspace/__pycache__/debate_revision.cpython-314.pyc",
+      "pwb-synthesis-preflight-check-20261011-v1/frozen-paper-workspace/__pycache__/debate_tools.cpython-314.pyc",
+      "pwb-synthesis-preflight-check-20261011-v1/frozen-paper-workspace/__pycache__/discovery.cpython-314.pyc",
+      "pwb-synthesis-preflight-check-20261011-v1/frozen-paper-workspace/__pycache__/document_render.cpython-314.pyc",
+      "pwb-synthesis-preflight-check-20261011-v1/frozen-paper-workspace/__pycache__/domain_registry.cpython-314.pyc",
+      "pwb-synthesis-preflight-check-20261011-v1/frozen-paper-workspace/__pycache__/ensemble.cpython-314.pyc",
+      "pwb-synthesis-preflight-check-20261011-v1/frozen-paper-workspace/__pycache__/ensemble_debate.cpython-314.pyc",
+      "pwb-synthesis-preflight-check-20261011-v1/frozen-paper-workspace/__pycache__/ensemble_references.cpython-314.pyc",
+      "pwb-synthesis-preflight-check-20261011-v1/frozen-paper-workspace/__pycache__/evidence_handles.cpython-314.pyc",
+      "pwb-synthesis-preflight-check-20261011-v1/frozen-paper-workspace/__pycache__/evidence_tasks.cpython-314.pyc",
+      "pwb-synthesis-preflight-check-20261011-v1/frozen-paper-workspace/__pycache__/export_evidence.cpython-314.pyc",
+      "pwb-synthesis-preflight-check-20261011-v1/frozen-paper-workspace/__pycache__/external_evidence.cpython-314.pyc",
+      "pwb-synthesis-preflight-check-20261011-v1/frozen-paper-workspace/__pycache__/focused_investigation.cpython-314.pyc",
+      "pwb-synthesis-preflight-check-20261011-v1/frozen-paper-workspace/__pycache__/ingest.cpython-314.pyc",
+      "pwb-synthesis-preflight-check-20261011-v1/frozen-paper-workspace/__pycache__/investigation.cpython-314.pyc",
+      "pwb-synthesis-preflight-check-20261011-v1/frozen-paper-workspace/__pycache__/investigation_policy.cpython-314.pyc",
+      "pwb-synthesis-preflight-check-20261011-v1/frozen-paper-workspace/__pycache__/judge_evidence.cpython-314.pyc",
+      "pwb-synthesis-preflight-check-20261011-v1/frozen-paper-workspace/__pycache__/manuscript_tools.cpython-314.pyc",
+      "pwb-synthesis-preflight-check-20261011-v1/frozen-paper-workspace/__pycache__/model_runtime.cpython-314.pyc",
+      "pwb-synthesis-preflight-check-20261011-v1/frozen-paper-workspace/__pycache__/models.cpython-314.pyc",
+      "pwb-synthesis-preflight-check-20261011-v1/frozen-paper-workspace/__pycache__/reconciliation_tasks.cpython-314.pyc",
+      "pwb-synthesis-preflight-check-20261011-v1/frozen-paper-workspace/__pycache__/result_map.cpython-314.pyc",
+      "pwb-synthesis-preflight-check-20261011-v1/frozen-paper-workspace/__pycache__/review_schema.cpython-314.pyc",
+      "pwb-synthesis-preflight-check-20261011-v1/frozen-paper-workspace/__pycache__/reviewer.cpython-314.pyc",
+      "pwb-synthesis-preflight-check-20261011-v1/frozen-paper-workspace/__pycache__/revisions.cpython-314.pyc",
+      "pwb-synthesis-preflight-check-20261011-v1/frozen-paper-workspace/__pycache__/run_state.cpython-314.pyc",
+      "pwb-synthesis-preflight-check-20261011-v1/frozen-paper-workspace/__pycache__/scaffold_checks.cpython-314.pyc",
+      "pwb-synthesis-preflight-check-20261011-v1/frozen-paper-workspace/__pycache__/scaffold_import.cpython-314.pyc",
+      "pwb-synthesis-preflight-check-20261011-v1/frozen-paper-workspace/__pycache__/scaffold_port.cpython-314.pyc",
+      "pwb-synthesis-preflight-check-20261011-v1/frozen-paper-workspace/__pycache__/source_adapters.cpython-314.pyc",
+      "pwb-synthesis-preflight-check-20261011-v1/frozen-paper-workspace/__pycache__/source_adapters_extra.cpython-314.pyc",
+      "pwb-synthesis-preflight-check-20261011-v1/frozen-paper-workspace/__pycache__/source_edits.cpython-314.pyc",
+      "pwb-synthesis-preflight-check-20261011-v1/frozen-paper-workspace/__pycache__/source_packet.cpython-314.pyc",
+      "pwb-synthesis-preflight-check-20261011-v1/frozen-paper-workspace/__pycache__/source_payload.cpython-314.pyc",
+      "pwb-synthesis-preflight-check-20261011-v1/frozen-paper-workspace/__pycache__/storage.cpython-314.pyc",
+      "pwb-synthesis-preflight-check-20261011-v1/frozen-paper-workspace/__pycache__/supplement_view.cpython-314.pyc",
+      "pwb-synthesis-preflight-check-20261011-v1/frozen-paper-workspace/__pycache__/synthesis_validation.cpython-314.pyc",
+      "pwb-synthesis-preflight-check-20261011-v1/frozen-paper-workspace/__pycache__/table_evidence.cpython-314.pyc",
+      "pwb-synthesis-preflight-check-20261011-v1/frozen-paper-workspace/__pycache__/table_structure.cpython-314.pyc",
+      "pwb-synthesis-preflight-check-20261011-v1/frozen-paper-workspace/__pycache__/targeted_sources.cpython-314.pyc",
+      "pwb-synthesis-preflight-check-20261011-v1/frozen-paper-workspace/__pycache__/word_review.cpython-314.pyc",
+      "pwb-synthesis-preflight-check-20261011-v1/frozen-paper-workspace/billing.py",
+      "pwb-synthesis-preflight-check-20261011-v1/synthesis/billing_confirmation.json",
+      "pwb-synthesis-preflight-check-20261011-v2/frozen-paper-workspace/__pycache__/__init__.cpython-314.pyc",
+      "pwb-synthesis-preflight-check-20261011-v2/frozen-paper-workspace/__pycache__/annotations.cpython-314.pyc",
+      "pwb-synthesis-preflight-check-20261011-v2/frozen-paper-workspace/__pycache__/billing.cpython-314.pyc",
+      "pwb-synthesis-preflight-check-20261011-v2/frozen-paper-workspace/__pycache__/calculator.cpython-314.pyc",
+      "pwb-synthesis-preflight-check-20261011-v2/frozen-paper-workspace/__pycache__/claim_checks.cpython-314.pyc",
+      "pwb-synthesis-preflight-check-20261011-v2/frozen-paper-workspace/__pycache__/debate_epistemics.cpython-314.pyc",
+      "pwb-synthesis-preflight-check-20261011-v2/frozen-paper-workspace/__pycache__/debate_evidence.cpython-314.pyc",
+      "pwb-synthesis-preflight-check-20261011-v2/frozen-paper-workspace/__pycache__/debate_presentation.cpython-314.pyc",
+      "pwb-synthesis-preflight-check-20261011-v2/frozen-paper-workspace/__pycache__/debate_revision.cpython-314.pyc",
+      "pwb-synthesis-preflight-check-20261011-v2/frozen-paper-workspace/__pycache__/debate_tools.cpython-314.pyc",
+      "pwb-synthesis-preflight-check-20261011-v2/frozen-paper-workspace/__pycache__/discovery.cpython-314.pyc",
+      "pwb-synthesis-preflight-check-20261011-v2/frozen-paper-workspace/__pycache__/document_render.cpython-314.pyc",
+      "pwb-synthesis-preflight-check-20261011-v2/frozen-paper-workspace/__pycache__/domain_registry.cpython-314.pyc",
+      "pwb-synthesis-preflight-check-20261011-v2/frozen-paper-workspace/__pycache__/ensemble.cpython-314.pyc",
+      "pwb-synthesis-preflight-check-20261011-v2/frozen-paper-workspace/__pycache__/ensemble_debate.cpython-314.pyc",
+      "pwb-synthesis-preflight-check-20261011-v2/frozen-paper-workspace/__pycache__/ensemble_references.cpython-314.pyc",
+      "pwb-synthesis-preflight-check-20261011-v2/frozen-paper-workspace/__pycache__/evidence_handles.cpython-314.pyc",
+      "pwb-synthesis-preflight-check-20261011-v2/frozen-paper-workspace/__pycache__/evidence_tasks.cpython-314.pyc",
+      "pwb-synthesis-preflight-check-20261011-v2/frozen-paper-workspace/__pycache__/export_evidence.cpython-314.pyc",
+      "pwb-synthesis-preflight-check-20261011-v2/frozen-paper-workspace/__pycache__/external_evidence.cpython-314.pyc",
+      "pwb-synthesis-preflight-check-20261011-v2/frozen-paper-workspace/__pycache__/focused_investigation.cpython-314.pyc",
+      "pwb-synthesis-preflight-check-20261011-v2/frozen-paper-workspace/__pycache__/ingest.cpython-314.pyc",
+      "pwb-synthesis-preflight-check-20261011-v2/frozen-paper-workspace/__pycache__/investigation.cpython-314.pyc",
+      "pwb-synthesis-preflight-check-20261011-v2/frozen-paper-workspace/__pycache__/investigation_policy.cpython-314.pyc",
+      "pwb-synthesis-preflight-check-20261011-v2/frozen-paper-workspace/__pycache__/judge_evidence.cpython-314.pyc",
+      "pwb-synthesis-preflight-check-20261011-v2/frozen-paper-workspace/__pycache__/manuscript_tools.cpython-314.pyc",
+      "pwb-synthesis-preflight-check-20261011-v2/frozen-paper-workspace/__pycache__/model_runtime.cpython-314.pyc",
+      "pwb-synthesis-preflight-check-20261011-v2/frozen-paper-workspace/__pycache__/models.cpython-314.pyc",
+      "pwb-synthesis-preflight-check-20261011-v2/frozen-paper-workspace/__pycache__/reconciliation_tasks.cpython-314.pyc",
+      "pwb-synthesis-preflight-check-20261011-v2/frozen-paper-workspace/__pycache__/result_map.cpython-314.pyc",
+      "pwb-synthesis-preflight-check-20261011-v2/frozen-paper-workspace/__pycache__/review_schema.cpython-314.pyc",
+      "pwb-synthesis-preflight-check-20261011-v2/frozen-paper-workspace/__pycache__/reviewer.cpython-314.pyc",
+      "pwb-synthesis-preflight-check-20261011-v2/frozen-paper-workspace/__pycache__/revisions.cpython-314.pyc",
+      "pwb-synthesis-preflight-check-20261011-v2/frozen-paper-workspace/__pycache__/run_state.cpython-314.pyc",
+      "pwb-synthesis-preflight-check-20261011-v2/frozen-paper-workspace/__pycache__/scaffold_checks.cpython-314.pyc",
+      "pwb-synthesis-preflight-check-20261011-v2/frozen-paper-workspace/__pycache__/scaffold_import.cpython-314.pyc",
+      "pwb-synthesis-preflight-check-20261011-v2/frozen-paper-workspace/__pycache__/scaffold_port.cpython-314.pyc",
+      "pwb-synthesis-preflight-check-20261011-v2/frozen-paper-workspace/__pycache__/source_adapters.cpython-314.pyc",
+      "pwb-synthesis-preflight-check-20261011-v2/frozen-paper-workspace/__pycache__/source_adapters_extra.cpython-314.pyc",
+      "pwb-synthesis-preflight-check-20261011-v2/frozen-paper-workspace/__pycache__/source_edits.cpython-314.pyc",
+      "pwb-synthesis-preflight-check-20261011-v2/frozen-paper-workspace/__pycache__/source_packet.cpython-314.pyc",
+      "pwb-synthesis-preflight-check-20261011-v2/frozen-paper-workspace/__pycache__/source_payload.cpython-314.pyc",
+      "pwb-synthesis-preflight-check-20261011-v2/frozen-paper-workspace/__pycache__/storage.cpython-314.pyc",
+      "pwb-synthesis-preflight-check-20261011-v2/frozen-paper-workspace/__pycache__/supplement_view.cpython-314.pyc",
+      "pwb-synthesis-preflight-check-20261011-v2/frozen-paper-workspace/__pycache__/synthesis_validation.cpython-314.pyc",
+      "pwb-synthesis-preflight-check-20261011-v2/frozen-paper-workspace/__pycache__/table_evidence.cpython-314.pyc",
+      "pwb-synthesis-preflight-check-20261011-v2/frozen-paper-workspace/__pycache__/table_structure.cpython-314.pyc",
+      "pwb-synthesis-preflight-check-20261011-v2/frozen-paper-workspace/__pycache__/targeted_sources.cpython-314.pyc",
+      "pwb-synthesis-preflight-check-20261011-v2/frozen-paper-workspace/__pycache__/word_review.cpython-314.pyc",
+      "pwb-synthesis-preflight-check-20261011-v2/frozen-paper-workspace/billing.py",
+      "pwb-synthesis-preflight-check-20261011-v2/synthesis/billing_confirmation.json"
+    ]
+  }
+}

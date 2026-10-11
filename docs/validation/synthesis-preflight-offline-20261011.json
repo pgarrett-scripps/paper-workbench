@@ -1,0 +1,582 @@
+{
+  "kind": "offline_synthesis_preflight_replay",
+  "new_model_calls": 0,
+  "original_results_changed": false,
+  "responses": 23,
+  "outcomes": {
+    "failed -> invalid": 4,
+    "complete -> valid": 19
+  },
+  "papers": [
+    {
+      "paper": "paper-0296137",
+      "original_delivery": "failed",
+      "preflight_valid": false,
+      "error": "Preserved component lacks an exact final-review destination",
+      "problem_counts": {
+        "missing_final_quote": 1
+      },
+      "problems": [
+        {
+          "issue_id": "r1-issue-1",
+          "component_id": "r1-issue-1-part-4",
+          "code": "missing_final_quote",
+          "final_finding_number": 1,
+          "message": "Copy an exact substantive span from this final comment. Do not invent a destination."
+        }
+      ],
+      "input_sha256": {
+        "attempts/paper-0296137/review-c/core-run/debate/responses/debate-model.json": "8c18b302174ae25fa32ef9534fa45ea9b741c1bcc8bf3ae66e2e6f55b555a4d6",
+        "attempts/paper-0296137/review-c/core-run/debate/debate-ledger.json": "c6597b761e4026ed76ef7fc24ca5d7f0b4e99c50fe0b75e7e423934dfcec5b6a",
+        "attempts/paper-0296137/review-c/receipt.json": "1dcc3468e7e69cb1eb99e7d647269048529854a74b3c7071360b08eda61269ac",
+        "attempts/paper-0296137/review-c/manuscript-workspace/paper.json": "c9a048043ee0ec3e55c60cf14a0ee55d6c306472d4bac592126e0d4bf63123ea",
+        "attempts/paper-0296137/review-c/core-run/debate/sources/cards.json": "37517e5f3dc66819f61f5a7bb8ace1921282415f10551d2defa5c3eb0985b570"
+      }
+    },
+    {
+      "paper": "paper-0306943",
+      "original_delivery": "failed",
+      "preflight_valid": false,
+      "error": "Preserved component lacks an exact final-review destination",
+      "problem_counts": {
+        "missing_final_finding": 32
+      },
+      "problems": [
+        {
+          "issue_id": "r1-issue-1",
+          "component_id": "r1-issue-1-part-1",
+          "code": "missing_final_finding",
+          "final_finding_number": 1
+        },
+        {
+          "issue_id": "r1-issue-1",
+          "component_id": "r1-issue-1-part-2",
+          "code": "missing_final_finding",
+          "final_finding_number": 1
+        },
+        {
+          "issue_id": "r1-issue-1",
+          "component_id": "r1-issue-1-part-3",
+          "code": "missing_final_finding",
+          "final_finding_number": 1
+        },
+        {
+          "issue_id": "r1-issue-1",
+          "component_id": "r1-issue-1-part-4",
+          "code": "missing_final_finding",
+          "final_finding_number": 1
+        },
+        {
+          "issue_id": "r1-issue-2",
+          "component_id": "r1-issue-2-part-1",
+          "code": "missing_final_finding",
+          "final_finding_number": 2
+        },
+        {
+          "issue_id": "r1-issue-2",
+          "component_id": "r1-issue-2-part-2",
+          "code": "missing_final_finding",
+          "final_finding_number": 2
+        },
+        {
+          "issue_id": "r1-issue-2",
+          "component_id": "r1-issue-2-part-3",
+          "code": "missing_final_finding",
+          "final_finding_number": 2
+        },
+        {
+          "issue_id": "r1-issue-2",
+          "component_id": "r1-issue-2-part-4",
+          "code": "missing_final_finding",
+          "final_finding_number": 2
+        },
+        {
+          "issue_id": "r1-issue-4",
+          "component_id": "r1-issue-4-part-1",
+          "code": "missing_final_finding",
+          "final_finding_number": 4
+        },
+        {
+          "issue_id": "r1-issue-4",
+          "component_id": "r1-issue-4-part-2",
+          "code": "missing_final_finding",
+          "final_finding_number": 4
+        },
+        {
+          "issue_id": "r1-issue-4",
+          "component_id": "r1-issue-4-part-3",
+          "code": "missing_final_finding",
+          "final_finding_number": 4
+        },
+        {
+          "issue_id": "r1-issue-4",
+          "component_id": "r1-issue-4-part-4",
+          "code": "missing_final_finding",
+          "final_finding_number": 4
+        },
+        {
+          "issue_id": "r1-issue-5",
+          "component_id": "r1-issue-5-part-1",
+          "code": "missing_final_finding",
+          "final_finding_number": 5
+        },
+        {
+          "issue_id": "r1-issue-5",
+          "component_id": "r1-issue-5-part-2",
+          "code": "missing_final_finding",
+          "final_finding_number": 5
+        },
+        {
+          "issue_id": "r1-issue-5",
+          "component_id": "r1-issue-5-part-3",
+          "code": "missing_final_finding",
+          "final_finding_number": 5
+        },
+        {
+          "issue_id": "r2-issue-1",
+          "component_id": "r2-issue-1-part-1",
+          "code": "missing_final_finding",
+          "final_finding_number": 3
+        },
+        {
+          "issue_id": "r2-issue-1",
+          "component_id": "r2-issue-1-part-2",
+          "code": "missing_final_finding",
+          "final_finding_number": 3
+        },
+        {
+          "issue_id": "r2-issue-1",
+          "component_id": "r2-issue-1-part-3",
+          "code": "missing_final_finding",
+          "final_finding_number": 3
+        },
+        {
+          "issue_id": "r2-issue-2",
+          "component_id": "r2-issue-2-part-1",
+          "code": "missing_final_finding",
+          "final_finding_number": 2
+        },
+        {
+          "issue_id": "r2-issue-2",
+          "component_id": "r2-issue-2-part-2",
+          "code": "missing_final_finding",
+          "final_finding_number": 2
+        },
+        {
+          "issue_id": "r2-issue-2",
+          "component_id": "r2-issue-2-part-3",
+          "code": "missing_final_finding",
+          "final_finding_number": 2
+        },
+        {
+          "issue_id": "r2-issue-2",
+          "component_id": "r2-issue-2-part-4",
+          "code": "missing_final_finding",
+          "final_finding_number": 2
+        },
+        {
+          "issue_id": "r2-issue-3",
+          "component_id": "r2-issue-3-part-1",
+          "code": "missing_final_finding",
+          "final_finding_number": 1
+        },
+        {
+          "issue_id": "r2-issue-3",
+          "component_id": "r2-issue-3-part-2",
+          "code": "missing_final_finding",
+          "final_finding_number": 1
+        },
+        {
+          "issue_id": "r2-issue-3",
+          "component_id": "r2-issue-3-part-3",
+          "code": "missing_final_finding",
+          "final_finding_number": 1
+        },
+        {
+          "issue_id": "r2-issue-3",
+          "component_id": "r2-issue-3-part-4",
+          "code": "missing_final_finding",
+          "final_finding_number": 1
+        },
+        {
+          "issue_id": "r2-issue-5",
+          "component_id": "r2-issue-5-part-1",
+          "code": "missing_final_finding",
+          "final_finding_number": 4
+        },
+        {
+          "issue_id": "r2-issue-5",
+          "component_id": "r2-issue-5-part-2",
+          "code": "missing_final_finding",
+          "final_finding_number": 4
+        },
+        {
+          "issue_id": "r2-issue-5",
+          "component_id": "r2-issue-5-part-3",
+          "code": "missing_final_finding",
+          "final_finding_number": 4
+        },
+        {
+          "issue_id": "r2-issue-5",
+          "component_id": "r2-issue-5-part-4",
+          "code": "missing_final_finding",
+          "final_finding_number": 4
+        },
+        {
+          "issue_id": "r2-issue-6",
+          "component_id": "r2-issue-6-part-1",
+          "code": "missing_final_finding",
+          "final_finding_number": 5
+        },
+        {
+          "issue_id": "r2-issue-6",
+          "component_id": "r2-issue-6-part-2",
+          "code": "missing_final_finding",
+          "final_finding_number": 5
+        }
+      ],
+      "input_sha256": {
+        "attempts/paper-0306943/review-c/core-run/debate/responses/debate-model.json": "7768050894a2486231fd1cb9a643cfc9228e2c99a260390d99c4ae46c70d210c",
+        "attempts/paper-0306943/review-c/core-run/debate/debate-ledger.json": "528d3691b54f87bfe0db4549a9463e34888e89dc0df872b8e4870316a3d7c1f5",
+        "attempts/paper-0306943/review-c/receipt.json": "906c40bd8dd388e7937c16b51a888def3ae27981a4648cb83479e4c4af3963d6",
+        "attempts/paper-0306943/review-c/manuscript-workspace/paper.json": "1e5ff1e8ace25d0ba0b6d3ecda545d9f8a8ebb27f0fe01f36ebdb9bc5a54a740",
+        "attempts/paper-0306943/review-c/core-run/debate/sources/cards.json": "37517e5f3dc66819f61f5a7bb8ace1921282415f10551d2defa5c3eb0985b570"
+      }
+    },
+    {
+      "paper": "paper-0309188",
+      "original_delivery": "complete",
+      "preflight_valid": true,
+      "error": null,
+      "problem_counts": {},
+      "problems": [],
+      "input_sha256": {
+        "attempts/paper-0309188/review-c/core-run/debate/responses/debate-model.json": "6e9817913a7f3f0b7d4389ec660754a5fc39abee0cf24551c667e15a6b28029d",
+        "attempts/paper-0309188/review-c/core-run/debate/debate-ledger.json": "20da2c47712efb07622a69b90197c2b74a1347a89742cbb218afc15aa5e91c68",
+        "attempts/paper-0309188/review-c/receipt.json": "c9f4045b994736bf0f6610d3945e6634ac01b7110dddaba13a508a05b94a9f5e",
+        "attempts/paper-0309188/review-c/manuscript-workspace/paper.json": "859daae6318d66f846d2ee72f8055f4cead99d1cbe66a094e79cb68aacfa297d",
+        "attempts/paper-0309188/review-c/core-run/debate/sources/cards.json": "37517e5f3dc66819f61f5a7bb8ace1921282415f10551d2defa5c3eb0985b570"
+      }
+    },
+    {
+      "paper": "paper-0310916",
+      "original_delivery": "complete",
+      "preflight_valid": true,
+      "error": null,
+      "problem_counts": {},
+      "problems": [],
+      "input_sha256": {
+        "attempts/paper-0310916/review-c/core-run/debate/responses/debate-model.json": "3a1399c3e48f045ba30bc7cb436793954faeaacbbdb05e7632b07d302b7bb5d1",
+        "attempts/paper-0310916/review-c/core-run/debate/debate-ledger.json": "19d5520acd378ec436ddfc5bf4d5c5c3b9f69d94141e3fae14ce02972b00c72e",
+        "attempts/paper-0310916/review-c/receipt.json": "3f8d9a48663da192d093eaf175ad69a1dacce043b5c729a1817e2153fb950793",
+        "attempts/paper-0310916/review-c/manuscript-workspace/paper.json": "1b85f1d077ddbcfd87e768efea1a084ce33396966bf1abf3b26b4e308a35d809",
+        "attempts/paper-0310916/review-c/core-run/debate/sources/cards.json": "37517e5f3dc66819f61f5a7bb8ace1921282415f10551d2defa5c3eb0985b570"
+      }
+    },
+    {
+      "paper": "paper-0311270",
+      "original_delivery": "complete",
+      "preflight_valid": true,
+      "error": null,
+      "problem_counts": {},
+      "problems": [],
+      "input_sha256": {
+        "attempts/paper-0311270/review-c/core-run/debate/responses/debate-model.json": "c0262b8c631f68efd08c42a9a5ccb95bda693b2b7eaa62f3cd819cf7562c0e78",
+        "attempts/paper-0311270/review-c/core-run/debate/debate-ledger.json": "f9b39b09fc345118cb3fd0c93ff74fe77d67185db389bd7de487e04fe6fabd18",
+        "attempts/paper-0311270/review-c/receipt.json": "70564ddb0eefba753dfcd7ef73b86aaa84b5f4453f22eb1c31c067d67e28c3ba",
+        "attempts/paper-0311270/review-c/manuscript-workspace/paper.json": "b926e52717206a30039614f4e9243f59863635003db3f5aaaef7226403c302bc",
+        "attempts/paper-0311270/review-c/core-run/debate/sources/cards.json": "37517e5f3dc66819f61f5a7bb8ace1921282415f10551d2defa5c3eb0985b570"
+      }
+    },
+    {
+      "paper": "paper-0311400",
+      "original_delivery": "complete",
+      "preflight_valid": true,
+      "error": null,
+      "problem_counts": {},
+      "problems": [],
+      "input_sha256": {
+        "attempts/paper-0311400/review-c/core-run/debate/responses/debate-model.json": "2eb2e60de890def341bd71d4ca798af1916a61aa321d97e538c6c7117ebb7e7a",
+        "attempts/paper-0311400/review-c/core-run/debate/debate-ledger.json": "d77a95b55255966f248f1299bbecb6a1c3b80f49f5382e04a38a3d86f86b993d",
+        "attempts/paper-0311400/review-c/receipt.json": "4beeb7aad5b9a54e7c645ada7ebc5014d72cdc6ba0aef9e3348250de0a8a9450",
+        "attempts/paper-0311400/review-c/manuscript-workspace/paper.json": "4902ec569d753813e020c63232ac28ca545966be2c791f6d5275c6a39658b1e3",
+        "attempts/paper-0311400/review-c/core-run/debate/sources/cards.json": "37517e5f3dc66819f61f5a7bb8ace1921282415f10551d2defa5c3eb0985b570"
+      }
+    },
+    {
+      "paper": "paper-0313292",
+      "original_delivery": "complete",
+      "preflight_valid": true,
+      "error": null,
+      "problem_counts": {},
+      "problems": [],
+      "input_sha256": {
+        "attempts/paper-0313292/review-c/core-run/debate/responses/debate-model.json": "4cec57b2817ac08c88d18ca539510fb9b79b8746ab2997e1bc35bb5da0caa217",
+        "attempts/paper-0313292/review-c/core-run/debate/debate-ledger.json": "58d546dddcd0fc7b1da4bf1b124b03bb18fe84a56a8f9a71f659382cd5bf45af",
+        "attempts/paper-0313292/review-c/receipt.json": "2d57b81018b8284c6b35dad7a4892509660752b9e9bc1cbceb07e35eef6e1272",
+        "attempts/paper-0313292/review-c/manuscript-workspace/paper.json": "0036a10d1fe7022ea58b4eb6dd9435bb9d2495486d07334ed7bfd4dfe0f39b59",
+        "attempts/paper-0313292/review-c/core-run/debate/sources/cards.json": "37517e5f3dc66819f61f5a7bb8ace1921282415f10551d2defa5c3eb0985b570"
+      }
+    },
+    {
+      "paper": "paper-0313520",
+      "original_delivery": "complete",
+      "preflight_valid": true,
+      "error": null,
+      "problem_counts": {},
+      "problems": [],
+      "input_sha256": {
+        "attempts/paper-0313520/review-c/core-run/debate/responses/debate-model.json": "fd4a15edcf40fa8d49c453bf936118aee5c19afbc6ecccad3151a575ada7924e",
+        "attempts/paper-0313520/review-c/core-run/debate/debate-ledger.json": "9f2ad02e4faecde38a242f42bb9f51eb685827548eea6407b1b7484c05c0f12d",
+        "attempts/paper-0313520/review-c/receipt.json": "8800aee985e7364cdda69859c4cabb2c3229945ca2332942873ca64448a5fce9",
+        "attempts/paper-0313520/review-c/manuscript-workspace/paper.json": "f5e7e7e983b71cd9ea890f649335f1f4b361c3d9dda5a7e6cdd37d13b22e7274",
+        "attempts/paper-0313520/review-c/core-run/debate/sources/cards.json": "37517e5f3dc66819f61f5a7bb8ace1921282415f10551d2defa5c3eb0985b570"
+      }
+    },
+    {
+      "paper": "paper-0313998",
+      "original_delivery": "complete",
+      "preflight_valid": true,
+      "error": null,
+      "problem_counts": {},
+      "problems": [],
+      "input_sha256": {
+        "attempts/paper-0313998/review-c/core-run/debate/responses/debate-model.json": "de953f12303c6100a2ff8b0a8d9b5846729ac21dfd3f4a10302550f7648b03b8",
+        "attempts/paper-0313998/review-c/core-run/debate/debate-ledger.json": "40cc85eb39b149656e8eab469eed17b7e55bd1106fba679a7f5b375070b05a02",
+        "attempts/paper-0313998/review-c/receipt.json": "beb0237b70248ad7ef7fb577c32254cee04ac75901c49b755005f511483db814",
+        "attempts/paper-0313998/review-c/manuscript-workspace/paper.json": "d2da708981ed97db21e1f37c9c423c70b133141736b64268a47bc98d177c972c",
+        "attempts/paper-0313998/review-c/core-run/debate/sources/cards.json": "37517e5f3dc66819f61f5a7bb8ace1921282415f10551d2defa5c3eb0985b570"
+      }
+    },
+    {
+      "paper": "paper-0314751",
+      "original_delivery": "failed",
+      "preflight_valid": false,
+      "error": "Preserved component lacks an exact final-review destination",
+      "problem_counts": {
+        "missing_final_quote": 1
+      },
+      "problems": [
+        {
+          "issue_id": "r2-issue-2",
+          "component_id": "r2-issue-2-part-2",
+          "code": "missing_final_quote",
+          "final_finding_number": 5,
+          "message": "Copy an exact substantive span from this final comment. Do not invent a destination."
+        }
+      ],
+      "input_sha256": {
+        "attempts/paper-0314751/review-c/core-run/debate/responses/debate-model.json": "08dd20e6ca5471b723670ead63c8d81e6c6c732e55c4a4312e0e72d37e3a0c81",
+        "attempts/paper-0314751/review-c/core-run/debate/debate-ledger.json": "faa2f8d32331f083d1274a5e74f15b9fe2001371e9f019a47763b3a6becd4a48",
+        "attempts/paper-0314751/review-c/receipt.json": "ede128b4a8cf5604c34b0447a5e26a87381c4c08a3b9f32e813c950f8ff419c5",
+        "attempts/paper-0314751/review-c/manuscript-workspace/paper.json": "45e6925e0716f860de45f2bb0d319aca6ee550f43027858d4411120d70a7c70a",
+        "attempts/paper-0314751/review-c/core-run/debate/sources/cards.json": "37517e5f3dc66819f61f5a7bb8ace1921282415f10551d2defa5c3eb0985b570"
+      }
+    },
+    {
+      "paper": "paper-0315463",
+      "original_delivery": "complete",
+      "preflight_valid": true,
+      "error": null,
+      "problem_counts": {},
+      "problems": [],
+      "input_sha256": {
+        "attempts/paper-0315463/review-c/core-run/debate/responses/debate-model.json": "e324ea5328415641c7e5e47dbc40cbb659a6ea4a8bc84b2934f0e2710b898fd0",
+        "attempts/paper-0315463/review-c/core-run/debate/debate-ledger.json": "9258696373efa3b306b94cbec10f1d10990e18aebaeb3d2066a6799c3f2d642f",
+        "attempts/paper-0315463/review-c/receipt.json": "84b70c9f517da692e606e541e1df9deaae1c3d65d0bb542bb1f170c4d90676a0",
+        "attempts/paper-0315463/review-c/manuscript-workspace/paper.json": "d73a4dda67538e26bc6c295d415adb18fb3c3663d4cc7e2a989e96a53645993b",
+        "attempts/paper-0315463/review-c/core-run/debate/sources/cards.json": "37517e5f3dc66819f61f5a7bb8ace1921282415f10551d2defa5c3eb0985b570"
+      }
+    },
+    {
+      "paper": "paper-0315657",
+      "original_delivery": "complete",
+      "preflight_valid": true,
+      "error": null,
+      "problem_counts": {},
+      "problems": [],
+      "input_sha256": {
+        "attempts/paper-0315657/review-c/core-run/debate/responses/debate-model.json": "0e58f3ad3e08f9c4a13423887cb26291a1f492bcbd45000cc4030405166237ed",
+        "attempts/paper-0315657/review-c/core-run/debate/debate-ledger.json": "c0e4b11d22dc2bba01e19e523708b6fb085baae6fff8860a78c1180d65536717",
+        "attempts/paper-0315657/review-c/receipt.json": "6ec6d0efff749b87cf510a9a9fd403e89df807fd229417cd9d0d9cd99680cfb0",
+        "attempts/paper-0315657/review-c/manuscript-workspace/paper.json": "298a8f294ad0e272303dd72558b5b9d54db5ecf9846dbd7d77ac80c1fee4af8a",
+        "attempts/paper-0315657/review-c/core-run/debate/sources/cards.json": "37517e5f3dc66819f61f5a7bb8ace1921282415f10551d2defa5c3eb0985b570"
+      }
+    },
+    {
+      "paper": "paper-0315821",
+      "original_delivery": "complete",
+      "preflight_valid": true,
+      "error": null,
+      "problem_counts": {},
+      "problems": [],
+      "input_sha256": {
+        "attempts/paper-0315821/review-c/core-run/debate/responses/debate-model.json": "c1871a44ba36cd7a86bc0eaac52175faeaf86a9b9b51d413749ed064a36213f5",
+        "attempts/paper-0315821/review-c/core-run/debate/debate-ledger.json": "82333e493fbe8fb4d5a074f6e9ae398f77000e812a7c84cab3d4eee81d7c32af",
+        "attempts/paper-0315821/review-c/receipt.json": "c3c8acb103e847e64182ff88abf90fc81fa7363d7c1aa06b7fed178f4a355028",
+        "attempts/paper-0315821/review-c/manuscript-workspace/paper.json": "64587f6b72a9a303a802c0d0e2ba5c77054e519c96d1b7ac9172e22512babcb1",
+        "attempts/paper-0315821/review-c/core-run/debate/sources/cards.json": "37517e5f3dc66819f61f5a7bb8ace1921282415f10551d2defa5c3eb0985b570"
+      }
+    },
+    {
+      "paper": "paper-0316074",
+      "original_delivery": "complete",
+      "preflight_valid": true,
+      "error": null,
+      "problem_counts": {},
+      "problems": [],
+      "input_sha256": {
+        "attempts/paper-0316074/review-c/core-run/debate/responses/debate-model.json": "282aaaec588faa6297db4c35074fa67230b5fb15d867f5f5065c36d0b86ea3ce",
+        "attempts/paper-0316074/review-c/core-run/debate/debate-ledger.json": "e6fc1ecb11d748b119e90bd4d1fa7fc47123558f5c107e23b30ead021fd08e3f",
+        "attempts/paper-0316074/review-c/receipt.json": "b296a7a1e97fcf2c760b171494ee9cc27547c8c865c0006a744d4990730d74db",
+        "attempts/paper-0316074/review-c/manuscript-workspace/paper.json": "fa68e21942671bb41d7f62a55f1971f6710909782af55e9d6e012c763abfba4e",
+        "attempts/paper-0316074/review-c/core-run/debate/sources/cards.json": "37517e5f3dc66819f61f5a7bb8ace1921282415f10551d2defa5c3eb0985b570"
+      }
+    },
+    {
+      "paper": "paper-0316083",
+      "original_delivery": "complete",
+      "preflight_valid": true,
+      "error": null,
+      "problem_counts": {},
+      "problems": [],
+      "input_sha256": {
+        "attempts/paper-0316083/review-c/core-run/debate/responses/debate-model.json": "c61f489464e21da7c604298b3311435d99de3b73c458475ba4de19c33f43a39b",
+        "attempts/paper-0316083/review-c/core-run/debate/debate-ledger.json": "078e559a95d6a706c18b272e637c6c5bd2e89df6caf38762f485d9d7cbec3126",
+        "attempts/paper-0316083/review-c/receipt.json": "8bfdb23b4b590430f3bf76f485bc620ca49de25c4ecfe2416fbbcf3e4223a04b",
+        "attempts/paper-0316083/review-c/manuscript-workspace/paper.json": "d1f9e832fcc1b3c3e95e2832ba7e0c31cf166f0dc052fe41a865e071aae6dba1",
+        "attempts/paper-0316083/review-c/core-run/debate/sources/cards.json": "2b336fab2ae85414d8f813b16d9a8fd15c397749cc39c5c36864509e11002cc0"
+      }
+    },
+    {
+      "paper": "paper-0316262",
+      "original_delivery": "complete",
+      "preflight_valid": true,
+      "error": null,
+      "problem_counts": {},
+      "problems": [],
+      "input_sha256": {
+        "attempts/paper-0316262/review-c/core-run/debate/responses/debate-model.json": "1c464474034de01379e74909dad70b7cbc67a7780612bcd3444165137aff461d",
+        "attempts/paper-0316262/review-c/core-run/debate/debate-ledger.json": "fd7ba4c38c34b139140ce1cfbd5d4b1f9de5ba38ff24452114d69348085d80cf",
+        "attempts/paper-0316262/review-c/receipt.json": "3015ab94c4f744ae526b96d40a2e476bb53d0d475e634ac624a5caf4e9811f44",
+        "attempts/paper-0316262/review-c/manuscript-workspace/paper.json": "302ea8e2b802857b120f21a453ce31723320f4a562aff136641255d838d2f730",
+        "attempts/paper-0316262/review-c/core-run/debate/sources/cards.json": "37517e5f3dc66819f61f5a7bb8ace1921282415f10551d2defa5c3eb0985b570"
+      }
+    },
+    {
+      "paper": "paper-0316629",
+      "original_delivery": "complete",
+      "preflight_valid": true,
+      "error": null,
+      "problem_counts": {},
+      "problems": [],
+      "input_sha256": {
+        "attempts/paper-0316629/review-c/core-run/debate/responses/debate-model.json": "aa32da25173016d84a745198e10b5f5d3ceeb66c229f4dacaf21e63303f277b7",
+        "attempts/paper-0316629/review-c/core-run/debate/debate-ledger.json": "b930017611887019cee8417b974b6ad5b080338447c24ea49f991e1630ca7bf1",
+        "attempts/paper-0316629/review-c/receipt.json": "c7413c752a8e667fb8f7f687e8f07ea74e7126c5db5905f88630ed57176020cc",
+        "attempts/paper-0316629/review-c/manuscript-workspace/paper.json": "17ad71e70a7afb43b331f21ed0d90b84cbb0aa20c1250c457b6a13672817e0cb",
+        "attempts/paper-0316629/review-c/core-run/debate/sources/cards.json": "37517e5f3dc66819f61f5a7bb8ace1921282415f10551d2defa5c3eb0985b570"
+      }
+    },
+    {
+      "paper": "paper-0316727",
+      "original_delivery": "complete",
+      "preflight_valid": true,
+      "error": null,
+      "problem_counts": {},
+      "problems": [],
+      "input_sha256": {
+        "attempts/paper-0316727/review-c/core-run/debate/responses/debate-model.json": "649036c85ac6cdefdcdc7ddc255da0b8e8b13c9038e099223b8bbce72dde934c",
+        "attempts/paper-0316727/review-c/core-run/debate/debate-ledger.json": "2fa409d273cb64f39fa8b34a60fc134e7791733236633b83193640442fb1b54e",
+        "attempts/paper-0316727/review-c/receipt.json": "5f756b13a930da76e0791ca1939b2c819418a5aa23d023393aa505c34ddc1e0b",
+        "attempts/paper-0316727/review-c/manuscript-workspace/paper.json": "fc0ed4d5f338ad6067a864333b2568ee3bd5d22ccd3d245077f5cf7a2900ac55",
+        "attempts/paper-0316727/review-c/core-run/debate/sources/cards.json": "37517e5f3dc66819f61f5a7bb8ace1921282415f10551d2defa5c3eb0985b570"
+      }
+    },
+    {
+      "paper": "paper-0317140",
+      "original_delivery": "failed",
+      "preflight_valid": false,
+      "error": "Rejected hypothesis must resolve every component with source evidence",
+      "problem_counts": {
+        "rejected_hypothesis_unresolved_component": 1
+      },
+      "problems": [
+        {
+          "issue_id": "r1-hypothesis-2",
+          "component_id": "r1-hypothesis-2-part-2",
+          "code": "rejected_hypothesis_unresolved_component",
+          "message": "A rejected hypothesis must resolve every component with evidence. An open question is not disproven."
+        }
+      ],
+      "input_sha256": {
+        "attempts/paper-0317140/review-c/core-run/debate/responses/debate-model.json": "df666e09cd9aef90d21acb2a1e08327160fc6c497a0a2b0d3eb25eea10fdfdf1",
+        "attempts/paper-0317140/review-c/core-run/debate/debate-ledger.json": "b8761276dd046e83ae24c856fec9383a8aca81ce8887901b2aaef0d5592455df",
+        "attempts/paper-0317140/review-c/receipt.json": "7246f99898120c110ed8ee32038765155c74a960fb2c6b0dbed2b5621946fcaf",
+        "attempts/paper-0317140/review-c/manuscript-workspace/paper.json": "806cde768df1620cbc1a8cc95f6d4270e6513a5dc66b765099ec66b95a3c7f2d",
+        "attempts/paper-0317140/review-c/core-run/debate/sources/cards.json": "69ab77fe103cc6b20d185fc6749b237ccef1c1f685fc255f677592910270109b"
+      }
+    },
+    {
+      "paper": "paper-0317186",
+      "original_delivery": "complete",
+      "preflight_valid": true,
+      "error": null,
+      "problem_counts": {},
+      "problems": [],
+      "input_sha256": {
+        "attempts/paper-0317186/review-c/core-run/debate/responses/debate-model.json": "f58cd1fad186f4512e2539658cae139ebe2d4e55246d8bd4c6f0bbfefd6b59cc",
+        "attempts/paper-0317186/review-c/core-run/debate/debate-ledger.json": "a659cbe859f79c75b2edb516bebb3e3edf87ade33b36205ea04daa8c104eaa1d",
+        "attempts/paper-0317186/review-c/receipt.json": "1e7f7bbb66c5d02083fc2a555934429af4fc66c1b5c8e39df9dc43f5d25bda84",
+        "attempts/paper-0317186/review-c/manuscript-workspace/paper.json": "7f4820c850d3c68585db16fa0d591ac5682001a9bbc61fae833ae2e653b5a4f6",
+        "attempts/paper-0317186/review-c/core-run/debate/sources/cards.json": "37517e5f3dc66819f61f5a7bb8ace1921282415f10551d2defa5c3eb0985b570"
+      }
+    },
+    {
+      "paper": "paper-0317245",
+      "original_delivery": "complete",
+      "preflight_valid": true,
+      "error": null,
+      "problem_counts": {},
+      "problems": [],
+      "input_sha256": {
+        "attempts/paper-0317245/review-c/core-run/debate/responses/debate-model.json": "a58f2acc7c44c78d78d25c0f6d61a50712f5de0079a1366e6c025a12fa6f32bb",
+        "attempts/paper-0317245/review-c/core-run/debate/debate-ledger.json": "a5cfd79a2fbb31c84bd79a48413b6d531736c6e8583eda72af22c0c2925e55a8",
+        "attempts/paper-0317245/review-c/receipt.json": "c1015dc98c307c8f9c2583cd90c33cdb998bcd8ec110b078f5841ceeed0461d4",
+        "attempts/paper-0317245/review-c/manuscript-workspace/paper.json": "8caad07ed46421aa7af409913329044bf1aefa93efa55c68f53ff148328640fb",
+        "attempts/paper-0317245/review-c/core-run/debate/sources/cards.json": "37517e5f3dc66819f61f5a7bb8ace1921282415f10551d2defa5c3eb0985b570"
+      }
+    },
+    {
+      "paper": "paper-0317397",
+      "original_delivery": "complete",
+      "preflight_valid": true,
+      "error": null,
+      "problem_counts": {},
+      "problems": [],
+      "input_sha256": {
+        "attempts/paper-0317397/review-c/core-run/debate/responses/debate-model.json": "c710999aabfe56730c36708b6d5bf0d7c921ab774ecb5e6e9f2e53495a15a828",
+        "attempts/paper-0317397/review-c/core-run/debate/debate-ledger.json": "b86877047715df376ad4f65d93af9760f62ae9e1d5e3731b557af214c2a0b6b5",
+        "attempts/paper-0317397/review-c/receipt.json": "c11370857ee7caf0d7a1d861d8764fe5bd4fbaff78fa2498c83a83b174eab669",
+        "attempts/paper-0317397/review-c/manuscript-workspace/paper.json": "d6c0afdff1766ece513099cbd97af92b499abb92b89b806b2fa584d2157beb85",
+        "attempts/paper-0317397/review-c/core-run/debate/sources/cards.json": "37517e5f3dc66819f61f5a7bb8ace1921282415f10551d2defa5c3eb0985b570"
+      }
+    },
+    {
+      "paper": "paper-0317431",
+      "original_delivery": "complete",
+      "preflight_valid": true,
+      "error": null,
+      "problem_counts": {},
+      "problems": [],
+      "input_sha256": {
+        "attempts/paper-0317431/review-c/core-run/debate/responses/debate-model.json": "a3040d70cb66b7b836310fc95517238d3470a25781de5a6fd387e47214eec2a4",
+        "attempts/paper-0317431/review-c/core-run/debate/debate-ledger.json": "35cf48cc904a9bdc8a7cc7bd3894c1e088ea172adf4d7dcce57ab4b971fb3958",
+        "attempts/paper-0317431/review-c/receipt.json": "b04e8b1a29044cf64b99bd59cd501a29d88d79567fe358af38cc594e6df3feea",
+        "attempts/paper-0317431/review-c/manuscript-workspace/paper.json": "7f1fd173157a50ed87731c86cffd1d1008642336e999c67d29a99e6685dbd7ad",
+        "attempts/paper-0317431/review-c/core-run/debate/sources/cards.json": "37517e5f3dc66819f61f5a7bb8ace1921282415f10551d2defa5c3eb0985b570"
+      }
+    }
+  ],
+  "limitation": "This tests validation and diagnostics on saved outputs. It does not measure whether models use feedback successfully in fresh reviews."
+}

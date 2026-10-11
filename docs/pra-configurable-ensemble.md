@@ -16,7 +16,21 @@ Discovery, ordinary revision, and debate share guidance to retain consequential 
 
 When an otherwise valid component reference differs only in its first-letter capitalization or one trailing punctuation mark, a restricted repair can select the unique matching span from the same final comment. It records both versions and revalidates the entire result. It cannot rewrite a comment, change its scientific status, redirect a component, paraphrase a quotation, or repair a manuscript quotation.
 
-Debate is one fresh model session that weighs criticism and author defense. It is not a conversation among multiple independently running debaters. It receives the pooled ledger, full manuscript, source cards, and original images. It has two additional tool calls. The existing source-handle validation, conservative edit guard, secondary inventory, and manuscript annotation export remain in use.
+Debate is one fresh model session that weighs criticism and author defense. It is not a conversation among multiple independently running debaters. It receives the pooled ledger, full manuscript, source cards, and original images. It has two additional source tool calls. The existing source-handle validation, conservative edit guard, secondary inventory, and manuscript annotation export remain in use.
+
+## Synthesis validation before submission
+
+Core 0.1.6 exposes `validate_synthesis` only to the synthesis session, for debate and ordinary synthesis. The prompt asks the model to write final findings first, map retained components to actual final text, check the complete draft, and correct reported errors before submitting. Two local checks are allowed separately from the two source calls. This adds no generation session or network request, although submitting a draft to the tool uses additional context tokens. A durable receipt preserves each draft, validation result and allowance reservation across server restarts.
+
+Preflight uses the same source handles, candidate normalization, evidence checks, exact destination checks and restricted formatting recovery as final validation. It does not invent missing comments, decide a scientific status, relax evidence requirements or publish a review. Final validation remains mandatory even if the model skips preflight or edits its response afterward. The final audit records whether a passing check covered the exact submitted draft.
+
+A reference recovery failure now reports the later validation error that remained after a permitted formatting correction. Previously, that error could be hidden behind the initial quotation error. Diagnostics identify missing final findings, absent destination text and a rejected hypothesis with an unresolved component. Secondary-comment errors identify the issue and missing or unexpected fields. Required author-facing comments cannot be replaced with null to bypass validation. Original study outputs and frozen execution code are unaffected.
+
+An offline replay of 23 saved main-study syntheses accepted all 19 previously completed outputs and rejected all four recorded failures. No new model calls were used. This checks validator behavior and error visibility. It does not establish a lower failure rate in new reviews.
+
+Two subsequent development calls reused discovery from the original empty-output failure. The first still failed because secondary-comment feedback was too generic. Feedback was revised to name issue IDs and missing fields. In the second call, preflight identified two absent destination quotations. The next check passed, and the final five-finding submission passed independent production validation. The model changed ledger wording after preflight, so the submitted draft hash did not match the preflight hash. Final validation remained mandatory. Both attempts are preserved. Together they used 492,803 observed tokens, with no discovery reruns or judge calls. This is outcome-selected development, not a new failure-rate estimate or evidence of improved scientific review quality.
+
+Exact offline and live receipts are under `docs/validation/`. The raw development archive is attached to the private paper repository's draft `study-results-v1` release as `pwb-synthesis-validation-development-20261011.tar.gz`. The archive excludes billing records and includes both frozen development code snapshots.
 
 ## Run
 

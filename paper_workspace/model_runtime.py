@@ -174,10 +174,11 @@ def tool_identity(work, tools):
 
 def tool_profile(config):
     profile = config.get('tool_profile', 'legacy')
+    preflight = ('validate_synthesis',) if config.get('synthesis_ledger') else ()
     if profile == 'legacy':
-        return 'manuscript_tools.py', APPROVED_MANUSCRIPT_TOOLS
+        return 'manuscript_tools.py', (*APPROVED_MANUSCRIPT_TOOLS, *preflight)
     if profile == 'domains-v1':
-        return 'manuscript_tools.py', (*APPROVED_MANUSCRIPT_TOOLS, 'lookup_source', 'inspect_results', 'record_comparison', 'resolve_identifier', 'historical_registration')
+        return 'manuscript_tools.py', (*APPROVED_MANUSCRIPT_TOOLS, 'lookup_source', 'inspect_results', 'record_comparison', 'resolve_identifier', 'historical_registration', *preflight)
     if profile == 'debate-v2':
         from .debate_evidence import TOOLS
         return 'debate_tools.py', TOOLS

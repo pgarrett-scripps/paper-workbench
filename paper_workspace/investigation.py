@@ -33,6 +33,7 @@ class Investigation:
         self.manuscript_handles=config.get('manuscript_handles',False)
         self.sources = None
         self.targeted = None
+        self.synthesis_preflight = None
         if config.get('tool_profile') == 'domains-v1':
             from .external_evidence import SourceClient
             self.sources = SourceClient(config['source_state'], config['cache'],
@@ -42,6 +43,12 @@ class Investigation:
             from .targeted_sources import TargetedSources, HistoricalRegistrationStore
             historical = HistoricalRegistrationStore(config['historical_snapshots']) if config.get('historical_snapshots') else None
             self.targeted = TargetedSources(self.sources, historical)
+
+        if config.get('synthesis_ledger'):
+            from .synthesis_validation import SynthesisPreflight
+            self.synthesis_preflight = SynthesisPreflight(
+                read(config['synthesis_ledger']), self.paper, self.out/'synthesis-preflight',
+                lambda: self.sources.cards() if self.sources else None)
 
     def audit_tool_discovery(self, event, server_info, tool_names=None):
         """Append the MCP exposure observed by this server process."""
@@ -82,6 +89,8 @@ class Investigation:
             return {'source_url':url,'unavailable':str(exc),'limitation':'Unavailable evidence does not imply an incorrect or missing citation.'}
 
     def call(self,name,args):
+        if name == 'validate_synthesis' and self.synthesis_preflight is not None:
+            return self.synthesis_preflight.call(args.get('draft_json'))
         self.calls+=1
         if self.calls>self.limit:
             return {'notice':'Tool allowance exhausted. Finish from existing evidence.'}
@@ -211,7 +220,7 @@ class Investigation:
         raise ValueError('Unknown investigation tool')
 
 
-def specs(domain_support=False):
+def specs(domain_support=False, synthesis_preflight=False):
     definitions=[
         ('read_blocks','Read source blocks by stable IDs.',{'ids':{'type':'array','items':{'type':'string'}}}),
         ('search','Search for one short exact contiguous phrase in manuscript and supplements, not a list of keywords. Read known table block IDs directly when available.',{'query':{'type':'string'}}),
@@ -247,6 +256,9 @@ def specs(domain_support=False):
                             ', '.join(k + ' (' + v[0] + ')' for k, v in PROVIDERS.items()) +
                             '. Returns dated evidence with limitations. Unlisted providers are unavailable.',
                             {'provider': {'type': 'string'}, 'identifier': {'type': 'string'}, 'block_id': {'type': 'string'}}))
+    if synthesis_preflight:
+        definitions.append(('validate_synthesis', 'Validate a complete synthesis draft before submission. Two local checks, separate from the source allowance. No network or scientific endorsement.',
+                            {'draft_json': {'type': 'string', 'maxLength': 300000}}))
     return [{'name':name,'description':desc,'inputSchema':{'type':'object','properties':props,'required':['id'] if name=='view_supplement' else list(props),'additionalProperties':False},
              'annotations':{'readOnlyHint':False,'destructiveHint':False,'idempotentHint':False,'openWorldHint':name in ('check_citation','search_literature','lookup_source')}} for name,desc,props in definitions]
 
@@ -264,7 +276,7 @@ def main(config_path):
                 result={'protocolVersion':request['params']['protocolVersion'],'capabilities':{'tools':{}},'serverInfo':server_info}
                 server.audit_tool_discovery('initialize', server_info)
             elif method=='tools/list':
-                available=specs(server.sources is not None)
+                available=specs(server.sources is not None, server.synthesis_preflight is not None)
                 server.audit_tool_discovery('tools/list', {'name':'paper-workspace','version':'0.1.0'},
                                             [tool['name'] for tool in available])
                 result={'tools':available}
