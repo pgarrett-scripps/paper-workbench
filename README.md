@@ -4,6 +4,10 @@ An evidence-linked workspace for manuscript review and revision. This private re
 
 The project was extracted from In Silico. It is a successor implementation to the original PeerReviewAgents workflow, with different source handling, review orchestration and revision tools. The original projects remain separate.
 
+## Team handoff
+
+Start with [the team handoff](HANDOFF.md) for the current architecture, setup, exact stopping point and next engineering task. The companion paper repository contains the study evidence and publication blockers.
+
 ## Install
 
 Requires Python 3.11 or newer. From this checkout:
