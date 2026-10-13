@@ -32,6 +32,16 @@ Two subsequent development calls reused discovery from the original empty-output
 
 Exact offline and live receipts are under `docs/validation/`. The raw development archive is attached to the private paper repository's draft `study-results-v1` release as `pwb-synthesis-validation-development-20261011.tar.gz`. The archive excludes billing records and includes both frozen development code snapshots.
 
+### Component ledger contract
+
+Core 0.1.7 uses preflight version `synthesis-preflight-v2`. In the four-paper synthesis recovery, paper 0317140 failed after its first check contained all 38 component records but was rejected for one unknown evidence handle. The next check and the final response kept all 14 issue decisions with empty component arrays. The feedback named neither the missing identifiers nor the fact that the first ledger had been complete.
+
+The synthesis schema now requires exactly one outer decision per known issue, restricts issue and component identifiers to the ledger, and requires at least one component per decision when every issue has components. The prompt lists the required component identifiers for each issue. New candidates keep runtime-assigned identifiers.
+
+Every preflight result reports `component_ledger` counts, including when another error stops validation. Problems name missing, duplicated, misassigned and unknown component identifiers, and missing or duplicate decisions. The production `synthesis-validation.json` records the same diagnostics. Final validation is unchanged and still rejects any incomplete ledger. No draft is repaired.
+
+An offline replay of the three saved 0317140 drafts reported 38 of 38 components accounted for in the first check and named all 38 missing identifiers in the second check and final response. No new model calls were used. This tests diagnostics on saved outputs only. It does not show that a model will use the feedback in a fresh synthesis. The receipt is `docs/validation/component-ledger-replay-20261012.json`.
+
 ## Run
 
 ```bash

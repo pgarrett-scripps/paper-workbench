@@ -48,6 +48,30 @@ def ensemble_schema():
     return copy.deepcopy(ENSEMBLE_DEBATE)
 
 
+def _identifier_choice(values):
+    # Mirror the manuscript-handle constraint: a finite pattern replaces an oversized enum.
+    return ({'type': 'string', 'enum': list(values)} if len(values) <= 950 else
+            {'type': 'string', 'pattern': '^(?:' + '|'.join(re.escape(v) for v in values) + ')$'})
+
+
+def constrain_ledger_identifiers(schema, ledger):
+    """Require one outer decision per known issue and only ledger component identifiers."""
+    result = copy.deepcopy(schema)
+    issues = ledger['issues']
+    decisions = result['properties']['decisions']
+    decisions.update(minItems=len(issues), maxItems=len(issues))
+    if not issues:
+        return result
+    decision = decisions['items']['properties']
+    decision['issue_id'] = _identifier_choice([issue['issue_id'] for issue in issues])
+    components = [component['component_id'] for issue in issues for component in issue['components']]
+    if components:
+        decision['components']['items']['properties']['component_id'] = _identifier_choice(components)
+    if all(issue['components'] for issue in issues):
+        decision['components']['minItems'] = 1
+    return result
+
+
 def normalize_new_decisions(value):
     """Materialize v2 nested new decisions without modifying the model response."""
     if not isinstance(value, dict):

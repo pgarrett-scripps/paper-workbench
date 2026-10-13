@@ -91,9 +91,11 @@ def debate_reviews(workspace,out,billing,cutoff,records,*,images=(),model='gpt-5
     """Shared debate implementation for fresh discovery and explicitly recorded reused drafts."""
     from .ensemble_debate import (ensemble_schema, ensemble_prompt, ordinary_synthesis_prompt, augment_ledger,
                                   normalize_new_decisions, adjudicated_secondary,
-                                  audit_only_secondary, attach_adjudicated_secondary)
+                                  audit_only_secondary, attach_adjudicated_secondary,
+                                  constrain_ledger_identifiers)
     from .reviewer import handle_manuscript,HANDLE_INSTRUCTION
-    from .synthesis_validation import INSTRUCTION, VERSION, destination_diagnostics, preflight_receipts
+    from .synthesis_validation import (INSTRUCTION, VERSION, destination_diagnostics, preflight_receipts,
+                                       component_contract, component_diagnostics)
     root,out=Path(workspace).resolve(),Path(out).resolve()
     if synthesis_policy not in ('debate', 'ordinary'):
         raise ValueError('Synthesis policy must be debate or ordinary')
@@ -163,10 +165,11 @@ def debate_reviews(workspace,out,billing,cutoff,records,*,images=(),model='gpt-5
         if sources:
             schema=with_external_evidence(schema)
         schema=constrain_manuscript_handles(with_evidence_handles(schema),build_registry(paper))
+        schema=constrain_ledger_identifiers(schema,ledger)
         card_context=[{**c,'evidence_handles':[h.model_record() for h in source_card_handles(c)]} for c in cards.values()]
         prompt_builder = ensemble_prompt if synthesis_policy == 'debate' else ordinary_synthesis_prompt
         prompt=prompt_builder(paper,handle_manuscript(paper),ledger,source_cards=card_context if sources else None)
-        prompt+=INSTRUCTION
+        prompt+=INSTRUCTION+component_contract(ledger)
         prompt+='\nEach reviewer may supply up to ten candidates. The pooled ledger can exceed ten. Decide every supplied issue.\n'+HANDLE_INSTRUCTION
         if memos:
             memo_instruction = ('Assess how each memo affects the support and remaining uncertainty for its issue.'
@@ -200,10 +203,12 @@ def debate_reviews(workspace,out,billing,cutoff,records,*,images=(),model='gpt-5
                                  require_adjudicated_secondary=True)
         write(out/'augmented-ledger.json',augmented)
         presentation=recover(final,augmented,paper,sources.cards() if sources else None)
+        component_problems,component_ledger=component_diagnostics(raw,ledger)
         write(out/'synthesis-validation.json', {
             'version':VERSION, 'valid':presentation['recovered'] is not None or presentation['original']['status']=='valid',
-            'problems':destination_diagnostics(final,augmented,presentation.get('changed_fields',[]))
+            'problems':component_problems+destination_diagnostics(final,augmented,presentation.get('changed_fields',[]))
                 if presentation['recovered'] is None and presentation['original']['status']=='failure' else [],
+            'component_ledger':component_ledger,
             'reference_recovery':{k:v for k,v in presentation.items() if k!='recovered'},
             'preflight':preflight_receipts(out/'investigations'/stage/'synthesis-preflight',raw)})
         write(out/'presentation-audit.json',{k:v for k,v in presentation.items() if k!='recovered'})

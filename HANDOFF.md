@@ -55,7 +55,7 @@ Core version 0.1.6 at commit `87975b61d68d85027585e09d5a2392a276bad879` added tw
 
 The subsequent four-paper recovery completed three syntheses. Paper `0317140` still failed because the model supplied 14 issue decisions and five final comments but omitted all 38 required component records. This is a traceability failure, not proof that all scientific points were lost. The [recovery results](https://github.com/pgarrett-scripps/paper-workbench-paper/blob/master/study/synthesis-recovery-20261011-v1/RESULTS.md) preserve every attempt.
 
-The next engineering task is to require complete component structure in the model response contract and report missing identifiers in feedback. Start with offline regression cases for empty, missing, duplicated and misassigned components. Keep strict final validation and preserve the failed artifact. This fix has not been implemented. Only after offline checks should a separately recorded, bounded synthesis trial test it.
+Core 0.1.7 requires complete component structure in the synthesis response contract and names missing, duplicated, misassigned and unknown component identifiers in preflight and final validation records. Offline regression cases cover each failure and an offline replay of the saved 0317140 drafts. Final validation remains strict. See [the component ledger contract](docs/pra-configurable-ensemble.md#component-ledger-contract). The change has not been tested with a model. The next step is a separately recorded, bounded synthesis trial.
 
 ## Execution and collaboration
 

@@ -1,0 +1,197 @@
+{
+  "kind": "offline_component_ledger_replay",
+  "preflight_version": "synthesis-preflight-v2",
+  "new_model_calls": 0,
+  "original_results_changed": false,
+  "paper": "paper-0317140",
+  "source": {
+    "repository": "paper-workbench-paper",
+    "commit": "ab162b2cd44fe42bd85e324f8e53860c55178230",
+    "input_sha256": {
+      "evidence/synthesis-recovery-20261011-v1/attempts/paper-0317140/synthesis/debate-ledger.json": "b8761276dd046e83ae24c856fec9383a8aca81ce8887901b2aaef0d5592455df",
+      "evidence/synthesis-recovery-20261011-v1/attempts/paper-0317140/synthesis/investigations/debate/synthesis-preflight/check-1.json": "08f49771c3c1b997c2bc3641451e8476a749cc7728ba051126c2fb490eb29a10",
+      "evidence/synthesis-recovery-20261011-v1/attempts/paper-0317140/synthesis/investigations/debate/synthesis-preflight/check-2.json": "17b82334d0a43c1a33e0e42a8d011b56bc420c1323fcdbadd0b6421348fc884a",
+      "evidence/synthesis-recovery-20261011-v1/attempts/paper-0317140/synthesis/responses/debate-model.json": "3c217856a44729ac4fc2322989ae507ad3247c0ee73ff025d8f9f5a599a685cb"
+    }
+  },
+  "drafts": [
+    {
+      "draft": "check-1",
+      "original_error": "Unknown evidence handle at $.findings[2].manuscript_evidence_handles[1]",
+      "component_ledger": {
+        "issues": 14,
+        "decided_issues": 14,
+        "expected_components": 38,
+        "accounted_components": 38,
+        "complete": true
+      },
+      "problem_counts": {},
+      "missing_component_ids": {}
+    },
+    {
+      "draft": "check-2",
+      "original_error": "Every original component must have exactly one treatment",
+      "component_ledger": {
+        "issues": 14,
+        "decided_issues": 14,
+        "expected_components": 38,
+        "accounted_components": 0,
+        "complete": false
+      },
+      "problem_counts": {
+        "missing_components": 14
+      },
+      "missing_component_ids": {
+        "r1-issue-1": [
+          "r1-issue-1-part-1",
+          "r1-issue-1-part-2",
+          "r1-issue-1-part-3",
+          "r1-issue-1-part-4"
+        ],
+        "r1-issue-2": [
+          "r1-issue-2-part-1",
+          "r1-issue-2-part-2",
+          "r1-issue-2-part-3"
+        ],
+        "r1-issue-3": [
+          "r1-issue-3-part-1",
+          "r1-issue-3-part-2",
+          "r1-issue-3-part-3"
+        ],
+        "r1-issue-4": [
+          "r1-issue-4-part-1",
+          "r1-issue-4-part-2",
+          "r1-issue-4-part-3",
+          "r1-issue-4-part-4"
+        ],
+        "r1-issue-5": [
+          "r1-issue-5-part-1",
+          "r1-issue-5-part-2",
+          "r1-issue-5-part-3"
+        ],
+        "r1-hypothesis-1": [
+          "r1-hypothesis-1-part-1",
+          "r1-hypothesis-1-part-2"
+        ],
+        "r1-hypothesis-2": [
+          "r1-hypothesis-2-part-1",
+          "r1-hypothesis-2-part-2"
+        ],
+        "r2-issue-1": [
+          "r2-issue-1-part-1",
+          "r2-issue-1-part-2",
+          "r2-issue-1-part-3",
+          "r2-issue-1-part-4"
+        ],
+        "r2-issue-2": [
+          "r2-issue-2-part-1",
+          "r2-issue-2-part-2",
+          "r2-issue-2-part-3"
+        ],
+        "r2-issue-3": [
+          "r2-issue-3-part-1",
+          "r2-issue-3-part-2",
+          "r2-issue-3-part-3"
+        ],
+        "r2-issue-4": [
+          "r2-issue-4-part-1",
+          "r2-issue-4-part-2",
+          "r2-issue-4-part-3"
+        ],
+        "r2-issue-5": [
+          "r2-issue-5-part-1",
+          "r2-issue-5-part-2"
+        ],
+        "r2-hypothesis-1": [
+          "r2-hypothesis-1-part-1"
+        ],
+        "r2-hypothesis-2": [
+          "r2-hypothesis-2-part-1"
+        ]
+      }
+    },
+    {
+      "draft": "final",
+      "original_error": "Every original component must have exactly one treatment",
+      "component_ledger": {
+        "issues": 14,
+        "decided_issues": 14,
+        "expected_components": 38,
+        "accounted_components": 0,
+        "complete": false
+      },
+      "problem_counts": {
+        "missing_components": 14
+      },
+      "missing_component_ids": {
+        "r1-issue-1": [
+          "r1-issue-1-part-1",
+          "r1-issue-1-part-2",
+          "r1-issue-1-part-3",
+          "r1-issue-1-part-4"
+        ],
+        "r1-issue-2": [
+          "r1-issue-2-part-1",
+          "r1-issue-2-part-2",
+          "r1-issue-2-part-3"
+        ],
+        "r1-issue-3": [
+          "r1-issue-3-part-1",
+          "r1-issue-3-part-2",
+          "r1-issue-3-part-3"
+        ],
+        "r1-issue-4": [
+          "r1-issue-4-part-1",
+          "r1-issue-4-part-2",
+          "r1-issue-4-part-3",
+          "r1-issue-4-part-4"
+        ],
+        "r1-issue-5": [
+          "r1-issue-5-part-1",
+          "r1-issue-5-part-2",
+          "r1-issue-5-part-3"
+        ],
+        "r1-hypothesis-1": [
+          "r1-hypothesis-1-part-1",
+          "r1-hypothesis-1-part-2"
+        ],
+        "r1-hypothesis-2": [
+          "r1-hypothesis-2-part-1",
+          "r1-hypothesis-2-part-2"
+        ],
+        "r2-issue-1": [
+          "r2-issue-1-part-1",
+          "r2-issue-1-part-2",
+          "r2-issue-1-part-3",
+          "r2-issue-1-part-4"
+        ],
+        "r2-issue-2": [
+          "r2-issue-2-part-1",
+          "r2-issue-2-part-2",
+          "r2-issue-2-part-3"
+        ],
+        "r2-issue-3": [
+          "r2-issue-3-part-1",
+          "r2-issue-3-part-2",
+          "r2-issue-3-part-3"
+        ],
+        "r2-issue-4": [
+          "r2-issue-4-part-1",
+          "r2-issue-4-part-2",
+          "r2-issue-4-part-3"
+        ],
+        "r2-issue-5": [
+          "r2-issue-5-part-1",
+          "r2-issue-5-part-2"
+        ],
+        "r2-hypothesis-1": [
+          "r2-hypothesis-1-part-1"
+        ],
+        "r2-hypothesis-2": [
+          "r2-hypothesis-2-part-1"
+        ]
+      }
+    }
+  ],
+  "limitation": "This checks component diagnostics on saved drafts. It does not measure whether a model uses the feedback in a fresh synthesis."
+}

@@ -60,7 +60,7 @@ class EnsembleTests(unittest.TestCase):
             self.assertFalse(ensemble.observed_usage(out)['unknown'])
             with self.assertRaisesRegex(ValueError,'launch budget'):ensemble.check_budget(out,100,3)
 
-    def simulate(self,count=None,budget=750000):
+    def simulate(self,count=None,budget=750000,empty_components=False):
         with tempfile.TemporaryDirectory() as directory:
             base=Path(directory)
             root,out=base/'paper',base/'run'
@@ -89,7 +89,7 @@ class EnsembleTests(unittest.TestCase):
                         'presentation':'primary','strongest_criticism':'Allocation needs clarification.',
                         'strongest_author_defense':'A sample count is present.','decisive_question':'How allocated?',
                         'decision_reason':'Retain a proportionate question.','evidence':[{'evidence_handle':handle}],
-                        'components':[{'component_id':ident+'-part-1','treatment':'preserved',
+                        'components':[] if empty_components else [{'component_id':ident+'-part-1','treatment':'preserved',
                             'final_finding_number':index,'final_quote':item['comment'],
                             'reason':'The request is retained.','evidence':[]}]})
                 return {'summary':'Review','findings':copy.deepcopy(findings),'limitations':[],
@@ -104,6 +104,18 @@ class EnsembleTests(unittest.TestCase):
                     self.assertEqual(len(calls),1)
                     self.assertEqual(read(out/'progress.json')['status'],'blocked')
                     return
+                if empty_components:
+                    with self.assertRaisesRegex(ValueError,'exactly one treatment'):
+                        ensemble.ensemble_review(root,out,base/'billing.json','2024-01-01',**options)
+                    validation=read(out/'debate/synthesis-validation.json')
+                    self.assertFalse(validation['valid'])
+                    self.assertEqual({p['issue_id']:p['component_ids'] for p in validation['problems']
+                                      if p['code']=='missing_components'},
+                                     {'r1-issue-1':['r1-issue-1-part-1'],'r2-issue-1':['r2-issue-1-part-1']})
+                    self.assertEqual(validation['component_ledger']['accounted_components'],0)
+                    self.assertTrue((out/'debate/responses/debate-model.json').exists())
+                    self.assertEqual(read(out/'debate/progress.json')['status'],'blocked')
+                    return
                 status=ensemble.ensemble_review(root,out,base/'billing.json','2024-01-01',**options)
             expected=2 if count is None else count
             self.assertEqual(status['usage']['calls'],expected+1)
@@ -115,12 +127,24 @@ class EnsembleTests(unittest.TestCase):
                 self.assertEqual(call['schema']['properties']['findings']['maxItems'],10)
             self.assertIn('Private reviewer request',calls[-1]['prompt'])
             self.assertEqual([c['config']['tool_limit'] for c in calls],[4]*expected+[2])
+            required=[f'r{i}-issue-1' for i in range(1,expected+1)]
+            decisions=calls[-1]['schema']['properties']['decisions']
+            self.assertEqual((decisions['minItems'],decisions['maxItems']),(expected,expected))
+            self.assertEqual(decisions['items']['properties']['issue_id']['enum'],required)
+            self.assertEqual(decisions['items']['properties']['components']['items']['properties']['component_id']['enum'],
+                             [i+'-part-1' for i in required])
+            self.assertIn('REQUIRED COMPONENT LEDGER',calls[-1]['prompt'])
+            validation=read(out/'debate/synthesis-validation.json')
+            self.assertTrue(validation['valid'])
+            self.assertEqual(validation['component_ledger']['accounted_components'],expected)
 
     def test_default_two_reviewers_and_one_debate(self):self.simulate()
 
     def test_three_reviewers_and_one_debate(self):self.simulate(3)
 
     def test_budget_stops_before_second_discovery(self):self.simulate(budget=100)
+
+    def test_empty_component_synthesis_fails_and_names_missing_ids(self):self.simulate(empty_components=True)
 
 
 if __name__=='__main__':unittest.main()

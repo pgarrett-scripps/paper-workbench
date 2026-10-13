@@ -124,6 +124,12 @@ class SynthesisValidationTests(unittest.TestCase):
             changed = {**self.raw, 'summary': 'Edited after validation'}
             self.assertFalse(preflight_receipts(root/'out/synthesis-preflight', changed)['submitted_draft_preflight_passed'])
 
+    def test_valid_draft_reports_a_complete_component_ledger(self):
+        checked = validate_draft(self.raw, self.ledger, self.paper)
+        self.assertTrue(checked['valid'])
+        self.assertEqual(checked['component_ledger'], {'issues': 1, 'decided_issues': 1, 'expected_components': 1,
+                                                       'accounted_components': 1, 'complete': True})
+
     def test_tool_exposure_matches_runtime_allowlist_only_for_synthesis(self):
         self.assertNotIn('validate_synthesis', tool_profile({})[1])
         for domain in (False, True):
@@ -131,3 +137,126 @@ class SynthesisValidationTests(unittest.TestCase):
             if domain:
                 config['tool_profile'] = 'domains-v1'
             self.assertEqual(set(tool_profile(config)[1]), {s['name'] for s in specs(domain, True)})
+
+
+class ComponentAccountingTests(unittest.TestCase):
+    """Missing component records must be named, never repaired."""
+    def setUp(self):
+        text = 'We studied five plants across two sites.'
+        self.paper = {'id': 'paper', 'blocks': [{'id': 'b1', 'text': text, 'sha256': digest(text)}]}
+        def finding(comment):
+            return {'title': 'Allocation', 'kind': 'question', 'severity': 'moderate', 'block_id': 'b1',
+                    'quote': text, 'evidence_blocks': ['b1'], 'comment': comment, 'replacement': '',
+                    'counterevidence': '', 'source_urls': []}
+        self.ledger = issue_ledger({'findings': [finding('Please clarify allocation. Report the site counts.'),
+                                                 finding('Please state the sampling dates.')]})
+        self.handle = build_registry(self.paper).handles[0].handle_id
+        final = {k: v for k, v in finding('Please clarify allocation and report the site counts.').items()
+                 if k not in ('block_id', 'quote', 'evidence_blocks')}
+        final.update(anchor_handle=self.handle, manuscript_evidence_handles=[self.handle])
+        def decision(issue_id, parts):
+            return {'issue_id': issue_id, 'scientific_status': 'supported_clarification', 'presentation': 'primary',
+                    'strongest_criticism': 'Allocation is unclear.', 'strongest_author_defense': 'Counts exist.',
+                    'decisive_question': 'How allocated?', 'decision_reason': 'Clarify.',
+                    'evidence': [{'evidence_handle': self.handle}], 'secondary_finding': None,
+                    'components': [{'component_id': f'{issue_id}-part-{j}', 'treatment': 'preserved',
+                                    'final_finding_number': 1, 'final_quote': 'Please clarify allocation',
+                                    'reason': 'Retained.', 'evidence': []} for j in range(1, parts + 1)]}
+        self.raw = {'summary': 'Review', 'findings': [final], 'limitations': [], 'new_candidates': [],
+                    'decisions': [decision('issue-1', 2), decision('issue-2', 1)]}
+
+    def codes(self, result):
+        return {p['code']: p for p in result['problems']}
+
+    def test_complete_fixture_is_valid(self):
+        result = validate_draft(self.raw, self.ledger, self.paper)
+        self.assertTrue(result['valid'], result.get('error'))
+        self.assertTrue(result['component_ledger']['complete'])
+        self.assertEqual(result['component_ledger']['expected_components'], 3)
+
+    def test_empty_components_name_every_missing_identifier(self):
+        for decision in self.raw['decisions']:
+            decision['components'] = []
+        before = copy.deepcopy(self.raw)
+        result = validate_draft(self.raw, self.ledger, self.paper)
+        self.assertFalse(result['valid'])
+        self.assertEqual(self.raw, before)
+        missing = [p for p in result['problems'] if p['code'] == 'missing_components']
+        self.assertEqual({p['issue_id']: p['component_ids'] for p in missing},
+                         {'issue-1': ['issue-1-part-1', 'issue-1-part-2'], 'issue-2': ['issue-2-part-1']})
+        self.assertEqual(result['component_ledger']['accounted_components'], 0)
+        self.assertFalse(result['component_ledger']['complete'])
+
+    def test_one_missing_component_is_named(self):
+        self.raw['decisions'][0]['components'].pop()
+        result = validate_draft(self.raw, self.ledger, self.paper)
+        self.assertFalse(result['valid'])
+        self.assertEqual(self.codes(result)['missing_components']['component_ids'], ['issue-1-part-2'])
+        self.assertEqual(result['component_ledger']['accounted_components'], 2)
+
+    def test_duplicated_component_is_named(self):
+        components = self.raw['decisions'][0]['components']
+        components.append(copy.deepcopy(components[0]))
+        result = validate_draft(self.raw, self.ledger, self.paper)
+        self.assertFalse(result['valid'])
+        self.assertEqual(self.codes(result)['duplicate_components']['component_ids'], ['issue-1-part-1'])
+
+    def test_misassigned_component_names_its_owner(self):
+        moved = self.raw['decisions'][1]['components'].pop()
+        self.raw['decisions'][0]['components'].append(moved)
+        result = validate_draft(self.raw, self.ledger, self.paper)
+        self.assertFalse(result['valid'])
+        problems = self.codes(result)
+        self.assertEqual(problems['misassigned_components']['issue_id'], 'issue-1')
+        self.assertEqual(problems['misassigned_components']['components'],
+                         [{'component_id': 'issue-2-part-1', 'belongs_to': 'issue-2'}])
+        self.assertEqual(problems['missing_components']['issue_id'], 'issue-2')
+
+    def test_unknown_component_and_missing_decision_are_named(self):
+        self.raw['decisions'][0]['components'][1]['component_id'] = 'issue-1-part-9'
+        self.raw['decisions'].pop()
+        result = validate_draft(self.raw, self.ledger, self.paper)
+        self.assertFalse(result['valid'])
+        problems = self.codes(result)
+        self.assertEqual(problems['unknown_components']['component_ids'], ['issue-1-part-9'])
+        self.assertEqual(problems['missing_decision']['issue_id'], 'issue-2')
+        self.assertEqual(problems['missing_decision']['component_ids'], ['issue-2-part-1'])
+
+    def test_complete_ledger_is_confirmed_when_another_error_blocks_validation(self):
+        # Paper 0317140 had all components in its first check, then dropped them after a handle error.
+        self.raw['findings'][0]['manuscript_evidence_handles'].append('mh-invented')
+        result = validate_draft(self.raw, self.ledger, self.paper)
+        self.assertFalse(result['valid'])
+        self.assertIn('Unknown evidence handle', result['error'])
+        self.assertTrue(result['component_ledger']['complete'])
+        self.assertFalse([p for p in result['problems'] if p['code'].endswith('components')])
+
+    def test_final_validation_stays_strict(self):
+        from paper_workspace.debate_revision import validate_revision
+        from paper_workspace.evidence_handles import hydrate_response
+        value = hydrate_response(self.raw, build_registry(self.paper))['response']
+        value.pop('new_candidates')
+        value['decisions'][0]['components'] = []
+        with self.assertRaisesRegex(ValueError, 'exactly one treatment'):
+            validate_revision(value, self.ledger, self.paper)
+
+    def test_contract_lists_required_identifiers(self):
+        from paper_workspace.synthesis_validation import component_contract
+        contract = component_contract(self.ledger)
+        self.assertIn('"issue-1": ["issue-1-part-1", "issue-1-part-2"]', contract)
+        self.assertIn('"issue-2": ["issue-2-part-1"]', contract)
+
+    def test_schema_requires_one_decision_per_issue_and_known_component_ids(self):
+        from paper_workspace.ensemble_debate import constrain_ledger_identifiers, ensemble_schema
+        base = ensemble_schema()
+        schema = constrain_ledger_identifiers(base, self.ledger)
+        self.assertEqual(base, ensemble_schema())
+        decisions = schema['properties']['decisions']
+        self.assertEqual((decisions['minItems'], decisions['maxItems']), (2, 2))
+        self.assertEqual(decisions['items']['properties']['issue_id']['enum'], ['issue-1', 'issue-2'])
+        components = decisions['items']['properties']['components']
+        self.assertEqual(components['minItems'], 1)
+        self.assertEqual(components['items']['properties']['component_id']['enum'],
+                         ['issue-1-part-1', 'issue-1-part-2', 'issue-2-part-1'])
+        embedded = schema['properties']['new_candidates']['items']['properties']['decision']['properties']
+        self.assertNotIn('component_id', embedded['component']['properties'])
