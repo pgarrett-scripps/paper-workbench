@@ -46,6 +46,7 @@ The legacy CLI `review --mode panel` and many files under `experiments/` describ
 | Synthesis decisions and component contract | `paper_workspace/ensemble_debate.py`, `paper_workspace/debate_revision.py` |
 | Synthesis preflight and feedback | `paper_workspace/synthesis_validation.py`, `paper_workspace/ensemble_references.py` |
 | Tool access and model transport | `paper_workspace/investigation.py`, `paper_workspace/model_runtime.py` |
+| Model catalog and billing policies | `paper_workspace/models.py`, `paper_workspace/billing.py` |
 | Viewer | `paper_workspace/web/` |
 | Regression checks | `tests/test_synthesis_validation.py`, `tests/test_ensemble_*.py` |
 
@@ -57,9 +58,11 @@ The subsequent four-paper recovery completed three syntheses. Paper `0317140` st
 
 Core 0.1.7 requires complete component structure in the synthesis response contract and names missing, duplicated, misassigned and unknown component identifiers in preflight and final validation records. Offline regression cases cover each failure and an offline replay of the saved 0317140 drafts. Final validation remains strict. See [the component ledger contract](docs/pra-configurable-ensemble.md#component-ledger-contract). The change has not been tested with a model. The next step is a separately recorded, bounded synthesis trial.
 
+Core 0.1.8 adds a Claude Code transport so collaborators can run every model workflow on a Claude subscription instead of a ChatGPT plan. Select `claude-opus-5-5` or `claude-sonnet-5-5`. Live calls confirmed tools, images and the current discovery and synthesis schemas, but no complete Claude review has run yet. Claude runs are a separate condition from the Codex study. See [the provider guide](docs/claude-code-provider.md).
+
 ## Execution and collaboration
 
-Offline inspection and tests need no model login. New model runs require the operator's own authenticated subscription session and a fresh accepted billing record. Do not copy account credentials or reuse expired billing snapshots. The current engine supports the Codex transport. Consult `capabilities()` for its accepted model IDs. Recent recovery runs used Terra at medium effort.
+Offline inspection and tests need no model login. New model runs require the operator's own authenticated subscription session and a fresh accepted billing record. Do not copy account credentials or reuse expired billing snapshots. The engine supports the Codex and Claude Code transports. Consult `capabilities()` for the accepted model IDs of each. Recent recovery runs used Terra at medium effort. Claude Code operators create their billing record with `paper-workbench confirm-billing`.
 
 Token limits are launch guards, not hard within-call caps. Unknown usage or interrupted execution must be reconciled before continuing. Use a new output directory for each new attempt. Do not overwrite frozen outputs or automatically rerun the full study as a setup check.
 

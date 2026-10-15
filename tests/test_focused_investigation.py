@@ -59,6 +59,26 @@ class FocusedInvestigationTests(unittest.TestCase):
                     investigate(root,root/'out',root/'billing.json','2026-09-25','Does the source support the claim?',['b1'])
                 self.assertEqual(model.call_count,1)
 
+    def test_claude_model_requires_its_own_billing_record_and_provider(self):
+        from paper_workspace.billing import claude_billing_record
+        with tempfile.TemporaryDirectory() as tmp:
+            root=Path(tmp)
+            write(root/'paper.json',self.paper())
+            write(root/'manifest.json',{'files':{'paper.json':digest((root/'paper.json').read_bytes())}})
+            write(root/'codex.json',{'checked_at':time.time(),'no_paid_credits_verified':True})
+            write(root/'claude.json',claude_billing_record({'loggedIn':True,'authMethod':'claude.ai'}))
+            question='Does the source support the claim?'
+            with patch('paper_workspace.focused_investigation.require_subscription'), \
+                    patch('paper_workspace.focused_investigation.model_call',side_effect=RuntimeError('stop')) as model:
+                with self.assertRaises(ValueError):
+                    investigate(root,root/'first',root/'codex.json','2026-09-25',question,['b1'],model='claude-opus-5-5')
+                self.assertFalse((root/'first').exists())
+                with self.assertRaises(ValueError):
+                    investigate(root,root/'second',root/'claude.json','2026-09-25',question,['b1'],model='claude-fable-5-1')
+                with self.assertRaisesRegex(RuntimeError,'stop'):
+                    investigate(root,root/'third',root/'claude.json','2026-09-25',question,['b1'],model='claude-opus-5-5')
+                self.assertEqual(model.call_args.args[0]['provider'],'claude-code')
+
     def test_handles_require_exposure_and_preserve_exact_text(self):
         paper=self.paper()
         h=next(h for h in build_registry(paper).handles if h.source_id=='b2')

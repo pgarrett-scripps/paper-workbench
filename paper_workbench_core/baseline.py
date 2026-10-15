@@ -8,6 +8,7 @@ def run_manuscript_only(request, paper, resolved_config):
     from paper_workspace.ensemble import _prepare, observed_usage
     from paper_workspace.evidence_handles import build_registry, constrain_manuscript_handles, hydrate_review_response, with_evidence_handles
     from paper_workspace.model_runtime import model_call, source_manifest
+    from paper_workspace.models import provider_for
     from paper_workspace.review_schema import COMMON, REVIEW
     from paper_workspace.reviewer import HANDLE_INSTRUCTION, MAX_SOURCE_IMAGES, handle_manuscript
     from paper_workspace.storage import digest, read, write
@@ -46,7 +47,7 @@ def run_manuscript_only(request, paper, resolved_config):
     if len(images) > MAX_SOURCE_IMAGES:
         raise ValueError(f'Manuscript-only review has more than {MAX_SOURCE_IMAGES} unique source images. Prepare a complete bounded image set explicitly.')
     protocol = {
-        'provider': 'codex', 'model': request.model, 'effort': 'medium',
+        'provider': provider_for(request.model), 'model': request.model, 'effort': 'medium',
         'held_out_runs_authorized': False, 'max_calls_per_condition': 1,
         'observed_token_stop': request.token_budget, 'call_timeout_seconds': 900,
         'max_source_images': MAX_SOURCE_IMAGES, 'image_budget_version': 'evidence-v1',

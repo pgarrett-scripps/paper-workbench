@@ -3,15 +3,54 @@ import math
 import time
 
 
-def verify_billing(verification, now=None):
+CLAUDE_POLICY = 'claude-subscription-v1'
+CLAUDE_AUTH_METHODS = ('claude.ai', 'oauth')
+
+
+def claude_billing_record(status, now=None):
+    """Record an operator's confirmation that a Claude subscription cannot buy extra usage."""
+    if (not status.get('loggedIn') or status.get('authMethod') not in CLAUDE_AUTH_METHODS
+            or status.get('apiProvider') not in (None, 'firstParty')):
+        raise ValueError('Log in to Claude Code with a Claude subscription first (claude auth login)')
+    return {'policy': CLAUDE_POLICY, 'provider': 'claude-code',
+            'checked_at': time.time() if now is None else now,
+            'auth_method': status['authMethod'], 'subscription_type': status.get('subscriptionType'),
+            'extra_usage_disabled': True, 'purchases_authorized': False,
+            'attestation': 'The operator confirmed that paid extra usage is disabled in Claude settings.'}
+
+
+def verify_claude_billing(verification, now):
+    """Accept a recent operator confirmation. Each call also verifies the live overage state."""
+    if verification.get('policy') != CLAUDE_POLICY or verification.get('provider') != 'claude-code':
+        raise ValueError('A Claude subscription billing record is required. Create one with confirm-billing.')
+    checked = verification.get('checked_at', 0)
+    if isinstance(checked, bool) or not isinstance(checked, (int, float)) or not math.isfinite(checked):
+        raise ValueError('Invalid billing evidence timestamp')
+    if not 0 <= now - checked < 86400:
+        raise ValueError('Claude billing confirmation must be refreshed within 24 hours')
+    if verification.get('auth_method') not in CLAUDE_AUTH_METHODS:
+        raise ValueError('The billing record must come from a Claude subscription login')
+    if verification.get('extra_usage_disabled') is not True:
+        raise ValueError('Confirm that paid extra usage is disabled in Claude settings')
+    if verification.get('purchases_authorized') is not False:
+        raise ValueError('This policy does not authorize purchases')
+    return CLAUDE_POLICY
+
+
+def verify_billing(verification, now=None, provider='codex'):
     """Accept legacy zero-credit evidence or fresh included-allowance evidence.
 
     This is a launch guard, not a provider-side spending limit. The coordinator
     must refresh the authoritative usage snapshot before every workflow and
     retain a separate cumulative study token budget. No account setting is
-    changed, and this policy never authorizes purchases or resets.
+    changed, and this policy never authorizes purchases or resets. Claude Code
+    runs use their own policy, and neither provider accepts the other's record.
     """
     now = time.time() if now is None else now
+    if provider == 'claude-code':
+        return verify_claude_billing(verification, now)
+    if provider != 'codex':
+        raise ValueError('Unsupported subscription provider')
     checked = verification.get('checked_at', 0)
     if isinstance(checked, bool) or not isinstance(checked, (int, float)) or not math.isfinite(checked):
         raise ValueError('Invalid billing evidence timestamp')

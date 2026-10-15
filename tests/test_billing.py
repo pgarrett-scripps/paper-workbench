@@ -1,6 +1,6 @@
 import copy
 import unittest
-from paper_workspace.billing import verify_billing
+from paper_workspace.billing import claude_billing_record, verify_billing
 
 
 class BillingEvidenceTests(unittest.TestCase):
@@ -49,6 +49,39 @@ class BillingEvidenceTests(unittest.TestCase):
         for record in ({}, {'checked_at': self.now - 86400, 'no_paid_credits_verified': True}, {'checked_at': self.now}):
             with self.assertRaises(ValueError):
                 verify_billing(record, self.now)
+
+
+class ClaudeBillingTests(unittest.TestCase):
+    def setUp(self):
+        self.now = 2000000000
+        self.status = {'loggedIn': True, 'authMethod': 'claude.ai', 'apiProvider': 'firstParty', 'subscriptionType': 'pro'}
+        self.record = claude_billing_record(self.status, self.now)
+
+    def test_recent_confirmation_from_a_subscription_login_is_accepted(self):
+        self.assertEqual(verify_billing(self.record, self.now + 3600, provider='claude-code'), 'claude-subscription-v1')
+        self.assertEqual(self.record['subscription_type'], 'pro')
+        self.assertIs(self.record['purchases_authorized'], False)
+
+    def test_records_never_cross_providers(self):
+        with self.assertRaises(ValueError):
+            verify_billing(self.record, self.now)
+        with self.assertRaises(ValueError):
+            verify_billing({'checked_at': self.now, 'no_paid_credits_verified': True}, self.now, provider='claude-code')
+        with self.assertRaises(ValueError):
+            verify_billing(self.record, self.now, provider='anthropic-api')
+
+    def test_stale_or_incomplete_confirmation_fails(self):
+        for change in ({'checked_at': self.now - 86400}, {'checked_at': self.now + 1}, {'checked_at': float('nan')},
+                       {'extra_usage_disabled': None}, {'purchases_authorized': True}, {'auth_method': 'api_key'},
+                       {'provider': 'codex'}):
+            with self.subTest(change=change), self.assertRaises(ValueError):
+                verify_billing({**self.record, **change}, self.now, provider='claude-code')
+
+    def test_only_a_subscription_login_can_create_a_record(self):
+        for status in ({**self.status, 'loggedIn': False}, {**self.status, 'authMethod': 'console'},
+                       {**self.status, 'apiProvider': 'vertex'}, {}):
+            with self.subTest(status=status), self.assertRaises(ValueError):
+                claude_billing_record(status, self.now)
 
 
 if __name__ == '__main__':

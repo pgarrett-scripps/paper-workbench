@@ -12,7 +12,7 @@ python -m paper_workspace serve workspace --port 38744
 python -m paper_workspace verify workspace
 ```
 
-Open `http://127.0.0.1:38744`. Sources stay local unless you explicitly run a model review. The pilot sends manuscript text and selected source images to the authenticated Codex subscription and sends focused literature queries to Crossref or Europe PMC.
+Open `http://127.0.0.1:38744`. Sources stay local unless you explicitly run a model review. The pilot sends manuscript text and selected source images to the authenticated Codex or Claude Code subscription for the selected model and sends focused literature queries to Crossref or Europe PMC.
 
 The viewer supports original text, marked suggestions, and an accepted-draft preview. Accept, decline, follow-up, and undo decisions persist on disk. JSON export contains the original source blocks, proposed blocks, findings, and decisions. Accepting wording does not resolve a scientific concern.
 
@@ -28,7 +28,7 @@ The CLI defaults to Terra medium and also supports Sol medium and supports plain
 python -m paper_workspace review workspace run-output --mode panel --literature-cutoff 2026-01-05 --billing-confirmation billing_confirmation.json
 ```
 
-This command performs model inference. The billing confirmation must come from a current account check, record `no_paid_credits_verified: true`, and contain a Unix `checked_at` timestamp less than 24 hours old. The runner also requires an active ChatGPT subscription login. Do not fabricate this confirmation or use it to enable paid usage.
+This command performs model inference. The billing confirmation must come from a current account check, record `no_paid_credits_verified: true`, and contain a Unix `checked_at` timestamp less than 24 hours old. The runner also requires an active ChatGPT subscription login. Claude models instead require a Claude Code subscription login and a record from `confirm-billing`, as described in [the provider guide](../docs/claude-code-provider.md). Do not fabricate this confirmation or use it to enable paid usage.
 
 The first reviewer receives the full extracted text and at most three tool calls. Workspace and panel modes ask it to consider claims, comparators, measurement, interventions, replication, and internal consistency before selecting up to three uncertainties for investigation. The final response includes a short coverage record with exact source quotations. Areas can remain unresolved or be inapplicable. The record replaces the mandatory note-saving tool call. It is model-reported coverage, not proof of a complete review. No extra model session is added.
 

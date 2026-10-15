@@ -4,10 +4,12 @@ import shutil
 import time
 from pathlib import Path
 from .annotations import verify_workspace
+from .billing import verify_billing
 from .domain_registry import route, context
 from .evidence_handles import build_registry
 from .investigation_policy import INSTRUCTION, with_tool_checks, audit_tool_checks
 from .model_runtime import model_call, require_subscription, source_manifest, jsonl
+from .models import CLAUDE_MODELS, provider_for
 from .review_schema import obj, STRING, STRINGS
 from .source_payload import text_block
 from .storage import read, write, digest
@@ -57,14 +59,17 @@ def investigate(workspace, output, billing, cutoff, question, block_ids, model='
     paper = verify_workspace(root)
     if not isinstance(question, str) or not 10 <= len(question.strip()) <= 1600:
         raise ValueError('Supply a concrete scientific question of at most 1600 characters')
-    if model not in ('gpt-5.6-terra', 'gpt-5.6-sol'):
-        raise ValueError('Select Terra or Sol')
+    if model not in ('gpt-5.6-terra', 'gpt-5.6-sol', *CLAUDE_MODELS):
+        raise ValueError('Select Terra, Sol, or a supported Claude model')
+    provider = provider_for(model)
     selected = packet(paper, block_ids)
     confirmation = read(billing)
-    if not confirmation.get('no_paid_credits_verified') or not 0 <= time.time()-confirmation.get('checked_at',0) < 86400:
+    if provider == 'claude-code':
+        verify_billing(confirmation, provider=provider)
+    elif not confirmation.get('no_paid_credits_verified') or not 0 <= time.time()-confirmation.get('checked_at',0) < 86400:
         raise ValueError('Recent subscription and zero-paid-credit check required')
     out.mkdir(parents=True, exist_ok=False)
-    protocol = {'version': 'focused-investigation-v2', 'provider': 'codex', 'model': model,
+    protocol = {'version': 'focused-investigation-v2', 'provider': provider, 'model': model,
         'effort': 'medium', 'held_out_runs_authorized': False, 'max_calls_per_condition': 1,
         'observed_token_stop': 100000, 'call_timeout_seconds': 600,
         'tool_limit': 2, 'external_request_limit': 2, 'automatic_retries': False,

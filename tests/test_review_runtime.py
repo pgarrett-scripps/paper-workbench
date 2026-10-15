@@ -32,6 +32,8 @@ class ReviewRuntime(unittest.TestCase):
             runtime.validate_protocol({**self.protocol, 'model': 'unknown-model'})
         with self.assertRaisesRegex(ValueError, 'explicitly'):
             review(None, None, None, None, model='unknown-model')
+        with self.assertRaisesRegex(ValueError, 'explicitly'):
+            review(None, None, None, None, model='claude-fable-5-1')
 
     def setUp(self):
         self.protocol = {

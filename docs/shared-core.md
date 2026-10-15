@@ -38,7 +38,7 @@ request = ReviewRequest(
 
 `run_review` uses the existing engine. It rejects existing output directories, unsupported models and unsupported workflows. It returns a `paper-workbench-run-v1` artifact containing the editor package, requested model, workflow, manuscript identity, engine file hashes and observed usage. Unknown usage and execution failures remain errors with underlying run files preserved. Token budgets are launch guards, not hard within-session caps. Independent mode retains its existing per-session guard.
 
-The supported workflows are `manuscript-only`, `independent` and `ensemble`. Manuscript-only mode receives extracted text and supplied source images with review tools disabled. Independent and ensemble modes have manuscript tools. The current transport supports only Codex subscription execution with Astra, Sol, Terra, Luna, and GPT-5.5 at medium effort. Arbitrary models and provider APIs require a separately designed transport extension. Do not silently route unsupported candidates through a different pipeline.
+The supported workflows are `manuscript-only`, `independent` and `ensemble`. Manuscript-only mode receives extracted text and supplied source images with review tools disabled. Independent and ensemble modes have manuscript tools. The transport supports Codex subscription execution with Astra, Sol, Terra, Luna, and GPT-5.5, and Claude Code subscription execution with Opus 5.5 and Sonnet 5.5, all at medium effort. The model ID selects the provider. See [the Claude Code provider guide](claude-code-provider.md). Arbitrary models and provider APIs require a separately designed transport extension. Do not silently route unsupported candidates through a different pipeline.
 
 The older PeerReviewAgents graph is a distinct benchmark backend. Its scores must retain a different workflow identifier. Pin the pipeline commit, model settings, source inputs and evidence access when comparing models.
 
@@ -67,7 +67,15 @@ observed usage. `usage_summary(output)` also reads durable receipts for failed
 or interrupted workflows. A usage summary is not proof of successful inference.
 Unknown usage must not be interpreted as zero. Codex events do not currently
 expose the resolved model ID, so requested-model pinning remains the available
-identity evidence.
+identity evidence. Claude Code reports the models it used, and any model other
+than the requested one rejects the call.
+
+Version 0.1.8 adds `claude-opus-5-5` and `claude-sonnet-5-5` through Claude
+Code. `capabilities()["models_by_provider"]` lists the IDs for each transport.
+The `provider` key still names the default Codex transport for older clients.
+A Claude run needs a `claude-subscription-v1` billing record from
+`paper-workbench confirm-billing`, and neither provider accepts the other's
+record.
 
 
 ## Versioned review presets

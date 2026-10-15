@@ -40,6 +40,18 @@ class StructuredAPI(unittest.TestCase):
                 run_structured(request)
             self.assertEqual(call.call_count, 1)
 
+    def test_claude_model_uses_claude_code_with_its_own_billing_record(self):
+        from paper_workspace.billing import claude_billing_record
+        with patch('paper_workspace.ensemble.require_subscription'), \
+             patch('paper_workspace.model_runtime.model_call', return_value={'score': 1}) as call:
+            with self.assertRaises(ValueError):
+                run_structured(self.request(model='claude-sonnet-5-5'))
+            call.assert_not_called()
+            write(self.billing, claude_billing_record({'loggedIn': True, 'authMethod': 'claude.ai'}))
+            run_structured(self.request(model='claude-sonnet-5-5', output=self.root / 'claude-run'))
+        self.assertEqual(call.call_args.args[0]['provider'], 'claude-code')
+        self.assertFalse(call.call_args.kwargs['tools'])
+
     def test_source_images_are_validated_and_forwarded_without_tools(self):
         image = self.root / 'figure.png'
         image.write_bytes(b'figure')

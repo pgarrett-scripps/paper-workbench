@@ -1,6 +1,8 @@
 """Subscription-only model transport with bounded calls and durable receipts."""
 from __future__ import annotations
 
+import base64
+
 import hashlib
 
 import json
@@ -15,10 +17,12 @@ import subprocess
 
 import sys
 
+import threading
+
 import time
 
 from pathlib import Path
-from .models import CODEX_MODELS
+from .models import PROVIDER_MODELS
 
 class StudyBlocked(RuntimeError):
     pass
@@ -72,6 +76,9 @@ def clean_env():
         }:
             del env[key]
     env["CLAUDE_CODE_DISABLE_FAST_MODE"] = "1"
+    # Claude Code loads no instruction files, memory or attachments and never substitutes a model.
+    env.update(CLAUDE_CODE_DISABLE_CLAUDE_MDS="1", CLAUDE_CODE_DISABLE_AUTO_MEMORY="1",
+               CLAUDE_CODE_DISABLE_ATTACHMENTS="1", CLAUDE_CODE_NO_MODEL_FALLBACK="1")
     env["PYTHONDONTWRITEBYTECODE"] = "1"
     return env
 
@@ -102,8 +109,8 @@ def require_subscription(root):
     if status.get("authMethod") not in accepted:
         raise StudyBlocked("Subscription authentication was not verified. Refusing API-backed execution.")
     billing_path = Path(root) / "billing_confirmation.json"
+    from .billing import verify_billing
     if provider == "codex":
-        from .billing import verify_billing
         if not billing_path.exists():
             raise StudyBlocked("Record current Codex subscription usage before execution.")
         try:
@@ -111,12 +118,18 @@ def require_subscription(root):
         except ValueError as error:
             raise StudyBlocked(str(error)) from error
         return status
-    if not billing_path.exists() or not read_json(billing_path).get("extra_usage_disabled"):
+    if status.get("apiProvider") not in (None, "firstParty"):
+        raise StudyBlocked("Claude Code must use the Anthropic subscription login, not a cloud provider.")
+    if not billing_path.exists():
         raise StudyBlocked("Confirm paid extra usage is disabled in Claude settings, then record it with confirm-billing.")
+    try:
+        verify_billing(read_json(billing_path), provider="claude-code")
+    except ValueError as error:
+        raise StudyBlocked(str(error)) from error
     return status
 
 def validate_protocol(protocol):
-    pinned = {"claude-code": (MODEL,), "codex": CODEX_MODELS}
+    pinned = PROVIDER_MODELS
     if protocol.get("provider") not in pinned or protocol.get("model") not in pinned[protocol["provider"]]:
         raise StudyBlocked("Unapproved provider or model. No automatic fallback is permitted.")
     if protocol.get("held_out_runs_authorized"):
@@ -185,13 +198,17 @@ def tool_profile(config):
     raise StudyBlocked('Unknown manuscript tool profile')
 
 def request_identity(protocol, prompt, schema, tools, images, work):
-    return digest({
+    request = {
         "prompt": prompt,
         "schema": schema,
         "tools": tool_identity(work, tools),
         "protocol": protocol,
         "images": [{"path": str(path), "sha256": digest(path.read_bytes())} for path in images],
-    })
+    }
+    if protocol.get("provider") == "claude-code":
+        # Claude Code runs replace the default system prompt, so the replacement is part of the request.
+        request["system_prompt"] = CLAUDE_SYSTEM_PROMPT
+    return digest(request)
 
 def observed_codex_tokens(events):
     completed = [event for event in events if event.get("type") == "turn.completed"]
@@ -258,15 +275,184 @@ def unresolved_attempts(out):
             unresolved.append(started)
     return unresolved
 
-def verify_model(envelope):
-    models = list((envelope.get("modelUsage") or {}).keys())
-    if not models and envelope.get("model"):
-        models = [envelope["model"]]
-    if not models:
-        raise StudyBlocked("Claude did not report a resolved model. Save output and inspect before continuing.")
-    if any(model != MODEL and not model.startswith(MODEL + "-") for model in models):
-        raise StudyBlocked(f"Unexpected model returned: {models}. No fallback is permitted.")
-    return models
+CLAUDE_SYSTEM_PROMPT = ("You are a careful scientific manuscript reviewer in a bounded review pipeline. "
+                        "Follow the instructions in the user message exactly. "
+                        "Return the final answer through the structured output tool.")
+CLAUDE_TOOL_PREFIX = "mcp__manuscript__"
+CLAUDE_IMAGE_TYPES = ((b"\x89PNG\r\n\x1a\n", "image/png"), (b"\xff\xd8\xff", "image/jpeg"),
+                      (b"GIF87a", "image/gif"), (b"GIF89a", "image/gif"))
+CLAUDE_IMAGE_LIMIT = 5 * 1024 * 1024
+CLAUDE_SCHEMA_LIMIT = 120000
+
+def claude_command(protocol, schema, tools, work):
+    """Print mode with no built-in tools, settings files, skills or other MCP servers."""
+    if len(json.dumps(schema)) > CLAUDE_SCHEMA_LIMIT:
+        raise StudyBlocked("The response schema is too large for the Claude Code command line.")
+    command = [shutil.which("claude") or "claude", "-p", "--model", protocol["model"],
+               "--effort", protocol["effort"], "--input-format", "stream-json",
+               "--output-format", "stream-json", "--verbose",
+               "--json-schema", json.dumps(schema), "--system-prompt", CLAUDE_SYSTEM_PROMPT,
+               "--no-session-persistence", "--restricted", "--strict-mcp-config",
+               "--disable-slash-commands", "--permission-mode", "dontAsk", "--tools", ""]
+    if tools:
+        entry_point, approved_tools = tool_profile(read_json(work / "tool-config.json"))
+        server = {"type": "stdio", "command": sys.executable,
+                  "args": [str(HERE / entry_point), str(work / "tool-config.json")]}
+        command.extend(["--mcp-config", json.dumps({"mcpServers": {"manuscript": server}}),
+                        "--allowedTools", ",".join(CLAUDE_TOOL_PREFIX + name for name in approved_tools)])
+    return command
+
+def claude_input(prompt, images):
+    """One stream-json user message with the prompt, then the images in their stated order."""
+    content = [{"type": "text", "text": prompt}]
+    for path in images:
+        data = path.read_bytes()
+        media = next((kind for magic, kind in CLAUDE_IMAGE_TYPES if data.startswith(magic)), None)
+        if media is None and data[:4] == b"RIFF" and data[8:12] == b"WEBP":
+            media = "image/webp"
+        if media is None:
+            raise StudyBlocked(f"Claude Code accepts PNG, JPEG, GIF or WebP source images. Unsupported: {path.name}")
+        encoded = base64.b64encode(data).decode()
+        if len(encoded) > CLAUDE_IMAGE_LIMIT:
+            raise StudyBlocked(f"Source image exceeds the 5 MB Claude image limit: {path.name}")
+        content.append({"type": "image", "source": {"type": "base64", "media_type": media, "data": encoded}})
+    return json.dumps({"type": "user", "message": {"role": "user", "content": content}}) + "\n"
+
+def claude_stream_problem(event, tools):
+    """Name an event that shows API-key billing, paid extra usage or tools outside the manuscript server."""
+    if event.get("type") == "system" and event.get("subtype") == "init":
+        if event.get("apiKeySource") != "none":
+            return "Claude Code did not use the subscription login. Refusing API-backed execution."
+        if any(name != "StructuredOutput" and not (tools and name.startswith(CLAUDE_TOOL_PREFIX))
+               for name in event.get("tools") or []):
+            return "Claude Code exposed tools outside the approved manuscript server."
+        if tools and not any(server.get("name") == "manuscript" and server.get("status") == "connected"
+                             for server in event.get("mcp_servers") or []):
+            return "The manuscript tool server did not connect."
+    if event.get("type") == "rate_limit_event":
+        info = event.get("rate_limit_info") or {}
+        if info.get("isUsingOverage") or info.get("overageStatus") in ("allowed", "allowed_warning"):
+            return "Claude reports that paid extra usage is enabled or in use. Disable it before running reviews."
+    return None
+
+def claude_tool_failures(events):
+    names = {block.get("id"): block.get("name") for event in events if event.get("type") == "assistant"
+             for block in (event.get("message") or {}).get("content") or []
+             if isinstance(block, dict) and block.get("type") == "tool_use"}
+    return [block for event in events if event.get("type") == "user"
+            for block in (event.get("message") or {}).get("content") or []
+            if isinstance(block, dict) and block.get("type") == "tool_result" and block.get("is_error")
+            and str(names.get(block.get("tool_use_id"))).startswith(CLAUDE_TOOL_PREFIX)]
+
+def same_model(name, requested):
+    return isinstance(name, str) and (name == requested or name.startswith((requested + "-", requested + "[")))
+
+def claude_failure(events, init, result, limits, model, tools, returncode):
+    problems = [problem for problem in (claude_stream_problem(event, tools) for event in events) if problem]
+    if problems:
+        return problems[0]
+    if init is None:
+        return "Claude Code reported no session configuration. Inspect the saved attempt."
+    if returncode or not result or result.get("is_error") or result.get("subtype") != "success":
+        detail = result.get("result") or result.get("subtype") or f"exit status {returncode}"
+        return f"Claude Code failed. No automatic retry. {detail}"
+    if not limits:
+        return "Claude Code reported no subscription usage limits. Refusing unverified execution."
+    if claude_tool_failures(events) or result.get("permission_denials"):
+        return "A manuscript tool call failed. Do not score this incomplete run."
+    models = result.get("modelUsage") or {}
+    if (not same_model(init.get("model"), model) or not models
+            or any(not same_model(name, model) and not same_model(usage.get("canonicalModel"), model)
+                   for name, usage in models.items())):
+        return f"Unexpected model returned: {sorted(models) or init.get('model')}. No fallback is permitted."
+    if not isinstance(result.get("structured_output"), dict):
+        return "Claude returned no structured object."
+    if usage_tokens(result) is None:
+        return "Claude completed but did not report usage. Do not continue this run."
+    return None
+
+def assess_claude_stream(events, model, tools, returncode=None):
+    """Verify one Claude Code event stream. Observed usage is kept even when the call failed."""
+    init = next((event for event in events
+                 if event.get("type") == "system" and event.get("subtype") == "init"), None)
+    results = [event for event in events if event.get("type") == "result"]
+    result = results[-1] if results else {}
+    limits = [event.get("rate_limit_info") or {} for event in events if event.get("type") == "rate_limit_event"]
+    tokens = usage_tokens(result)
+    outcome = {"claude_code_version": (init or {}).get("claude_code_version"),
+               "subscription_limits": limits,
+               "models_observed": sorted((result.get("modelUsage") or {}).keys()),
+               "model_verification": "Claude Code session model and per-model usage report.",
+               "usage_unknown": tokens is None,
+               "error": claude_failure(events, init, result, limits, model, tools, returncode)}
+    if tokens is not None:
+        outcome["observed_tokens"] = tokens
+    if outcome["error"] is None:
+        outcome["value"] = result["structured_output"]
+    return outcome
+
+def read_events(path):
+    events = []
+    for line in Path(path).read_text().splitlines():
+        try:
+            event = json.loads(line)
+        except json.JSONDecodeError:
+            continue
+        if isinstance(event, dict):
+            events.append(event)
+    return events
+
+def watch_claude_stream(path, process, finished, tools):
+    """Stop a running call as soon as its stream shows API-key billing or paid usage."""
+    pending = ""
+    with Path(path).open() as stream:
+        while True:
+            pending += stream.readline()
+            if pending.endswith("\n"):
+                line, pending = pending, ""
+                try:
+                    event = json.loads(line)
+                except json.JSONDecodeError:
+                    continue
+                if isinstance(event, dict) and claude_stream_problem(event, tools):
+                    process.kill()
+                    return
+            elif finished.is_set():
+                return
+            else:
+                time.sleep(0.05)
+
+def run_claude(command, payload, stdout_path, stderr_path, cwd, timeout, tools):
+    """Run one call. The stream goes straight to disk so a completed answer survives the launcher."""
+    with Path(stdout_path).open("w") as stdout, Path(stderr_path).open("w") as stderr:
+        process = subprocess.Popen(command, stdin=subprocess.PIPE, stdout=stdout, stderr=stderr,
+                                   text=True, cwd=cwd, env=clean_env())
+    finished = threading.Event()
+    watcher = threading.Thread(target=watch_claude_stream, args=(stdout_path, process, finished, tools),
+                               daemon=True)
+    watcher.start()
+    try:
+        process.communicate(payload, timeout=timeout)
+    except BaseException:
+        process.kill()
+        process.wait()
+        raise
+    finally:
+        finished.set()
+        watcher.join()
+    return process.returncode
+
+def recover_claude_call(out, identity, started):
+    events_path = Path(out) / "calls" / f"{identity}.events.jsonl"
+    if not events_path.exists():
+        return None
+    events = read_events(events_path)
+    outcome = assess_claude_stream(events, started.get("model_requested"), started.get("tools"))
+    if outcome.pop("error"):
+        return None
+    record = dict(started)
+    record.update(outcome, ok=True, recovered_after_interruption=True, recovered_at=time.time(), events=events)
+    return record
 
 def model_call(protocol, out, prompt, schema, *, tools=False, label="call", images=None, recover_only=False):
     """A single fresh session, with a durable content-addressed response cache."""
@@ -293,7 +479,8 @@ def model_call(protocol, out, prompt, schema, *, tools=False, label="call", imag
     started_path = out / "calls" / f"{identity}.started.json"
     if started_path.exists():
         started = read_json(started_path)
-        recovered = recover_codex_call(out, identity, started) if protocol["provider"] == "codex" else None
+        recover = recover_codex_call if protocol["provider"] == "codex" else recover_claude_call
+        recovered = recover(out, identity, started)
         if recovered:
             write_json(cache, recovered)
             account_once(out / "usage.jsonl", recovered)
@@ -313,14 +500,9 @@ def model_call(protocol, out, prompt, schema, *, tools=False, label="call", imag
         raise StudyBlocked("Pilot call limit reached. Outputs have been saved.")
     if sum(row.get("observed_tokens", 0) for row in prior) >= protocol["observed_token_stop"]:
         raise StudyBlocked("Pilot observed-token stop reached. Outputs have been saved.")
-    command = [shutil.which("claude") or "claude", "-p", "--model", protocol["model"],
-               "--effort", protocol["effort"], "--output-format", "json",
-               "--json-schema", json.dumps(schema), "--no-session-persistence",
-               "--safe-mode", "--restricted", "--strict-mcp-config",
-               "--disable-slash-commands", "--permission-mode", "dontAsk",
-               "--tools", "Read,Grep,Glob" if tools else ""]
-    if tools:
-        command.extend(["--allowedTools", "Read,Grep,Glob"])
+    if protocol["provider"] == "claude-code":
+        command = claude_command(protocol, schema, tools, work)
+        payload = claude_input(prompt, images)
     record = {"label": label, "request_sha256": identity, "started_at": time.time(),
               "model_requested": protocol["model"], "tools": tools, "ok": False,
               "usage_unknown": True}
@@ -359,6 +541,18 @@ def model_call(protocol, out, prompt, schema, *, tools=False, label="call", imag
     try:
         stdout_path = out / "calls" / f"{identity}.events.jsonl"
         stderr_path = out / "calls" / f"{identity}.stderr.txt"
+        if protocol["provider"] == "claude-code":
+            record["returncode"] = run_claude(command, payload, stdout_path, stderr_path, work,
+                                              protocol["call_timeout_seconds"], tools)
+            record["stderr"] = stderr_path.read_text()
+            record["events"] = read_events(stdout_path)
+            outcome = assess_claude_stream(record["events"], protocol["model"], tools, record["returncode"])
+            error = outcome.pop("error")
+            record.update(outcome)
+            if error:
+                raise StudyBlocked(error)
+            record["ok"] = True
+            return record["value"]
         with stdout_path.open("w") as stdout, stderr_path.open("w") as stderr:
             result = subprocess.run(command, input=prompt, stdout=stdout, stderr=stderr, text=True,
                                     cwd=work, env=clean_env(), timeout=protocol["call_timeout_seconds"])
@@ -399,27 +593,6 @@ def model_call(protocol, out, prompt, schema, *, tools=False, label="call", imag
                 raise StudyBlocked("Codex completed but did not report usage. Do not continue this run.")
             record.update(ok=True, value=value)
             return value
-        try:
-            envelope = json.loads(result.stdout)
-        except json.JSONDecodeError:
-            record["stdout"] = result.stdout
-            raise StudyBlocked("Claude returned no parseable JSON. Check the saved attempt.")
-        record["envelope"] = envelope
-        tokens = usage_tokens(envelope)
-        if tokens is not None:
-            record["observed_tokens"] = tokens
-            record["usage_unknown"] = False
-        if result.returncode or envelope.get("is_error"):
-            raise StudyBlocked(str(envelope.get("result") or "Claude failed. No automatic retry."))
-        record["models_observed"] = verify_model(envelope)
-        value = envelope.get("structured_output")
-        if value is None:
-            value = json.loads(envelope.get("result") or "null")
-        if not isinstance(value, dict):
-            raise StudyBlocked("Claude returned no structured object.")
-        if record["usage_unknown"]:
-            raise StudyBlocked("Claude completed but did not report usage. Do not continue this run.")
-        record.update(ok=True, value=value)
     except subprocess.TimeoutExpired as exc:
         record["error"] = "Call timed out. Incurred usage is unknown."
         raise StudyBlocked(record["error"]) from exc
@@ -433,5 +606,4 @@ def model_call(protocol, out, prompt, schema, *, tools=False, label="call", imag
     return record["value"]
 
 HERE = Path(__file__).resolve().parent
-MODEL = "claude-opus-5"
 CODEX_MODEL = "gpt-5.6-sol"

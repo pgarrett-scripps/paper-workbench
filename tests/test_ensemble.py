@@ -8,6 +8,7 @@ from pathlib import Path
 from unittest.mock import patch
 
 from paper_workspace import ensemble,reviewer
+from paper_workspace.billing import claude_billing_record
 from paper_workspace.evidence_handles import build_registry
 from paper_workspace.storage import read,write,digest
 
@@ -60,19 +61,22 @@ class EnsembleTests(unittest.TestCase):
             self.assertFalse(ensemble.observed_usage(out)['unknown'])
             with self.assertRaisesRegex(ValueError,'launch budget'):ensemble.check_budget(out,100,3)
 
-    def simulate(self,count=None,budget=750000,empty_components=False):
+    def simulate(self,count=None,budget=750000,empty_components=False,model=None):
         with tempfile.TemporaryDirectory() as directory:
             base=Path(directory)
             root,out=base/'paper',base/'run'
             write(root/'paper.json',self.paper)
             write(root/'manifest.json',{'files':{'paper.json':digest((root/'paper.json').read_bytes())}})
             write(base/'billing.json',{'checked_at':time.time(),'no_paid_credits_verified':True})
+            if model and model.startswith('claude-'):
+                write(base/'billing.json',claude_billing_record({'loggedIn':True,'authMethod':'claude.ai'}))
             handle=build_registry(self.paper).handles[0].handle_id
             calls=[]
             findings=[]
             def fake(protocol,execution,prompt,schema,**kwargs):
                 config=read(execution/'workspace/tool-config.json')
-                calls.append({'prompt':prompt,'schema':schema,'config':config,'label':kwargs['label']})
+                calls.append({'prompt':prompt,'schema':schema,'config':config,'label':kwargs['label'],
+                              'provider':protocol['provider'],'model':protocol['model']})
                 write(execution/'calls/test.started.json',{})
                 (execution/'usage.jsonl').write_text(json.dumps({'observed_tokens':100})+'\n')
                 finding={k:v for k,v in self.finding.items() if k not in ('block_id','quote','evidence_blocks')}
@@ -98,6 +102,7 @@ class EnsembleTests(unittest.TestCase):
                     patch.object(reviewer,'model_call',side_effect=fake),patch.object(ensemble,'model_call',side_effect=fake), \
                     patch.object(reviewer,'inspected_images',return_value=[]):
                 options={} if count is None else {'reviewers':count}
+                if model:options['model']=model
                 if budget<=100:
                     with self.assertRaisesRegex(ValueError,'launch budget'):
                         ensemble.ensemble_review(root,out,base/'billing.json','2024-01-01',token_budget=budget,**options)
@@ -137,6 +142,8 @@ class EnsembleTests(unittest.TestCase):
             validation=read(out/'debate/synthesis-validation.json')
             self.assertTrue(validation['valid'])
             self.assertEqual(validation['component_ledger']['accounted_components'],expected)
+            provider='claude-code' if model and model.startswith('claude-') else 'codex'
+            self.assertEqual({(c['provider'],c['model']) for c in calls},{(provider,model or 'gpt-5.6-terra')})
 
     def test_default_two_reviewers_and_one_debate(self):self.simulate()
 
@@ -145,6 +152,20 @@ class EnsembleTests(unittest.TestCase):
     def test_budget_stops_before_second_discovery(self):self.simulate(budget=100)
 
     def test_empty_component_synthesis_fails_and_names_missing_ids(self):self.simulate(empty_components=True)
+
+    def test_claude_model_runs_every_stage_through_claude_code(self):self.simulate(model='claude-sonnet-5-5')
+
+    def test_billing_record_from_the_other_provider_stops_before_inference(self):
+        with tempfile.TemporaryDirectory() as directory:
+            base=Path(directory)
+            write(base/'codex.json',{'checked_at':time.time(),'no_paid_credits_verified':True})
+            write(base/'claude.json',claude_billing_record({'loggedIn':True,'authMethod':'claude.ai'}))
+            with patch.object(ensemble,'require_subscription') as auth,patch.object(ensemble,'model_call') as call:
+                for billing,model in (('codex.json','claude-opus-5-5'),('claude.json','gpt-5.6-terra')):
+                    with self.assertRaises(ValueError):
+                        ensemble._prepare(base/model,base/billing,ensemble._protocol(model,2,750000))
+                auth.assert_not_called()
+                call.assert_not_called()
 
 
 if __name__=='__main__':unittest.main()

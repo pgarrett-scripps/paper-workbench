@@ -228,9 +228,8 @@ def review(workspace,output,billing,cutoff,mode='panel',scaffold_root=None,domai
             scaffold_root=scaffold_root,domain_support=domain_support,evidence_mode=evidence_mode,
             source_packet=source_packet,shared_images=shared_images,historical_snapshots=historical_snapshots,model=model,
             synthesis_policy=synthesis_policy)
-    from .models import CODEX_MODELS
-    if model not in CODEX_MODELS:
-        raise ValueError('Select a supported subscription model explicitly')
+    from .models import provider_for
+    provider=provider_for(model)
     if mode not in ('plain','workspace','panel','self-revision','independent'):
         raise ValueError('Unknown review mode')
     root=Path(workspace).resolve()
@@ -243,7 +242,7 @@ def review(workspace,output,billing,cutoff,mode='panel',scaffold_root=None,domai
     if paper['statistics']['total_words']>35000:raise ValueError('Review input is limited to 35,000 extracted words including supplements')
     verification=read(billing)
     from .billing import verify_billing
-    verify_billing(verification)
+    verify_billing(verification,provider=provider)
     out.mkdir(parents=True,exist_ok=True)
     domain_context = ''
     profile = None
@@ -291,7 +290,7 @@ Use resolve_identifier for exact identifier mapping and search_literature for a 
             raise ValueError('Scaffold diagnostics changed. Use a new run directory.')
         write(diagnostic_path,diagnostics)
         diagnostic_context='\nADVISORY MANUSCRIPT CHECKS:\n'+json.dumps(compact_summary(diagnostics),ensure_ascii=False)
-    protocol={'provider':'codex','model':model,'effort':'medium','live_retrieval':source_packet is None,'held_out_runs_authorized':False,
+    protocol={'provider':provider,'model':model,'effort':'medium','live_retrieval':source_packet is None,'held_out_runs_authorized':False,
               'max_calls_per_condition':2 if mode in ('panel','self-revision') else 1,'observed_token_stop':250000,'call_timeout_seconds':900,
               'mode':mode,'literature_cutoff':cutoff,'paper_id':paper['id'],
               'investigation_version':'candidate-inventory-v1','investigator_tool_limit':4 if domain_support and mode in ('panel','self-revision','independent') else 6 if domain_support else 3,

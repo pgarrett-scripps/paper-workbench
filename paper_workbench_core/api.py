@@ -11,14 +11,16 @@ API_VERSION = 'paper-workbench-core-v1'
 
 def capabilities():
     """Advertise supported execution, without starting providers or the UI."""
-    from paper_workspace.models import CODEX_MODELS
+    from paper_workspace.models import PROVIDER_MODELS, SUBSCRIPTION_MODELS
     return {'api_version': API_VERSION, 'artifact_version': 'paper-workbench-run-v1',
             'workflows': ['manuscript-only', 'independent', 'ensemble'], 'provider': 'codex',
+            'providers': list(PROVIDER_MODELS),
+            'models_by_provider': {name: list(models) for name, models in PROVIDER_MODELS.items()},
             'configuration_version': 'paper-workbench-config-v1',
             'presets': list(review_presets()),
             'evidence_modes': ['current', 'historical'],
             'evidence_policies': ['none', 'live', 'frozen'],
-            'models': list(CODEX_MODELS), 'reasoning_effort': 'medium',
+            'models': list(SUBSCRIPTION_MODELS), 'reasoning_effort': 'medium',
             'billing': 'verified_subscription_with_bounded_usage_policy',
             'tool_access': 'workflow-specific',
             'tool_access_by_workflow': {'manuscript-only': 'none',
@@ -29,7 +31,9 @@ def capabilities():
                                       'discovery_calls': 0, 'tool_allowance': 2},
             'limitations': ['Manuscript-only mode has no review tools or external access.',
                            'Independent mode includes tools and is not a tool-free baseline.',
-                           'Other providers and arbitrary models are not supported by this engine yet.',
+                           'Codex and Claude Code subscription sessions are supported. API keys, other providers and arbitrary models are not.',
+                           'The provider key names the default Codex transport. Claude models run through Claude Code.',
+                           'Claude Code runs are a separate condition and do not reproduce Codex study results.',
                            'Evidence validation establishes provenance, not scientific correctness.']}
 
 
@@ -343,11 +347,12 @@ def run_structured(request: StructuredRequest):
     """Use the shared transport with subscription checks, no tools and no retry."""
     from paper_workspace.ensemble import _prepare, observed_usage
     from paper_workspace.model_runtime import model_call
+    from paper_workspace.models import provider_for
     from paper_workspace.storage import write
     if not isinstance(request, StructuredRequest):
         raise TypeError('Expected StructuredRequest')
     output = Path(request.output).resolve()
-    protocol = {'provider': 'codex', 'model': request.model, 'effort': 'medium',
+    protocol = {'provider': provider_for(request.model), 'model': request.model, 'effort': 'medium',
                 'held_out_runs_authorized': False, 'max_calls_per_condition': 1,
                 'observed_token_stop': request.token_budget,
                 'call_timeout_seconds': request.timeout_seconds, 'mode': 'structured',

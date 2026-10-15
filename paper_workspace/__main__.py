@@ -1,7 +1,7 @@
 import argparse
 from pathlib import Path
 from .storage import read
-from .models import CODEX_MODELS
+from .models import SUBSCRIPTION_MODELS
 
 
 def main():
@@ -73,7 +73,7 @@ def main():
     p.add_argument('--mode',choices=('ensemble','independent','plain','workspace','panel','self-revision'),default='ensemble')
     p.add_argument('--reviewers',type=int,default=2,help='Independent discovery reviewers for ensemble mode, from 1 to 16 (default 2)')
     p.add_argument('--token-budget',type=int,default=750000,help='Ensemble observed-token launch ceiling, not a hard cap on a running call')
-    p.add_argument('--model',choices=CODEX_MODELS,default='gpt-5.6-terra')
+    p.add_argument('--model',choices=SUBSCRIPTION_MODELS,default='gpt-5.6-terra')
     p.add_argument('--source-image',action='append',default=[],help='Original manuscript figure page to attach, at most three')
     p.add_argument('--scaffold-root',help='Use offline advisory checks from this Paper Scaffold checkout')
     p.add_argument('--legacy-tools',action='store_true',help='Use the older fixed tool profile without domain skills')
@@ -87,7 +87,12 @@ def main():
     p.add_argument('--block',action='append',required=True,help='Whole source block to include, repeat up to sixteen times')
     p.add_argument('--billing-confirmation',required=True)
     p.add_argument('--literature-cutoff',required=True)
-    p.add_argument('--model',choices=CODEX_MODELS,default='gpt-5.6-terra')
+    p.add_argument('--model',choices=SUBSCRIPTION_MODELS,default='gpt-5.6-terra')
+    p=sub.add_parser('confirm-billing',help='Record that this Claude subscription cannot buy paid extra usage')
+    p.add_argument('output')
+    p.add_argument('--provider',choices=('claude-code',),required=True)
+    p.add_argument('--extra-usage-disabled',action='store_true',required=True,
+                   help='Confirm that extra usage is turned off in Claude settings. Valid for 24 hours.')
     p=sub.add_parser('checks')
     p.add_argument('workspace')
     p.add_argument('--scaffold-root',required=True)
@@ -152,6 +157,13 @@ def main():
                      domain_support=not args.legacy_tools,evidence_mode=args.evidence_mode,source_packet=args.source_packet,
                      historical_snapshots=args.historical_snapshots,model=args.model,reviewers=args.reviewers,
                      token_budget=args.token_budget,shared_images=args.source_image))
+    elif args.command=='confirm-billing':
+        from .billing import claude_billing_record
+        from .model_runtime import auth_status
+        from .storage import write
+        record=claude_billing_record(auth_status(args.provider))
+        write(args.output,record)
+        print({'output':args.output,'subscription_type':record['subscription_type'],'valid_hours':24})
     elif args.command=='checks':
         from .scaffold_checks import build_report,compact_summary
         from .storage import write

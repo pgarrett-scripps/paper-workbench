@@ -67,7 +67,7 @@ def _prepare(out,billing,protocol):
     if out.exists():raise ValueError('Use a fresh ensemble output directory')
     verification=read(billing)
     from .billing import verify_billing
-    verify_billing(verification)
+    verify_billing(verification,provider=protocol['provider'])
     out.mkdir(parents=True)
     write(out/'protocol.json',protocol)
     shutil.copy2(billing,out/'billing_confirmation.json')
@@ -75,9 +75,8 @@ def _prepare(out,billing,protocol):
 
 
 def _protocol(model,reviewers,token_budget):
-    from .models import CODEX_MODELS
-    if model not in CODEX_MODELS:raise ValueError('Select a supported subscription model explicitly')
-    return {'provider':'codex','model':model,'effort':'medium','held_out_runs_authorized':False,
+    from .models import provider_for
+    return {'provider':provider_for(model),'model':model,'effort':'medium','held_out_runs_authorized':False,
         'max_calls_per_condition':1,'observed_token_stop':token_budget,'call_timeout_seconds':900,
         'max_source_images':10,'image_budget_version':'evidence-v1','mode':'ensemble',
         'reviewers':reviewers,'total_generation_calls':reviewers+1,'token_launch_budget':token_budget,
