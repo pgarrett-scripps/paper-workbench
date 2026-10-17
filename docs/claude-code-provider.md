@@ -25,7 +25,10 @@ Sonnet is the default because Opus 5.5 refused a biology manuscript at the first
 paper-workbench confirm-billing billing.json --provider claude-code --extra-usage-disabled
 paper-workbench review workspaces/example runs/example-claude \
   --provider claude-code --billing-confirmation billing.json --literature-cutoff 2026-01-01
+paper-workbench report runs/example-claude
 ```
+
+The last command writes `REVIEW.md` and `REVIEW.txt` to the run folder without any model call.
 
 Add `--model claude-opus-5-5` to choose Opus. `investigate` accepts the same two options. A model from the other provider is rejected.
 

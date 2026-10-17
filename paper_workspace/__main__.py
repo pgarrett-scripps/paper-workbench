@@ -110,6 +110,10 @@ def main():
     p.add_argument('--provider',choices=('claude-code',),required=True)
     p.add_argument('--extra-usage-disabled',action='store_true',required=True,
                    help='Confirm that extra usage is turned off in Claude settings. Valid for 24 hours.')
+    p=sub.add_parser('report',help='Write REVIEW.md and REVIEW.txt from a review run, without model calls')
+    p.add_argument('run',help='Output folder of a review run')
+    p.add_argument('--workspace',help='Reviewed workspace. Found from the run when omitted')
+    p.add_argument('--output-dir',help='Folder for the two reports. Defaults to the run folder')
     p=sub.add_parser('checks')
     p.add_argument('workspace')
     p.add_argument('--scaffold-root',required=True)
@@ -183,6 +187,10 @@ def main():
         record=claude_billing_record(auth_status(args.provider))
         write(args.output,record)
         print({'output':args.output,'subscription_type':record['subscription_type'],'valid_hours':24})
+    elif args.command=='report':
+        from .run_report import write_reports
+        paths=write_reports(args.run,args.workspace,args.output_dir)
+        print({kind:str(path) for kind,path in paths.items()})
     elif args.command=='checks':
         from .scaffold_checks import build_report,compact_summary
         from .storage import write

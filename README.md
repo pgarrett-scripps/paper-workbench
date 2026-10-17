@@ -24,7 +24,7 @@ paper-workbench import manuscript.pdf workspaces/example --xml manuscript.xml
 paper-workbench serve workspaces/example --port 38744
 ```
 
-Model execution is an explicit separate action. The engine supports two subscription transports at medium effort. Codex sessions run Astra, Sol, Terra, Luna, or GPT-5.5. Claude Code sessions run Sonnet 5.5 by default, or Opus 5.5, on a Claude subscription with no API key. See [the Claude Code provider guide](docs/claude-code-provider.md). Launches require a fresh accepted billing record for the selected provider, including the current Codex `included-allowance-v1` policy based on authoritative usage snapshots. These conservative checks fail closed, but they are not provider-side hard spending caps. Importing the package, inspecting a workspace or running offline tests does not start model inference.
+Model execution is an explicit separate action. The engine supports two subscription transports at medium effort. Codex sessions run Astra, Sol, Terra, Luna, or GPT-5.5. Claude Code sessions run Sonnet 5.5 by default, or Opus 5.5, on a Claude subscription with no API key. See [the Claude Code provider guide](docs/claude-code-provider.md). Launches require a fresh accepted billing record for the selected provider, including the current Codex `included-allowance-v1` policy based on authoritative usage snapshots. These conservative checks fail closed, but they are not provider-side hard spending caps. Importing the package, inspecting a workspace or running offline tests does not start model inference. `paper-workbench report RUN` turns a saved run into readable `REVIEW.md` and `REVIEW.txt` files.
 
 ## Shared core
 
