@@ -11,11 +11,12 @@ API_VERSION = 'paper-workbench-core-v1'
 
 def capabilities():
     """Advertise supported execution, without starting providers or the UI."""
-    from paper_workspace.models import PROVIDER_MODELS, SUBSCRIPTION_MODELS
+    from paper_workspace.models import DEFAULT_MODELS, PROVIDER_MODELS, SUBSCRIPTION_MODELS
     return {'api_version': API_VERSION, 'artifact_version': 'paper-workbench-run-v1',
             'workflows': ['manuscript-only', 'independent', 'ensemble'], 'provider': 'codex',
             'providers': list(PROVIDER_MODELS),
             'models_by_provider': {name: list(models) for name, models in PROVIDER_MODELS.items()},
+            'default_models': dict(DEFAULT_MODELS),
             'configuration_version': 'paper-workbench-config-v1',
             'presets': list(review_presets()),
             'evidence_modes': ['current', 'historical'],

@@ -58,7 +58,7 @@ The subsequent four-paper recovery completed three syntheses. Paper `0317140` st
 
 Core 0.1.7 requires complete component structure in the synthesis response contract and names missing, duplicated, misassigned and unknown component identifiers in preflight and final validation records. Offline regression cases cover each failure and an offline replay of the saved 0317140 drafts. Final validation remains strict. See [the component ledger contract](docs/pra-configurable-ensemble.md#component-ledger-contract). The change has not been tested with a model. The next step is a separately recorded, bounded synthesis trial.
 
-Core 0.1.8 adds a Claude Code transport so collaborators can run every model workflow on a Claude subscription instead of a ChatGPT plan. Select `claude-opus-5-5` or `claude-sonnet-5-5`. Live calls confirmed tools, images and the current discovery and synthesis schemas, but no complete Claude review has run yet. Claude runs are a separate condition from the Codex study. See [the provider guide](docs/claude-code-provider.md).
+Core 0.1.8 adds a Claude Code transport so collaborators can run every model workflow on a Claude subscription instead of a ChatGPT plan. Use `--provider claude-code` for the Sonnet 5.5 default, or select `claude-opus-5-5`, whose safeguards can refuse life-science manuscripts. Live calls confirmed tools, images and the current discovery and synthesis schemas, but no complete Claude review has run yet. Claude runs are a separate condition from the Codex study. See [the provider guide](docs/claude-code-provider.md).
 
 ## Execution and collaboration
 

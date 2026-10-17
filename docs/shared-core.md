@@ -71,7 +71,8 @@ identity evidence. Claude Code reports the models it used, and any model other
 than the requested one rejects the call.
 
 Version 0.1.8 adds `claude-opus-5-5` and `claude-sonnet-5-5` through Claude
-Code. `capabilities()["models_by_provider"]` lists the IDs for each transport.
+Code. `capabilities()["models_by_provider"]` lists the IDs for each transport, and
+`capabilities()["default_models"]` names Terra for Codex and Sonnet 5.5 for Claude.
 The `provider` key still names the default Codex transport for older clients.
 A Claude run needs a `claude-subscription-v1` billing record from
 `paper-workbench confirm-billing`, and neither provider accepts the other's

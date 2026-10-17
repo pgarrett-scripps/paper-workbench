@@ -1,7 +1,24 @@
 import argparse
 from pathlib import Path
 from .storage import read
-from .models import SUBSCRIPTION_MODELS
+from .models import DEFAULT_MODELS, SUBSCRIPTION_MODELS, provider_for
+
+
+MODEL_HELP=('Exact model ID. Without it, the default for --provider is used: '+
+            ', '.join(f'{model} for {provider}' for provider,model in DEFAULT_MODELS.items())+'.')
+
+
+def add_model_arguments(parser):
+    parser.add_argument('--provider',choices=tuple(DEFAULT_MODELS),help='Subscription transport (default codex)')
+    parser.add_argument('--model',choices=SUBSCRIPTION_MODELS,help=MODEL_HELP)
+
+
+def resolve_model(parser,args):
+    """Fill the provider default and reject a model that belongs to another provider."""
+    if args.model is None:
+        args.model=DEFAULT_MODELS[args.provider or 'codex']
+    elif args.provider and provider_for(args.model)!=args.provider:
+        parser.error(f'{args.model} is not a {args.provider} model')
 
 
 def main():
@@ -73,7 +90,7 @@ def main():
     p.add_argument('--mode',choices=('ensemble','independent','plain','workspace','panel','self-revision'),default='ensemble')
     p.add_argument('--reviewers',type=int,default=2,help='Independent discovery reviewers for ensemble mode, from 1 to 16 (default 2)')
     p.add_argument('--token-budget',type=int,default=750000,help='Ensemble observed-token launch ceiling, not a hard cap on a running call')
-    p.add_argument('--model',choices=SUBSCRIPTION_MODELS,default='gpt-5.6-terra')
+    add_model_arguments(p)
     p.add_argument('--source-image',action='append',default=[],help='Original manuscript figure page to attach, at most three')
     p.add_argument('--scaffold-root',help='Use offline advisory checks from this Paper Scaffold checkout')
     p.add_argument('--legacy-tools',action='store_true',help='Use the older fixed tool profile without domain skills')
@@ -87,7 +104,7 @@ def main():
     p.add_argument('--block',action='append',required=True,help='Whole source block to include, repeat up to sixteen times')
     p.add_argument('--billing-confirmation',required=True)
     p.add_argument('--literature-cutoff',required=True)
-    p.add_argument('--model',choices=SUBSCRIPTION_MODELS,default='gpt-5.6-terra')
+    add_model_arguments(p)
     p=sub.add_parser('confirm-billing',help='Record that this Claude subscription cannot buy paid extra usage')
     p.add_argument('output')
     p.add_argument('--provider',choices=('claude-code',),required=True)
@@ -98,6 +115,8 @@ def main():
     p.add_argument('--scaffold-root',required=True)
     p.add_argument('--output',required=True)
     args=parser.parse_args()
+    if args.command in ('review','investigate'):
+        resolve_model(parser,args)
     if args.command=='investigate':
         from .focused_investigation import investigate
         memo=investigate(args.workspace,args.output,args.billing_confirmation,args.literature_cutoff,

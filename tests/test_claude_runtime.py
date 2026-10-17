@@ -323,5 +323,38 @@ class ClaudeSubscriptionGuard(unittest.TestCase):
                 main()
 
 
+class ProviderDefaults(unittest.TestCase):
+    COMMANDS = {'review': ['review', 'workspace', 'output'],
+                'investigate': ['investigate', 'workspace', 'output', '--question', 'Does the claim hold?',
+                                '--block', 'b1']}
+    TARGETS = {'review': 'paper_workspace.reviewer.review',
+               'investigate': 'paper_workspace.focused_investigation.investigate'}
+
+    def selected_model(self, *options, command='review'):
+        from paper_workspace.__main__ import main
+        argv = ['paper-workbench', *self.COMMANDS[command], '--billing-confirmation', 'billing.json',
+                '--literature-cutoff', '2024-01-01', *options]
+        with patch.object(sys, 'argv', argv), patch('builtins.print'), \
+                patch(self.TARGETS[command], return_value={'ready_for_adjudication': False}) as call:
+            main()
+        return call.call_args.kwargs['model']
+
+    def test_provider_without_a_model_uses_its_pinned_default(self):
+        from paper_workbench_core import capabilities
+        from paper_workspace.models import DEFAULT_MODELS, provider_for
+        for command in self.COMMANDS:
+            with self.subTest(command=command):
+                self.assertEqual(self.selected_model(command=command), 'gpt-5.6-terra')
+                self.assertEqual(self.selected_model('--provider', 'claude-code', command=command), 'claude-sonnet-5-5')
+                self.assertEqual(self.selected_model('--model', 'claude-opus-5-5', command=command), 'claude-opus-5-5')
+                self.assertEqual(self.selected_model('--provider', 'claude-code', '--model', 'claude-opus-5-5',
+                                                     command=command), 'claude-opus-5-5')
+        with patch('sys.stderr'), self.assertRaises(SystemExit):
+            self.selected_model('--provider', 'claude-code', '--model', 'gpt-5.6-terra')
+        self.assertEqual(capabilities()['default_models'], DEFAULT_MODELS)
+        self.assertEqual({provider: provider_for(model) for provider, model in DEFAULT_MODELS.items()},
+                         {provider: provider for provider in DEFAULT_MODELS})
+
+
 if __name__ == '__main__':
     unittest.main()

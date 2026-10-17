@@ -4,6 +4,9 @@ CODEX_MODELS = ("gpt-5.6-terra", "gpt-5.6-sol", "gpt-6-astra", "gpt-5.6-luna", "
 CLAUDE_MODELS = ("claude-opus-5-5", "claude-sonnet-5-5")
 PROVIDER_MODELS = {"codex": CODEX_MODELS, "claude-code": CLAUDE_MODELS}
 SUBSCRIPTION_MODELS = CODEX_MODELS + CLAUDE_MODELS
+# Selecting a provider without a model uses its default. Claude defaults to the latest Sonnet
+# because Opus safeguards can refuse biology manuscripts at the first request.
+DEFAULT_MODELS = {"codex": "gpt-5.6-terra", "claude-code": "claude-sonnet-5-5"}
 
 
 def provider_for(model):
