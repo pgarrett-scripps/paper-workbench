@@ -73,6 +73,7 @@ Observed tokens count every input token Claude processes, including cache reads,
 - Claude Code can retry a failed network request internally, similar to Codex reconnects. The engine never retries a call.
 - Response schemas travel on the command line and are limited to 120,000 characters. Current schemas are well below that.
 - Opus 5.5 safeguards can refuse life-science manuscripts. Claude Code then reports a failed call with a `[bio]` detail, and the engine stops without switching models. Rewording or trimming a manuscript to get past a refusal is not supported. Choose another model in a new output directory.
+- Sonnet 5.5 sometimes marks a supported clarification as omitted when it does not fit the final five findings. The synthesis rules require such an issue to stay as a supporting secondary concern with wording for the authors, so final validation rejects the run. This happened for 3 of 29 corpus papers on the first attempt. The engine does not retry, so start a fresh run in a new output directory.
 
 ## Verification status
 
@@ -81,4 +82,13 @@ Offline tests drive a scripted Claude Code executable through every guard above.
 - Opus 5.5 with the manuscript tool server and an attached page image
 - Sonnet 5.5 with the current discovery schema and the current synthesis schema, including the component ledger constraints
 
-On 17 October 2026, an ensemble review of a Nature Communications preprint on PARP15 (`A-08` in the PeerReviewAgents benchmark corpus) was attempted with each model. Opus 5.5 refused the first request with a `[bio]` flag after processing 141,041 input tokens. Sonnet 5.5 accepted the same manuscript and began using the manuscript tools, but the operator stopped the run before it finished. A complete review of a manuscript has not yet been run with Claude Code.
+On 17 October 2026, an ensemble review of a Nature Communications preprint on PARP15 (`A-08` in the PeerReviewAgents benchmark corpus) was attempted with each model. Opus 5.5 refused the first request with a `[bio]` flag after processing 141,041 input tokens. Sonnet 5.5 accepted the same manuscript. The operator stopped a first Sonnet run, and a second one completed with 402,207 observed tokens and a complete component ledger.
+
+On 24 October 2026, Sonnet 5.5 ensemble reviews ran on the rest of that corpus, which holds 10 Nature Communications, 10 PLOS and 10 Nature preprints. One manuscript was excluded because it exceeds the 35,000-word review limit. The other 29 now each have a complete review:
+
+- Each review made three calls (two independent reviewers and one debate synthesis) at medium effort.
+- Every call ran on the subscription with no API key, and paid extra usage stayed rejected throughout.
+- Every synthesis passed final validation with a complete component ledger and four or five final findings.
+- A completed review used between 0.37 and 1.53 million observed tokens, 18.2 million across all 29, and most took 3 to 5 minutes.
+- Two large manuscripts first failed before any model call because Claude Code rejected the schema's regular expressions. The pattern conversion described above fixed both.
+- Three syntheses failed final validation on the first attempt because a supported clarification was omitted (see Limitations). A fresh run of each paper passed.
