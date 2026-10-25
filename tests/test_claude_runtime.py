@@ -262,6 +262,39 @@ class ClaudeRuntime(unittest.TestCase):
             self.call()
         self.assertFalse(self.launches.exists())
 
+    def test_python_escaped_patterns_compile_for_claude_with_the_same_matches(self):
+        import re
+        ids = ['mh-923681e3', 'r1-issue-1-part-2', 'a&b', 'x~y', 'n#1', 'sp ace']
+        original = '^(?:' + '|'.join(re.escape(item) for item in ids) + ')$'
+        converted = runtime.unicode_pattern(original)
+        self.assertEqual(converted, '^(?:mh-923681e3|r1-issue-1-part-2|a&b|x~y|n#1|sp ace)$')
+        for probe in ids + ['mh-923681e', 'r1-issue-1-part-20', 'aXb', 'mh_923681e3', '']:
+            self.assertEqual(bool(re.fullmatch(original, probe)), bool(re.fullmatch(converted, probe)), probe)
+        for kept in (r'^eh-[0-9a-f]{24}$', r'[a\-z]', r'\d+\.\d', r'\(x\)', r'a\|b'):
+            self.assertEqual(runtime.unicode_pattern(kept), kept)
+        schema = {'type': 'object', 'patternProperties': {r'^k\-1$': {'pattern': r'v\-1'}}}
+        self.assertEqual(runtime.claude_schema(schema),
+                         {'type': 'object', 'patternProperties': {'^k-1$': {'pattern': 'v-1'}}})
+        self.assertEqual(schema['patternProperties'], {r'^k\-1$': {'pattern': r'v\-1'}})
+
+    def test_large_manuscript_handle_pattern_reaches_claude_in_compatible_form(self):
+        from paper_workspace.evidence_handles import build_registry, constrain_manuscript_handles, with_evidence_handles
+        from paper_workspace.review_schema import REVIEW
+        from paper_workspace.storage import digest
+        blocks = [{'id': f'b{index:04d}', 'text': f'Sentence {index} reports a value.',
+                   'sha256': digest(f'Sentence {index} reports a value.')} for index in range(1000)]
+        self.schema = constrain_manuscript_handles(with_evidence_handles(REVIEW), build_registry({'blocks': blocks}))
+        original = json.dumps(self.schema)
+        self.assertIn('\\\\-', original)
+        self.script([init(), LIMITS, result()])
+        self.call()
+        argv = self.launched()[0]['argv']
+        sent = argv[argv.index('--json-schema') + 1]
+        self.assertNotIn('\\\\-', sent)
+        self.assertEqual(json.dumps(self.schema), original)
+        pattern = json.loads(original)['$defs']['manuscriptEvidenceHandle']['pattern']
+        self.assertEqual(json.loads(sent)['$defs']['manuscriptEvidenceHandle']['pattern'], pattern.replace('\\-', '-'))
+
     def test_codex_request_identity_is_unchanged(self):
         work = self.root / 'work'
         work.mkdir()

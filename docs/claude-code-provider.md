@@ -47,6 +47,7 @@ ReviewRequest(workspace=..., output=..., billing_confirmation=Path("billing.json
 - Claude Code starts in print mode with `--restricted`, no built-in tools, no user, project or local settings files, no skills and no MCP servers other than the manuscript tool server. Organization-managed settings still apply.
 - Switches in the CLI's environment turn off CLAUDE.md files, auto memory, attachments and model fallback. These switches are internal to Claude Code and can change between versions.
 - The default Claude Code system prompt is replaced by a fixed three-sentence reviewer instruction. It is part of each request identity.
+- Regular expressions in the response schema are rewritten for Claude Code's JavaScript validator. Python escapes such as `\-` that JavaScript rejects are dropped, so the patterns match exactly the same strings. Large manuscripts, with more than 950 sentence handles, need this. Request identities keep the original schema.
 - The prompt and source images go in as one message, with the images in their stated order. Images must be PNG, JPEG, GIF or WebP under the 5 MB Claude limit.
 - Manuscript tools use the same server, tool profile and allowances as Codex. Each approved tool is listed explicitly and anything else is denied.
 

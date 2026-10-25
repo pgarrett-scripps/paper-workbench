@@ -283,9 +283,51 @@ CLAUDE_IMAGE_TYPES = ((b"\x89PNG\r\n\x1a\n", "image/png"), (b"\xff\xd8\xff", "im
                       (b"GIF87a", "image/gif"), (b"GIF89a", "image/gif"))
 CLAUDE_IMAGE_LIMIT = 5 * 1024 * 1024
 CLAUDE_SCHEMA_LIMIT = 120000
+JS_SYNTAX_CHARACTERS = set("^$\\.*+?()[]{}|/")
+
+def unicode_pattern(pattern):
+    """Drop escapes that Python regexes allow but JavaScript Unicode regexes reject, keeping the meaning.
+
+    re.escape writes identity escapes such as \\- or \\# that Codex accepts. Claude Code validates
+    patterns with the JavaScript u flag, which allows escaping only syntax characters, and a
+    hyphen inside a character class.
+    """
+    result = []
+    in_class = False
+    index = 0
+    while index < len(pattern):
+        char = pattern[index]
+        if char == "\\" and index + 1 < len(pattern):
+            following = pattern[index + 1]
+            keep = (following.isascii() and following.isalnum()) or following in JS_SYNTAX_CHARACTERS
+            result.append(char + following if keep or (in_class and following == "-") else following)
+            index += 2
+            continue
+        if char == "[" and not in_class:
+            in_class = True
+        elif char == "]" and in_class:
+            in_class = False
+        result.append(char)
+        index += 1
+    return "".join(result)
+
+def claude_schema(value):
+    """A copy of the response schema whose regular expressions Claude Code can compile."""
+    if isinstance(value, list):
+        return [claude_schema(item) for item in value]
+    if not isinstance(value, dict):
+        return value
+    converted = {key: claude_schema(item) for key, item in value.items()}
+    if isinstance(value.get("pattern"), str):
+        converted["pattern"] = unicode_pattern(value["pattern"])
+    if isinstance(value.get("patternProperties"), dict):
+        converted["patternProperties"] = {unicode_pattern(key): claude_schema(item)
+                                          for key, item in value["patternProperties"].items()}
+    return converted
 
 def claude_command(protocol, schema, tools, work):
     """Print mode with no built-in tools, settings files, skills or other MCP servers."""
+    schema = claude_schema(schema)
     if len(json.dumps(schema)) > CLAUDE_SCHEMA_LIMIT:
         raise StudyBlocked("The response schema is too large for the Claude Code command line.")
     command = [shutil.which("claude") or "claude", "-p", "--model", protocol["model"],
