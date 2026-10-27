@@ -239,7 +239,7 @@ def review(workspace,output,billing,cutoff,mode='panel',scaffold_root=None,domai
     from .result_map import build_result_map, inspect_results, INSTRUCTION as RESULT_INSTRUCTION
     result_map = build_result_map(paper) if domain_support else None
     shared_images = shared_source_images(shared_images)
-    if paper['statistics']['total_words']>35000:raise ValueError('Review input is limited to 35,000 extracted words including supplements')
+    if paper['statistics']['total_words']>50000:raise ValueError('Review input is limited to 50,000 extracted words including supplements')
     verification=read(billing)
     from .billing import verify_billing
     verify_billing(verification,provider=provider)

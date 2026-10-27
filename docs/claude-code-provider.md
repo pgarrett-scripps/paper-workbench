@@ -92,3 +92,5 @@ On 24 October 2026, Sonnet 5.5 ensemble reviews ran on the rest of that corpus, 
 - A completed review used between 0.37 and 1.53 million observed tokens, 18.2 million across all 29, and most took 3 to 5 minutes.
 - Two large manuscripts first failed before any model call because Claude Code rejected the schema's regular expressions. The pattern conversion described above fixed both.
 - Three syntheses failed final validation on the first attempt because a supported clarification was omitted (see Limitations). A fresh run of each paper passed.
+
+On 27 October 2026, the review input limit was raised from 35,000 to 50,000 extracted words, including supplements. The excluded manuscript (`C-04`, 48,090 words) was then reviewed with the same settings. Its review made three calls, used 1.62 million observed tokens and took 3 minutes, so all 30 manuscripts now have a complete review.
