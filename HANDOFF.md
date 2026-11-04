@@ -4,7 +4,7 @@ Snapshot: 11 October 2026. Start here for the current framework. The companion [
 
 ## Get started
 
-Accept collaborator access to both private repositories, then clone them into sibling directories:
+Clone both repositories into sibling directories. The paper repository may require collaborator access.
 
 ```bash
 git clone https://github.com/pgarrett-scripps/paper-workbench.git
@@ -27,7 +27,7 @@ paper-workbench verify workspaces/example
 paper-workbench serve workspaces/example --port 38744
 ```
 
-Replace the source filenames with your own files. Omit `--xml` for PDF-only input. Open `http://127.0.0.1:38744`. Existing localhost browser tabs on Ty's machine are not shared deployments.
+Replace the source filenames with your own files. Omit `--xml` for PDF-only input. Open `http://127.0.0.1:38744`. A localhost server on one developer's machine is not a shared deployment.
 
 ## Current architecture
 

@@ -1,11 +1,11 @@
-In Silico is licensed in two parts.
+Paper Workbench is licensed in two parts. It was extracted from In Silico and
+keeps the original In Silico license terms and attribution.
 
 ================================================================================
-Reviews and site content: CC BY 4.0
+Documentation: CC BY 4.0
 ================================================================================
 
-Everything under docs/, including the published reviews, referee bundles, and
-journal pages, is licensed under the Creative Commons Attribution 4.0
+Everything under docs/ is licensed under the Creative Commons Attribution 4.0
 International License.
 
 You are free to share and adapt this material for any purpose, including
@@ -15,10 +15,10 @@ made.
 Full text: https://creativecommons.org/licenses/by/4.0/legalcode
 
 ================================================================================
-Site software and automation: MIT
+Software: MIT
 ================================================================================
 
-All source code, site templates, configuration, scripts, and workflows outside
+All source code, templates, configuration, scripts, and workflows outside
 docs/ are licensed under the MIT License.
 
 Copyright (c) 2026 In Silico contributors
@@ -42,9 +42,9 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 
 ================================================================================
-Submitted preprints
+Manuscripts
 ================================================================================
 
-In Silico hosts no manuscripts. Preprints linked from this site remain under
-whatever license their authors chose, and nothing here claims any rights over
-them.
+This repository contains no third-party manuscripts. Manuscripts referenced in
+the documentation remain under whatever license their authors chose, and
+nothing here claims any rights over them.

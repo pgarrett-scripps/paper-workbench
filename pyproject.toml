@@ -9,6 +9,10 @@ description = "An evidence-linked workspace for manuscript review and revision"
 readme = "README.md"
 requires-python = ">=3.11"
 license = {file = "LICENSE"}
+authors = [{name = "Patrick Garrett"}]
+
+[project.urls]
+Homepage = "https://github.com/pgarrett-scripps/paper-workbench"
 dependencies = []
 
 [project.optional-dependencies]

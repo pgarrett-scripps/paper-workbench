@@ -1,12 +1,12 @@
 # Paper Workbench
 
-An evidence-linked workspace for manuscript review and revision. This private research prototype imports manuscripts, investigates claims, runs configurable independent reviewers and debate, and presents located comments and proposed edits.
+An evidence-linked workspace for manuscript review and revision. This research prototype imports manuscripts, investigates claims, runs configurable independent reviewers and debate, and presents located comments and proposed edits.
 
 The project was extracted from In Silico. It is a successor implementation to the original PeerReviewAgents workflow, with different source handling, review orchestration and revision tools. The original projects remain separate.
 
 ## Team handoff
 
-Start with [the team handoff](HANDOFF.md) for the current architecture, setup, exact stopping point and next engineering task. The companion paper repository contains the study evidence and publication blockers.
+Start with [the team handoff](HANDOFF.md) for the current architecture, setup, exact stopping point and next engineering task. The [companion paper repository](https://github.com/pgarrett-scripps/paper-workbench-paper) contains the study evidence and publication blockers. Access to it may be restricted.
 
 ## Install
 
@@ -51,4 +51,10 @@ Tests use synthetic or local fixtures. Some optional rendering checks require lo
 
 [The extraction manifest](migration/source-snapshot.json) records hashes of the imported source snapshot. The first commit preserves that snapshot before packaging changes. Raw manuscripts, model responses, caches and credentials are excluded from Git. Existing local study runs remain preserved separately. See [migration details](docs/migration.md).
 
-The source licenses and attribution are preserved in [LICENSE](LICENSE). The repository is private. No package has been published to a registry.
+## License
+
+Source code is released under the MIT License and documentation under `docs/` under CC BY 4.0. The original In Silico attribution is preserved. See [LICENSE](LICENSE). No package has been published to a registry.
+
+## Security
+
+The tool never needs credentials committed to a workspace or this repository. Model runs use the operator's own authenticated session. Please report security problems privately to the maintainer through GitHub rather than in a public issue.

@@ -14,7 +14,7 @@ Scope includes scientific critique, reporting gaps, citation verification, prose
 
 ## Verified starting point
 
-- The private Paper Workbench repository exists at https://github.com/pgarrett-scripps/paper-workbench. The original In Silico repository and historical runs remain intact.
+- The Paper Workbench repository exists at https://github.com/pgarrett-scripps/paper-workbench. The original In Silico repository and historical runs remain intact.
 - The shared core is housed in this repository. It exposes manuscript loading, evidence access, review validation and review execution. The benchmark consumes the core rather than copying the engine.
 - The application provides manuscript presentation, located review findings, author decisions, revision workflows and exports. These capabilities need empirical validation as part of the contribution.
 - Current public review workflows are `independent` and `ensemble`. Both have tools. Independent mode is not a manuscript-only baseline.
