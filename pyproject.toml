@@ -11,9 +11,10 @@ requires-python = ">=3.11"
 license = {file = "LICENSE"}
 authors = [{name = "Patrick Garrett"}]
 
+dependencies = []
+
 [project.urls]
 Homepage = "https://github.com/pgarrett-scripps/paper-workbench"
-dependencies = []
 
 [project.optional-dependencies]
 documents = ["rustypaper==0.2.1", "Pillow", "python-docx", "lxml"]
