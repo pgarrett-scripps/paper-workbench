@@ -5,9 +5,10 @@ import shutil
 import tempfile
 from pathlib import Path
 
-from .annotations import verify_workspace
+from peerreviewagents.engine.annotations import verify_workspace
+from peerreviewagents.engine.storage import digest, read, write
+
 from .scaffold_import import import_scaffold
-from .storage import digest, read, write
 from .source_edits import TEXT_LITERAL, literal_value
 
 

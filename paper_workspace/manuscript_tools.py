@@ -1,6 +1,9 @@
-"""Stdio entry point for the local review tools."""
+"""Moved to peerreviewagents.engine.manuscript_tools. This module is an alias for it."""
 import sys
-from pathlib import Path
-sys.path.insert(0,str(Path(__file__).resolve().parents[1]))
-from paper_workspace.investigation import main
-if __name__=='__main__':main(sys.argv[1])
+
+if __name__ == '__main__':
+    import runpy
+    runpy.run_module('peerreviewagents.engine.manuscript_tools', run_name='__main__', alter_sys=True)
+else:
+    from peerreviewagents.engine import manuscript_tools as _engine
+    sys.modules[__name__] = _engine

@@ -9,8 +9,9 @@ import re
 import shutil
 import tempfile
 
-from .ingest import words
-from .storage import digest, write
+from peerreviewagents.engine.ingest import words
+from peerreviewagents.engine.storage import digest, write
+
 from .source_edits import NATIVE_CITATION
 
 

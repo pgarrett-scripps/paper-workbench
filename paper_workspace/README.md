@@ -4,7 +4,7 @@ A local research prototype for scientific peer review in context. It imports a P
 
 ## Use
 
-Install Paper Workbench as described in the repository README. PDF import requires `rustypaper`, Pillow and Poppler. The `paper_workbench_core` package provides the shared headless integration API.
+Install Paper Workbench as described in the repository README. The review engine, including ingest, reviewers, investigation tools, schemas and domain packs, now lives in PeerReviewAgents as `peerreviewagents.engine`. The engine module names in this package, such as `paper_workspace.reviewer`, are aliases for those modules. The app code here is the viewer server, revisions, Paper Scaffold import and export, and Word review copies. PDF import requires Poppler, and the engine pins `rustypaper`. The `paper_workbench_core` package is an alias for the engine's headless integration API.
 
 ```bash
 python -m paper_workspace import manuscript.pdf workspace --xml manuscript.xml --supplements supplement-directory

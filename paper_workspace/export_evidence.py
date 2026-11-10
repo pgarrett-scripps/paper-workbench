@@ -5,7 +5,7 @@ from pathlib import Path
 import re
 import shutil
 
-from .storage import digest
+from peerreviewagents.engine.storage import digest
 
 
 def _natural(path):

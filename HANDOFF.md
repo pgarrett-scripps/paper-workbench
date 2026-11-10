@@ -2,9 +2,15 @@
 
 Snapshot: 11 October 2026. Start here for the current framework. The companion [paper repository](https://github.com/pgarrett-scripps/paper-workbench-paper) holds the manuscript, study evidence, figures, recovery records and publication priorities.
 
+## Engine and app split
+
+Version 0.2.0 moves the review engine (ingest, reviewers, synthesis, tools, domain packs and the headless API) to PeerReviewAgents 0.7.0 as `peerreviewagents.engine`. This repository is now the workspace and revision app. Its engine module names, and all of `paper_workbench_core`, are aliases for the engine modules, so old imports, test patches and frozen experiment scripts still resolve. Make engine changes in PeerReviewAgents, not here. See [the split map](docs/engine-split-map.md).
+
+The engine release is not published yet. CI cannot pass until `peerreviewagents` 0.7.0 is on the registry or the workflow installs it from git.
+
 ## Get started
 
-Accept collaborator access to both private repositories, then clone them into sibling directories:
+Accept collaborator access to the private repositories, then clone them into sibling directories. Install the engine before the app. Until 0.7.0 is published, use a PeerReviewAgents checkout that contains `peerreviewagents/engine`:
 
 ```bash
 git clone https://github.com/pgarrett-scripps/paper-workbench.git
@@ -12,6 +18,7 @@ git clone https://github.com/pgarrett-scripps/paper-workbench-paper.git
 cd paper-workbench
 python3 -m venv .venv
 . .venv/bin/activate
+python -m pip install -e ../PeerReviewAgents
 python -m pip install -e '.[documents,test]'
 paper-workbench --help
 python -m unittest discover -s tests -p 'test_*.py'
@@ -31,7 +38,7 @@ Replace the source filenames with your own files. Omit `--xml` for PDF-only inpu
 
 ## Current architecture
 
-The supported integration surface is `paper_workbench_core`. Use `ReviewRequest` and `run_review` for configurable manuscript-only, independent workspace, or ensemble workflows. Ensemble defaults to two independent reviewers followed by synthesis. The API supports debate and ordinary synthesis policies. See [the core contract](docs/shared-core.md), [configuration](paper_workbench_core/config.py) and [request validation](paper_workbench_core/api.py) for the executable settings.
+The supported integration surface is `peerreviewagents.engine.api`, still importable as `paper_workbench_core`. Use `ReviewRequest` and `run_review` for configurable manuscript-only, independent workspace, or ensemble workflows. Ensemble defaults to two independent reviewers followed by synthesis. The API supports debate and ordinary synthesis policies. See [the core contract](docs/shared-core.md) and, in PeerReviewAgents, `peerreviewagents/engine/config.py` and `peerreviewagents/engine/api.py` for the executable settings.
 
 The engine imports source blocks and references, provides bounded source and literature tools, preserves evidence receipts, validates quotes and issue accounting, and exports located comments and proposed edits. Author decisions and revision exports are distinct from scientific adjudication. Exact source linkage does not establish that a criticism is scientifically correct.
 
@@ -39,16 +46,18 @@ The legacy CLI `review --mode panel` and many files under `experiments/` describ
 
 ## Where to work
 
+Engine rows are paths in PeerReviewAgents under `peerreviewagents/engine/`. App rows are paths in this repository.
+
 | Area | Entry point |
 | --- | --- |
-| Public requests and integration | `paper_workbench_core/api.py`, `paper_workbench_core/config.py` |
-| Independent reviews and synthesis orchestration | `paper_workspace/ensemble.py` |
-| Synthesis decisions and component contract | `paper_workspace/ensemble_debate.py`, `paper_workspace/debate_revision.py` |
-| Synthesis preflight and feedback | `paper_workspace/synthesis_validation.py`, `paper_workspace/ensemble_references.py` |
-| Tool access and model transport | `paper_workspace/investigation.py`, `paper_workspace/model_runtime.py` |
-| Model catalog and billing policies | `paper_workspace/models.py`, `paper_workspace/billing.py` |
-| Viewer | `paper_workspace/web/` |
-| Regression checks | `tests/test_synthesis_validation.py`, `tests/test_ensemble_*.py` |
+| Public requests and integration (engine) | `api.py`, `config.py` |
+| Independent reviews and synthesis orchestration (engine) | `ensemble.py` |
+| Synthesis decisions and component contract (engine) | `ensemble_debate.py`, `debate_revision.py` |
+| Synthesis preflight and feedback (engine) | `synthesis_validation.py`, `ensemble_references.py` |
+| Tool access and model transport (engine) | `investigation.py`, `model_runtime.py` |
+| Model catalog and billing policies (engine) | `models.py`, `billing.py` |
+| Viewer and revisions (app) | `paper_workspace/web/`, `paper_workspace/server.py`, `paper_workspace/revisions.py` |
+| Regression checks | `tests/` here, and `tests/engine/` in PeerReviewAgents |
 
 ## Exact stopping point
 

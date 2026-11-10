@@ -54,7 +54,7 @@ class SavedDraftSynthesisTests(unittest.TestCase):
             'workflow': 'ensemble', 'model_requested': 'gpt-5.6-terra',
             'resolved_configuration': {'synthesis_policy': 'debate', 'reviewers': 2},
             'source_packet_manifest_after': packet_hashes,
-            'engine_source': source_manifest(Path(paper_workspace.__file__).parent),
+            'engine_source': source_manifest(Path(core_api.__file__).parent),
             'core_source': source_manifest(Path(core_api.__file__).parent),
             'usage': {'calls': 3, 'receipts': 3, 'observed_tokens': 90, 'unknown': False}})
         self.request = SavedDraftSynthesisRequest(workspace=self.workspace,
