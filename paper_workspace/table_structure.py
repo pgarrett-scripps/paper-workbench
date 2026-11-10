@@ -6,7 +6,7 @@ import unicodedata
 import xml.etree.ElementTree as ET
 import zipfile
 
-from .ingest import text_of
+from peerreviewagents.engine.ingest import text_of
 
 NS = {'w': 'http://schemas.openxmlformats.org/wordprocessingml/2006/main'}
 W = '{' + NS['w'] + '}'

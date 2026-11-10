@@ -8,8 +8,9 @@ import shutil
 import tempfile
 import zipfile
 
+from peerreviewagents.engine.storage import digest, read, write
+
 from .revisions import snapshot
-from .storage import digest, read, write
 
 W = 'http://schemas.openxmlformats.org/wordprocessingml/2006/main'
 R = 'http://schemas.openxmlformats.org/package/2006/relationships'

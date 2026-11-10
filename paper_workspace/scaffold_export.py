@@ -8,9 +8,10 @@ import tempfile
 import zipfile
 import xml.etree.ElementTree as ET
 
+from peerreviewagents.engine.storage import digest, write
+
 from .export_evidence import append_supplements, preserve_source_evidence
 from .revisions import snapshot
-from .storage import digest, write
 
 
 WORKER = '''

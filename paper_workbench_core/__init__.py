@@ -1,4 +1,8 @@
-"""Public headless API shared by Paper Workbench and benchmark adapters."""
+"""Compatibility name for the headless API, which now lives in peerreviewagents.engine.
+
+The api, baseline and config submodules are aliases for the engine modules, so
+``paper_workbench_core.api`` and ``peerreviewagents.engine.api`` are one object.
+"""
 from .api import (
     API_VERSION, ReviewRequest, capabilities, load_manuscript, evidence_registry,
     validate_review, run_review, StructuredRequest, run_structured, usage_summary,
@@ -7,7 +11,7 @@ from .api import (
 )
 from .config import CONFIG_VERSION, review_presets, resolved_review_config
 
-__version__ = '0.1.8'
+__version__ = '0.2.0'
 __all__ = ['API_VERSION', 'ReviewRequest', 'capabilities', 'load_manuscript',
            'evidence_registry', 'validate_review', 'run_review', 'StructuredRequest',
            'run_structured', 'usage_summary', 'CONFIG_VERSION', 'review_presets',

@@ -10,8 +10,9 @@ import tempfile
 from contextlib import contextmanager
 from pathlib import Path
 
-from .annotations import export_draft, save_review, verify_workspace
-from .storage import digest, read, write
+from peerreviewagents.engine.annotations import export_draft, save_review, verify_workspace
+from peerreviewagents.engine.storage import digest, read, write
+
 from .source_edits import NATIVE_CITATION, citation_markers, decode_span, encode_span
 
 POLICY = 'conservative-copyedit-v1'
@@ -328,7 +329,7 @@ def run_loop(root, run_id, *, max_rounds=2, max_edits=10, provider=None, build=T
                        'source_sha256': paper['source_sha256'], 'remaining_edits': max_edits - used}
             write(path / f'{round_number}-request.json', request)
             if scaffold_root:
-                from .scaffold_checks import build_report
+                from peerreviewagents.engine.scaffold_checks import build_report
                 write(path / f'{round_number}-checks-before.json', build_report(current_root, scaffold_root))
             response = (provider or copyedit_proposals)(copy.deepcopy(paper))
             if response.get('paper_id') != paper['id'] or response.get('source_sha256') != paper['source_sha256']:
