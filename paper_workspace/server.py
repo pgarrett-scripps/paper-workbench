@@ -5,6 +5,7 @@ import json
 import mimetypes
 import re
 import subprocess
+import tempfile
 import threading
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
@@ -102,14 +103,22 @@ def make_server(root, port=38744):
             self.end_headers()
             self.wfile.write(data)
 
-        def post_value(self):
-            host = self.headers.get("Host")
-            allowed_hosts = {f"127.0.0.1:{self.server.server_port}", f"localhost:{self.server.server_port}"}
-            if host not in allowed_hosts:
+        def allowed_hosts(self):
+            port = self.server.server_port
+            return {f"127.0.0.1:{port}", f"localhost:{port}"}
+
+        def parse_request(self):
+            """Check Host before any method runs, so a DNS rebinding page cannot read the workspace."""
+            if not super().parse_request():
+                return False
+            if self.headers.get("Host") not in self.allowed_hosts():
                 self.send(403, {"error": "Local host required"})
-                return None
+                return False
+            return True
+
+        def post_value(self):
             origin = self.headers.get("Origin")
-            allowed_origins = {f"http://{value}" for value in allowed_hosts}
+            allowed_origins = {f"http://{value}" for value in self.allowed_hosts()}
             if origin and origin not in allowed_origins:
                 self.send(403, {"error": "Same-origin request required"})
                 return None
@@ -127,6 +136,11 @@ def make_server(root, port=38744):
         def do_GET(self):
             try:
                 url = urlparse(self.path)
+                name = "index.html" if url.path == "/" else url.path.lstrip("/")
+                if name in ("index.html", "app.js", "style.css"):
+                    # The viewer shell holds no manuscript data, so it skips workspace verification.
+                    kind = {".html": "text/html", ".js": "text/javascript", ".css": "text/css"}[Path(name).suffix]
+                    return self.send(200, (ASSETS / name).read_bytes(), kind)
                 query = parse_qs(url.query)
                 draft, workspace, paper = selected(query)
                 rid = query.get("review", ["workspace"])[0]
@@ -197,10 +211,15 @@ def make_server(root, port=38744):
                     target = root / "page_images" / f"{page:03d}.png"
                     if not target.exists():
                         with LOCK:
-                            target.parent.mkdir(exist_ok=True)
-                            subprocess.run(["pdftoppm", "-f", str(page), "-l", str(page),
-                                "-scale-to", "1800", "-singlefile", "-png", str(root / "original.pdf"),
-                                str(target.with_suffix(""))], check=True, capture_output=True, timeout=30)
+                            # Render into a private folder and rename, so no request reads a partial image.
+                            if not target.exists():
+                                target.parent.mkdir(exist_ok=True)
+                                with tempfile.TemporaryDirectory(dir=target.parent, prefix=".render-") as scratch:
+                                    output = Path(scratch) / "page"
+                                    subprocess.run(["pdftoppm", "-f", str(page), "-l", str(page),
+                                        "-scale-to", "1800", "-singlefile", "-png", str(root / "original.pdf"),
+                                        str(output)], check=True, capture_output=True, timeout=30)
+                                    output.with_suffix(".png").replace(target)
                     return self.send(200, target.read_bytes(), "image/png")
                 if url.path.startswith("/supplements/"):
                     path = (workspace / url.path.lstrip("/")).resolve()
@@ -219,12 +238,8 @@ def make_server(root, port=38744):
                         return self.send(200, path.read_bytes(), mime)
                     return self.send(200, path.read_bytes(), "application/octet-stream",
                                      disposition='attachment')
-                name = "index.html" if url.path == "/" else url.path.lstrip("/")
-                if name not in ("index.html", "app.js", "style.css"):
-                    return self.send(404, {"error": "Not found"})
-                kind = {".html": "text/html", ".js": "text/javascript", ".css": "text/css"}[Path(name).suffix]
-                return self.send(200, (ASSETS / name).read_bytes(), kind)
-            except (ValueError, FileNotFoundError, KeyError, UnicodeDecodeError) as exc:
+                return self.send(404, {"error": "Not found"})
+            except (ValueError, FileNotFoundError, KeyError, UnicodeDecodeError, subprocess.SubprocessError) as exc:
                 self.send(400, {"error": str(exc)})
 
         def do_POST(self):
