@@ -1,9 +1,11 @@
 """Local viewer server: Host validation on every method and safe page rendering."""
 import http.client
 import json
+import os
 import subprocess
 import tempfile
 import threading
+import time
 import unittest
 from pathlib import Path
 from unittest.mock import patch
@@ -35,9 +37,9 @@ class ServerHttpTests(unittest.TestCase):
         self.thread.join(timeout=5)
         self.temporary.cleanup()
 
-    def request(self, path, host=None, method='GET', body=None):
+    def request(self, path, host=None, method='GET', body=None, headers=None):
         connection = http.client.HTTPConnection('127.0.0.1', self.port, timeout=10)
-        headers = {'Host': host or f'127.0.0.1:{self.port}'}
+        headers = {'Host': host or f'127.0.0.1:{self.port}', **(headers or {})}
         if body is not None:
             headers['Content-Type'] = 'application/json'
             body = json.dumps(body).encode()
@@ -47,6 +49,50 @@ class ServerHttpTests(unittest.TestCase):
             return response.status, response.read()
         finally:
             connection.close()
+
+    def request_without_host(self, path, method='GET'):
+        connection = http.client.HTTPConnection('127.0.0.1', self.port, timeout=10)
+        try:
+            connection.putrequest(method, path, skip_host=True)
+            connection.endheaders()
+            response = connection.getresponse()
+            return response.status, response.read()
+        finally:
+            connection.close()
+
+    def test_missing_host_is_rejected(self):
+        for path in ('/', '/api/paper', '/pages/1.png'):
+            status, body = self.request_without_host(path)
+            self.assertEqual((status, json.loads(body)), (403, {'error': 'Local host required'}), path)
+        self.assertEqual(self.request_without_host('/api/decisions', 'POST')[0], 403)
+
+    def test_head_and_options_check_host_and_stay_unsupported(self):
+        for method in ('HEAD', 'OPTIONS'):
+            self.assertEqual(self.request('/api/paper', 'attacker.example', method)[0], 403, method)
+            self.assertEqual(self.request('/api/paper', f'localhost:{self.port}', method)[0], 501, method)
+        status, body = self.request('/api/paper', 'attacker.example', 'HEAD')
+        self.assertEqual(body, b'')
+
+    def test_post_requires_a_same_origin_request(self):
+        for origin in ('http://attacker.example', 'null', 'http://localhost:1', f'https://localhost:{self.port}'):
+            status, body = self.request('/api/decisions', method='POST', body={'review_id': 'missing'},
+                                        headers={'Origin': origin})
+            self.assertEqual((status, json.loads(body)), (403, {'error': 'Same-origin request required'}),
+                             origin)
+        for origin in (f'http://127.0.0.1:{self.port}', f'http://localhost:{self.port}'):
+            status, _ = self.request('/api/decisions', method='POST', body={'review_id': 'missing'},
+                                     headers={'Origin': origin})
+            self.assertEqual(status, 400, origin)
+
+    def test_stale_render_folders_are_removed_on_start(self):
+        folder = self.root / 'page_images'
+        (folder / '.render-old').mkdir(parents=True)
+        (folder / '.render-old' / 'page.png').write_bytes(b'partial')
+        (folder / '.render-live').mkdir()
+        old = time.time() - server_module.STALE_RENDER_SECONDS - 60
+        os.utime(folder / '.render-old', (old, old))
+        make_server(self.root, 0).server_close()
+        self.assertEqual(sorted(path.name for path in folder.iterdir()), ['.render-live'])
 
     def test_foreign_host_is_rejected_on_every_method_and_route(self):
         foreign = (f'attacker.example:{self.port}', 'attacker.example', 'localhost:1')
@@ -86,13 +132,16 @@ class ServerHttpTests(unittest.TestCase):
         self.assertEqual(status, 400)
         self.assertIn('Manuscript source changed', json.loads(body)['error'])
 
-    def test_page_render_failure_returns_an_error_and_leaves_no_image(self):
-        failure = subprocess.CalledProcessError(1, ['pdftoppm'])
-        with patch.object(server_module.subprocess, 'run', side_effect=failure):
-            status, body = self.request('/pages/1.png')
-        self.assertEqual(status, 400)
-        self.assertIn('error', json.loads(body))
-        self.assertEqual(list((self.root / 'page_images').iterdir()), [])
+    def test_page_render_failure_returns_a_short_error_and_leaves_no_image(self):
+        def fail(command, **kwargs):
+            raise subprocess.CalledProcessError(1, command)
+
+        for failure in (fail, subprocess.TimeoutExpired(['pdftoppm', str(self.root)], 30)):
+            with patch.object(server_module.subprocess, 'run', side_effect=failure):
+                status, body = self.request('/pages/1.png')
+            self.assertEqual((status, json.loads(body)),
+                             (400, {'error': 'Could not render page 1 of the original PDF'}))
+            self.assertEqual(list((self.root / 'page_images').iterdir()), [])
 
     def test_concurrent_page_request_never_reads_a_partial_image(self):
         image = b'\x89PNG' + b'x' * 4096

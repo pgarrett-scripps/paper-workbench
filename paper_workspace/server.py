@@ -4,9 +4,11 @@ import io
 import json
 import mimetypes
 import re
+import shutil
 import subprocess
 import tempfile
 import threading
+import time
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib.parse import parse_qs, urlparse
@@ -21,11 +23,23 @@ from .revisions import checkout, create_revision, head, snapshot, valid_id
 LOCK = threading.Lock()
 ASSETS = Path(__file__).parent / "web"
 REVIEW_ID = re.compile(r"[a-z0-9_-]{1,50}")
+STALE_RENDER_SECONDS = 300
+
+
+def clear_stale_renders(folder):
+    """Remove render folders a killed server left behind. A live render ends within its 30 second timeout."""
+    for stale in folder.glob(".render-*"):
+        try:
+            if time.time() - stale.lstat().st_mtime > STALE_RENDER_SECONDS:
+                shutil.rmtree(stale)
+        except OSError:
+            continue
 
 
 def make_server(root, port=38744):
     root = Path(root).resolve()
     original = verify_workspace(root)
+    clear_stale_renders(root / "page_images")
 
     def selected(query):
         requested = query.get("draft", [None])[0]
@@ -101,7 +115,8 @@ def make_server(root, port=38744):
             if disposition:
                 self.send_header("Content-Disposition", disposition)
             self.end_headers()
-            self.wfile.write(data)
+            if self.command != "HEAD":
+                self.wfile.write(data)
 
         def allowed_hosts(self):
             port = self.server.server_port
@@ -216,9 +231,13 @@ def make_server(root, port=38744):
                                 target.parent.mkdir(exist_ok=True)
                                 with tempfile.TemporaryDirectory(dir=target.parent, prefix=".render-") as scratch:
                                     output = Path(scratch) / "page"
-                                    subprocess.run(["pdftoppm", "-f", str(page), "-l", str(page),
-                                        "-scale-to", "1800", "-singlefile", "-png", str(root / "original.pdf"),
-                                        str(output)], check=True, capture_output=True, timeout=30)
+                                    try:
+                                        subprocess.run(["pdftoppm", "-f", str(page), "-l", str(page),
+                                            "-scale-to", "1800", "-singlefile", "-png", str(root / "original.pdf"),
+                                            str(output)], check=True, capture_output=True, timeout=30)
+                                    except subprocess.SubprocessError:
+                                        # The exception text holds the full command and workspace paths.
+                                        raise ValueError(f"Could not render page {page} of the original PDF") from None
                                     output.with_suffix(".png").replace(target)
                     return self.send(200, target.read_bytes(), "image/png")
                 if url.path.startswith("/supplements/"):
@@ -239,7 +258,7 @@ def make_server(root, port=38744):
                     return self.send(200, path.read_bytes(), "application/octet-stream",
                                      disposition='attachment')
                 return self.send(404, {"error": "Not found"})
-            except (ValueError, FileNotFoundError, KeyError, UnicodeDecodeError, subprocess.SubprocessError) as exc:
+            except (ValueError, FileNotFoundError, KeyError, UnicodeDecodeError) as exc:
                 self.send(400, {"error": str(exc)})
 
         def do_POST(self):
