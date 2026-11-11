@@ -14,7 +14,8 @@ from peerreviewagents.engine.annotations import export_draft, save_review, verif
 from peerreviewagents.engine.storage import digest, write
 
 REPOSITORY = Path(__file__).resolve().parents[1]
-ALIAS = re.compile(r'^from peerreviewagents\.engine import (\w+) as _engine$', re.M)
+# Runnable aliases import the engine module inside an else branch, so allow indentation.
+ALIAS = re.compile(r'^\s*from peerreviewagents\.engine import (\w+) as _engine$', re.M)
 
 
 class EngineAliasSmokeTest(unittest.TestCase):

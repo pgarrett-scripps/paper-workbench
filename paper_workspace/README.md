@@ -25,10 +25,10 @@ Import structured findings with `add-review workspace response.json --id review-
 The CLI defaults to Terra medium and also supports Sol medium and supports plain review, workspace investigation, and a panel with a debate pass. No API key, paid credit, fallback model, shell tool, author-code execution, or automatic retry is used. Inputs and code are fingerprinted before inference. Cache identity includes tool configuration, the manuscript manifest, and attached image paths and hashes. Completed calls can be recovered without another inference. Unknown usage and unresolved interrupted calls block further inference in that attempt directory. The default 250,000 observed-token stop is checked before each call. It is not a hard within-call cap.
 
 ```bash
-python -m paper_workspace review workspace run-output --mode panel --literature-cutoff 2026-01-05 --billing-confirmation billing_confirmation.json
+python -m paper_workspace review workspace run-output --mode panel --literature-cutoff 2026-01-05
 ```
 
-This command performs model inference. The billing confirmation must come from a current account check, record `no_paid_credits_verified: true`, and contain a Unix `checked_at` timestamp less than 24 hours old. The runner also requires an active ChatGPT subscription login. Claude models instead require a Claude Code subscription login and a record from `confirm-billing`, as described in [the provider guide](../docs/claude-code-provider.md). Do not fabricate this confirmation or use it to enable paid usage.
+This command performs model inference. It requires an active Claude Code subscription login, the default provider, or a ChatGPT subscription login with `--provider codex`. API keys and cloud API providers are refused. Usage is recorded in the run's `usage.jsonl` for reporting, and how much a run may spend is the operator's own setting. `--literature-cutoff` is optional and defaults to today.
 
 After a run, `python -m paper_workspace report run-output` writes `REVIEW.md` and `REVIEW.txt` to the run folder. Both contain the run details, the final review and, for ensemble runs, each independent reviewer. The command reads the saved JSON and makes no model calls. It also works on a blocked or stopped run and reports what was saved.
 
@@ -44,7 +44,6 @@ The optional adapter genuinely reuses `readability.metrics` and `prose_check.che
 
 ```bash
 python -m paper_workspace checks workspace --scaffold-root /path/to/paper-scaffold --output scaffold-report.json
-python -m paper_workspace review workspace run-output --mode panel --literature-cutoff 2026-01-05 --billing-confirmation billing_confirmation.json --scaffold-root /path/to/paper-scaffold
 ```
 
 The checks operate on extracted plain text and skip headings, references, and tables. They include captions and supplementary prose. Their word convention differs from the importer totals. Readability and prose warnings are editorial cues, not evidence of scientific defects. Scaffold's Typst authoring rules and journal limits are not imposed on imported manuscripts.
@@ -55,27 +54,19 @@ The approved two-paper pilot uses these checks before inference and compares an 
 
 That pilot is complete and found no measured overlap improvement from debate. The later four-paper panel also found no overlap improvement and no reviewer-requested tool calls. See `docs/pra-workspace-two-paper-results.md` and `docs/pra-workspace-four-paper-results.md` for the frozen results. Historical experiment prompts and result files have not been rewritten to use subsequent workflow changes.
 
-## Evidence workflow experiment
+## Retired experiment runners
 
-The next development runner is `experiments/pra_evidence_workflow/run.py`. It implements an experiment map, deterministic source checks, evidence interpretation, and a fresh debate. This is a staged investigation workflow, not three independent reviewers. The reusable `evidence_tasks.py` module validates a bounded plan and executes its manuscript searches, source reads, original PDF page views, and small calculations before the evidence model call. Original page images are attached to that call. Immutable receipts record what was actually delivered.
-
-The evidence response preserves at most eight candidates and selects at most five. Task records include observations, an author-side explanation, unresolved evidence, and receipt IDs. Invalid completion claims become unresolved before debate receives them. Debate sees every candidate and can use two further source operations. Exports retain the experiment map, validated task records, source provenance, candidate history, and dispositions. The existing comment viewer remains available, while the detailed task audit is currently in JSON exports.
-
-The authorized cycle uses one reused-paper smoke test and a two-paper comparison against an ordinary Sol reviewer. Both conditions receive the same planner-selected raw page images. Human reviews are withheld until generation is locked. Evaluation separates justified concerns, justified clarifications, unsupported allegations, and unverifiable findings. It uses the complete verified image union for all three anonymous outputs, including the before-debate intermediate. Source delivery and exact quotations are engineering checks, not scientific correctness guarantees.
-
-The fixed cycle permits eleven Sol medium calls and a 600,000 observed-token stop checked between calls. No automatic retries or wider panel expansion are enabled. The generic `review --mode panel` command still uses the earlier investigator-plus-debate workflow. Use the experiment runner only with its frozen protocol and prepared inputs. See `docs/pra-evidence-workflow-protocol.md` and `docs/pra-evidence-workflow-status.md` for scope and current status.
-
-Only this invocation's eight manuscript tools receive explicit per-tool approval. They read the selected source, save local evidence notes and receipts, perform bounded arithmetic, or query the two public literature services. Global Codex settings are untouched. The configuration follows the [official OpenAI MCP documentation](https://learn.chatgpt.com/docs/extend/mcp?surface=cli).
+Engine 0.8 removed the study-only modules behind the staged evidence workflow, the revised debate, the two-paper and four-paper pilots, the handoff retests, the ensemble and reliability trials, and the transfer and domain studies. Their runners are deleted from `experiments/`. Their protocols and frozen results remain in `docs/`, for example `docs/pra-evidence-workflow-protocol.md`, `docs/pra-evidence-workflow-status.md`, `docs/pra-debate-revision-protocol.md` and `docs/pra-debate-revision-results.md`.
 
 The first development pilot completed three valid review outputs across five attempts. Two infrastructure failures are preserved. Planned model grading was dropped to conserve the attempt allowance. See `docs/pra-workspace-pilot-results.md` for evidence, usage, limitations, and the post-pilot image-handoff correction.
 
-## Revised debate development path
+## Codex tool approval
 
-`debate_revision.py` provides a versioned component-preserving debate schema, prompt, validator, and editor package. `debate_evidence.py` provides a fixed source-only tool profile with explicit any/all search and bounded claim or experiment context. Every original component receives a treatment, and scientific status is separate from editorial priority. Exact quotations and complete accounting are checked without asserting scientific correctness.
+Only this invocation's eight manuscript tools receive explicit per-tool approval. They read the selected source, save local evidence notes and receipts, perform bounded arithmetic, or query the two public literature services. Global Codex settings are untouched. The configuration follows the [official OpenAI MCP documentation](https://learn.chatgpt.com/docs/extend/mcp?surface=cli).
 
-The viewer and export support the new decision ledger. The generic panel command above retains its earlier behavior. The revised path has only been exercised in the bounded one-paper runner at `experiments/pra_debate_revision/run.py`, using saved candidates. Its completed trial used two Sol calls and 92,303 observed tokens. A model judge preferred the revised review, but the paper was reused and the result is not a superiority claim.
+## Revised debate schema
 
-See `docs/pra-debate-revision-protocol.md` and `docs/pra-debate-revision-results.md`. The completed run's inputs and source are frozen under `runs/pra-debate-revision-v2`. Code changes after the run intentionally prevent silently resuming it under changed inputs. Use a separately frozen attempt for future experiments.
+`debate_revision.py` provides a versioned component-preserving debate schema, prompt, validator, and editor package. Every original component receives a treatment, and scientific status is separate from editorial priority. Exact quotations and complete accounting are checked without asserting scientific correctness. The viewer and export support its decision ledger. The generic panel command above retains its earlier behavior.
 
 ## Boundaries
 
@@ -94,7 +85,7 @@ python -m unittest discover -s tests -p 'test_*.py' -v
 node --check paper_workspace/web/app.js
 ```
 
-Tests cover Unicode anchors, ambiguous quotes, source tampering, overlap rejection, numerical guards, retained unplaced comments, table extraction, tool limits, restricted arithmetic, distinct concerns on shared passages, malformed debate dispositions, source-image provenance, export history, cache identity, interrupted-call recovery, and usage accounting. A separate one-call development retest is defined in `experiments/pra_workspace_handoff_retest/run.py`. It reuses the saved reviews and does not constitute an efficacy benchmark.
+Tests cover Unicode anchors, ambiguous quotes, source tampering, overlap rejection, numerical guards, retained unplaced comments, table extraction, tool limits, restricted arithmetic, distinct concerns on shared passages, malformed debate dispositions, source-image provenance, export history, cache identity, interrupted-call recovery, and usage accounting.
 
 ## Native Scaffold revisions
 
