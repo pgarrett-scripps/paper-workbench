@@ -8,7 +8,7 @@ The core owns source integrity, manuscript block identities, evidence handles, r
 
 Neither answer keys nor human evaluation labels belong in `ReviewRequest`. The benchmark must prepare a manuscript-only workspace and keep grading inputs outside it. Core outputs are review artifacts, not scores.
 
-## API version 2
+## API version 3
 
 ```python
 from pathlib import Path
@@ -23,10 +23,9 @@ supported = capabilities()
 
 request = ReviewRequest(
     workspace=Path("workspaces/example"),
-    output=Path("runs/example-terra"),
+    output=Path("runs/example"),
     literature_cutoff="2026-09-25",
     workflow="ensemble",
-    model="gpt-5.6-terra",
     reviewers=2,
 )
 # Explicit inference, only after the benchmark authorizes this run:
@@ -35,7 +34,7 @@ request = ReviewRequest(
 
 `load_manuscript`, `evidence_registry`, `validate_review`, `capabilities` and request construction do not call a model or start the web server. `validate_review` normalizes source references and proposed edits. It does not determine whether a scientific concern is true.
 
-`run_review` uses the existing engine. It rejects existing output directories, unsupported models and unsupported workflows. It returns a `paper-workbench-run-v1` artifact containing the editor package, requested model, workflow, manuscript identity, engine file hashes and observed usage. Unknown usage and execution failures remain errors with underlying run files preserved. Token budgets are launch guards, not hard within-session caps. Independent mode retains its existing per-session guard.
+`run_review` uses the existing engine. It rejects existing output directories, unsupported models and unsupported workflows. It returns a `paper-workbench-run-v1` artifact containing the editor package, requested model, workflow, manuscript identity, engine file hashes and observed usage. Unknown usage and execution failures remain errors with underlying run files preserved. Token budgets are launch guards, not hard within-session caps. A request that names no policy or preset runs agentic-v1, at high effort with no finding cap. Without `token_budget`, the ceiling is what that policy needs for each stage, so an ensemble gets room for every reviewer and the synthesis. Independent mode retains its existing per-session guard.
 
 The supported workflows are `manuscript-only`, `independent` and `ensemble`. Manuscript-only mode receives extracted text and supplied source images with review tools disabled. Independent and ensemble modes have manuscript tools. The transport supports Claude Code subscription execution with Opus 5.5 and Sonnet 5.5, the default, and Codex subscription execution with Astra, Sol, Terra, Luna, and GPT-5.5. The review policy sets the reasoning effort. The model ID selects the provider. See [the Claude Code provider guide](claude-code-provider.md). Arbitrary models and provider APIs require a separately designed transport extension. Do not silently route unsupported candidates through a different pipeline.
 

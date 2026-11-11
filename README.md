@@ -27,7 +27,7 @@ paper-workbench import manuscript.pdf workspaces/example --xml manuscript.xml
 paper-workbench serve workspaces/example --port 38744
 ```
 
-Model execution is an explicit separate action. The engine supports two subscription transports. Claude Code is the default and runs Sonnet 5.5, or Opus 5.5, on a Claude subscription with no API key. Codex sessions run Astra, Sol, Terra, Luna, or GPT-5.5 on a ChatGPT subscription. The review policy sets the reasoning effort. See [the Claude Code provider guide](docs/claude-code-provider.md). Each run checks that it uses the subscription login and refuses API keys and cloud API providers. Usage is recorded in the run's `usage.jsonl`, and how much a run may spend is the operator's own setting. Importing the package, inspecting a workspace or running offline tests does not start model inference. `paper-workbench report RUN` turns a saved run into readable `REVIEW.md` and `REVIEW.txt` files.
+Model execution is an explicit separate action. The engine supports two subscription transports. Claude Code is the default and runs Sonnet 5.5, or Opus 5.5, on a Claude subscription with no API key. Codex sessions run Astra, Sol, Terra, Luna, or GPT-5.5 on a ChatGPT subscription. The review policy sets the reasoning effort. The default, agentic-v1, runs each stage at high effort with a thirty call tool allowance and no finding cap, and `--policy standard-v1` keeps the bounded study budget. `paper-workbench review manuscript.pdf runs/example` imports a PDF, reviews it and writes the reports in one command. See [the Claude Code provider guide](docs/claude-code-provider.md). Each run checks that it uses the subscription login and refuses API keys and cloud API providers. Usage is recorded in the run's `usage.jsonl`, and how much a run may spend is the operator's own setting. Importing the package, inspecting a workspace or running offline tests does not start model inference. `paper-workbench report RUN` turns a saved run into readable `REVIEW.md` and `REVIEW.txt` files.
 
 ## Engine and app
 
@@ -39,7 +39,7 @@ Version 0.2.0 splits the project into two packages:
 - `paper-workbench` keeps the app commands. Engine commands such as `import`, `verify`, `add-review`, `review` and `report` pass through to the engine, which also serves them as `peerreview <command>`.
 - `experiments` and `docs` hold archived study code and development findings, as before.
 
-The headless API keeps its name, and its version is `paper-workbench-core-v2`. New clients should import `peerreviewagents.engine.api`. See [the shared-core contract](docs/shared-core.md) and [the split map](docs/engine-split-map.md).
+The headless API keeps its name, and its version is `paper-workbench-core-v3`. New clients should import `peerreviewagents.engine.api`. See [the shared-core contract](docs/shared-core.md) and [the split map](docs/engine-split-map.md).
 
 CI installs the engine from the PeerReviewAgents main branch, then this package with its test dependencies.
 

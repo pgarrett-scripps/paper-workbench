@@ -38,7 +38,7 @@ Replace the source filenames with your own files. Omit `--xml` for PDF-only inpu
 
 ## Current architecture
 
-The supported integration surface is `peerreviewagents.engine.api`, still importable as `paper_workbench_core`. Use `ReviewRequest` and `run_review` for configurable manuscript-only, independent workspace, or ensemble workflows. Ensemble defaults to two independent reviewers followed by synthesis. The API supports debate and ordinary synthesis policies. See [the core contract](docs/shared-core.md) and, in PeerReviewAgents, `peerreviewagents/engine/config.py` and `peerreviewagents/engine/api.py` for the executable settings.
+The supported integration surface is `peerreviewagents.engine.api`, still importable as `paper_workbench_core`. Use `ReviewRequest` and `run_review` for configurable manuscript-only, independent workspace, or ensemble workflows. Ensemble defaults to two independent reviewers followed by synthesis. A request that names no policy runs agentic-v1, at high effort with no finding cap. `standard-v1` is the bounded study budget. The API supports debate and ordinary synthesis policies. See [the core contract](docs/shared-core.md) and, in PeerReviewAgents, `peerreviewagents/engine/config.py` and `peerreviewagents/engine/api.py` for the executable settings.
 
 The engine imports source blocks and references, provides bounded source and literature tools, preserves evidence receipts, validates quotes and issue accounting, and exports located comments and proposed edits. Author decisions and revision exports are distinct from scientific adjudication. Exact source linkage does not establish that a criticism is scientifically correct.
 

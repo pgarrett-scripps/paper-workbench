@@ -17,16 +17,15 @@ Claude Code runs are a separate condition. They do not reproduce the Codex study
 | `claude-sonnet-5-5` | Default model. Lighter on included usage |
 | `claude-opus-5-5` | Stronger, but its safeguards can refuse life-science manuscripts |
 
-Sonnet is the default because Opus 5.5 refused a biology manuscript at the first request (see Limitations). The default is an exact model ID, not the moving `sonnet` alias, so every receipt names the model that ran. Moving to a newer Sonnet is a one-line change to `DEFAULT_MODELS` in `peerreviewagents/engine/models.py` and counts as a new condition. The review policy sets the reasoning effort, as for Codex. Fable is not offered because some plans bill it from paid usage credits. Unknown models are rejected and never substituted.
+Sonnet is the default because Opus 5.5 refused a biology manuscript at the first request (see Limitations). The default is an exact model ID, not the moving `sonnet` alias, so every receipt names the model that ran. Moving to a newer Sonnet is a one-line change to `DEFAULT_MODELS` in `peerreviewagents/engine/models.py` and counts as a new condition. The review policy sets the reasoning effort, as for Codex. The default agentic-v1 policy runs at high effort. Fable is not offered because some plans bill it from paid usage credits. Unknown models are rejected and never substituted.
 
 ## Run a review
 
 ```bash
-paper-workbench review workspaces/example runs/example-claude
-paper-workbench report runs/example-claude
+paper-workbench review manuscript.pdf runs/example-claude
 ```
 
-The last command writes `REVIEW.md` and `REVIEW.txt` to the run folder without any model call. `--literature-cutoff YYYY-MM-DD` sets the latest eligible publication date and defaults to today.
+This one command imports the PDF into `runs/example-claude/manuscript`, runs the review in `runs/example-claude/review` and writes `REVIEW.md` and `REVIEW.txt` to `runs/example-claude` without another model call. An imported workspace works in place of the PDF, and then `paper-workbench report RUN` writes the two reports. `--literature-cutoff YYYY-MM-DD` sets the latest eligible publication date and defaults to today.
 
 Add `--model claude-opus-5-5` to choose Opus. `investigate` accepts the same `--provider` and `--model` options. A model from the other provider is rejected.
 
@@ -71,7 +70,7 @@ Observed tokens count every input token Claude processes, including cache reads,
 - Claude Code can retry a failed network request internally, similar to Codex reconnects. The engine retries a call only when the review policy allows one bounded retry and the session crashed before it produced a result.
 - Response schemas travel on the command line and are limited to 120,000 characters. Current schemas are well below that.
 - Opus 5.5 safeguards can refuse life-science manuscripts. Claude Code then reports a failed call with a `[bio]` detail, and the engine stops without switching models. Rewording or trimming a manuscript to get past a refusal is not supported. Choose another model in a new output directory.
-- Sonnet 5.5 sometimes marks a supported clarification as omitted when it does not fit the final five findings. The synthesis rules require such an issue to stay as a supporting secondary concern with wording for the authors, so final validation rejects the run. This happened for 3 of 29 corpus papers on the first attempt. The engine does not retry, so start a fresh run in a new output directory.
+- Sonnet 5.5 sometimes marks a supported clarification as omitted when it does not fit the final five findings. The synthesis rules require such an issue to stay as a supporting secondary concern with wording for the authors, so final validation rejects the run. This happened for 3 of 29 corpus papers on the first attempt. The engine does not retry a failed validation, so start a fresh run in a new output directory.
 
 ## Verification status
 
