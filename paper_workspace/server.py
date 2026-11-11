@@ -4,8 +4,11 @@ import io
 import json
 import mimetypes
 import re
+import shutil
 import subprocess
+import tempfile
 import threading
+import time
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib.parse import parse_qs, urlparse
@@ -20,11 +23,23 @@ from .revisions import checkout, create_revision, head, snapshot, valid_id
 LOCK = threading.Lock()
 ASSETS = Path(__file__).parent / "web"
 REVIEW_ID = re.compile(r"[a-z0-9_-]{1,50}")
+STALE_RENDER_SECONDS = 300
+
+
+def clear_stale_renders(folder):
+    """Remove render folders a killed server left behind. A live render ends within its 30 second timeout."""
+    for stale in folder.glob(".render-*"):
+        try:
+            if time.time() - stale.lstat().st_mtime > STALE_RENDER_SECONDS:
+                shutil.rmtree(stale)
+        except OSError:
+            continue
 
 
 def make_server(root, port=38744):
     root = Path(root).resolve()
     original = verify_workspace(root)
+    clear_stale_renders(root / "page_images")
 
     def selected(query):
         requested = query.get("draft", [None])[0]
@@ -100,16 +115,25 @@ def make_server(root, port=38744):
             if disposition:
                 self.send_header("Content-Disposition", disposition)
             self.end_headers()
-            self.wfile.write(data)
+            if self.command != "HEAD":
+                self.wfile.write(data)
+
+        def allowed_hosts(self):
+            port = self.server.server_port
+            return {f"127.0.0.1:{port}", f"localhost:{port}"}
+
+        def parse_request(self):
+            """Check Host before any method runs, so a DNS rebinding page cannot read the workspace."""
+            if not super().parse_request():
+                return False
+            if self.headers.get("Host") not in self.allowed_hosts():
+                self.send(403, {"error": "Local host required"})
+                return False
+            return True
 
         def post_value(self):
-            host = self.headers.get("Host")
-            allowed_hosts = {f"127.0.0.1:{self.server.server_port}", f"localhost:{self.server.server_port}"}
-            if host not in allowed_hosts:
-                self.send(403, {"error": "Local host required"})
-                return None
             origin = self.headers.get("Origin")
-            allowed_origins = {f"http://{value}" for value in allowed_hosts}
+            allowed_origins = {f"http://{value}" for value in self.allowed_hosts()}
             if origin and origin not in allowed_origins:
                 self.send(403, {"error": "Same-origin request required"})
                 return None
@@ -127,6 +151,11 @@ def make_server(root, port=38744):
         def do_GET(self):
             try:
                 url = urlparse(self.path)
+                name = "index.html" if url.path == "/" else url.path.lstrip("/")
+                if name in ("index.html", "app.js", "style.css"):
+                    # The viewer shell holds no manuscript data, so it skips workspace verification.
+                    kind = {".html": "text/html", ".js": "text/javascript", ".css": "text/css"}[Path(name).suffix]
+                    return self.send(200, (ASSETS / name).read_bytes(), kind)
                 query = parse_qs(url.query)
                 draft, workspace, paper = selected(query)
                 rid = query.get("review", ["workspace"])[0]
@@ -197,10 +226,19 @@ def make_server(root, port=38744):
                     target = root / "page_images" / f"{page:03d}.png"
                     if not target.exists():
                         with LOCK:
-                            target.parent.mkdir(exist_ok=True)
-                            subprocess.run(["pdftoppm", "-f", str(page), "-l", str(page),
-                                "-scale-to", "1800", "-singlefile", "-png", str(root / "original.pdf"),
-                                str(target.with_suffix(""))], check=True, capture_output=True, timeout=30)
+                            # Render into a private folder and rename, so no request reads a partial image.
+                            if not target.exists():
+                                target.parent.mkdir(exist_ok=True)
+                                with tempfile.TemporaryDirectory(dir=target.parent, prefix=".render-") as scratch:
+                                    output = Path(scratch) / "page"
+                                    try:
+                                        subprocess.run(["pdftoppm", "-f", str(page), "-l", str(page),
+                                            "-scale-to", "1800", "-singlefile", "-png", str(root / "original.pdf"),
+                                            str(output)], check=True, capture_output=True, timeout=30)
+                                    except subprocess.SubprocessError:
+                                        # The exception text holds the full command and workspace paths.
+                                        raise ValueError(f"Could not render page {page} of the original PDF") from None
+                                    output.with_suffix(".png").replace(target)
                     return self.send(200, target.read_bytes(), "image/png")
                 if url.path.startswith("/supplements/"):
                     path = (workspace / url.path.lstrip("/")).resolve()
@@ -219,11 +257,7 @@ def make_server(root, port=38744):
                         return self.send(200, path.read_bytes(), mime)
                     return self.send(200, path.read_bytes(), "application/octet-stream",
                                      disposition='attachment')
-                name = "index.html" if url.path == "/" else url.path.lstrip("/")
-                if name not in ("index.html", "app.js", "style.css"):
-                    return self.send(404, {"error": "Not found"})
-                kind = {".html": "text/html", ".js": "text/javascript", ".css": "text/css"}[Path(name).suffix]
-                return self.send(200, (ASSETS / name).read_bytes(), kind)
+                return self.send(404, {"error": "Not found"})
             except (ValueError, FileNotFoundError, KeyError, UnicodeDecodeError) as exc:
                 self.send(400, {"error": str(exc)})
 
