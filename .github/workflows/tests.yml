@@ -10,6 +10,8 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: '3.11'
+      # peerreviewagents 0.8.0 is not on PyPI yet, so install the engine from its main branch.
+      - run: python -m pip install 'peerreviewagents @ git+https://github.com/pgarrett-scripps/PeerReviewAgents@main'
       - run: python -m pip install -e '.[test]'
       - run: python -m unittest discover -s tests -p 'test_*.py'
       - run: paper-workbench --help

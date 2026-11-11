@@ -4,13 +4,13 @@ Snapshot: 11 October 2026. Start here for the current framework. The companion [
 
 ## Engine and app split
 
-Version 0.2.0 moves the review engine (ingest, reviewers, synthesis, tools, domain packs and the headless API) to PeerReviewAgents 0.7.0 as `peerreviewagents.engine`. This repository is now the workspace and revision app. Its engine module names, and all of `paper_workbench_core`, are aliases for the engine modules, so old imports, test patches and frozen experiment scripts still resolve. Make engine changes in PeerReviewAgents, not here. See [the split map](docs/engine-split-map.md).
+Version 0.2.0 moves the review engine (ingest, reviewers, synthesis, tools, domain packs and the headless API) to PeerReviewAgents as `peerreviewagents.engine`. The app needs engine 0.8.0 or newer. This repository is now the workspace and revision app. Its engine module names, and all of `paper_workbench_core`, are aliases for the engine modules, so imports and test patches through those names reach the engine. Make engine changes in PeerReviewAgents, not here. See [the split map](docs/engine-split-map.md).
 
-The engine release is not published yet. CI cannot pass until `peerreviewagents` 0.7.0 is on the registry or the workflow installs it from git.
+Engine 0.8.0 is not on PyPI yet. CI installs it from the PeerReviewAgents main branch.
 
 ## Get started
 
-Accept collaborator access to the private repositories, then clone them into sibling directories. Install the engine before the app. Until 0.7.0 is published, use a PeerReviewAgents checkout that contains `peerreviewagents/engine`:
+Accept collaborator access to the private repositories, then clone them into sibling directories. Install the engine before the app. Until 0.8.0 is on PyPI, install it from the PeerReviewAgents main branch, or with `python -m pip install -e ../PeerReviewAgents` from a checkout:
 
 ```bash
 git clone https://github.com/pgarrett-scripps/paper-workbench.git
@@ -18,7 +18,7 @@ git clone https://github.com/pgarrett-scripps/paper-workbench-paper.git
 cd paper-workbench
 python3 -m venv .venv
 . .venv/bin/activate
-python -m pip install -e ../PeerReviewAgents
+python -m pip install 'peerreviewagents @ git+https://github.com/pgarrett-scripps/PeerReviewAgents@main'
 python -m pip install -e '.[documents,test]'
 paper-workbench --help
 python -m unittest discover -s tests -p 'test_*.py'
@@ -55,7 +55,7 @@ Engine rows are paths in PeerReviewAgents under `peerreviewagents/engine/`. App 
 | Synthesis decisions and component contract (engine) | `ensemble_debate.py`, `debate_revision.py` |
 | Synthesis preflight and feedback (engine) | `synthesis_validation.py`, `ensemble_references.py` |
 | Tool access and model transport (engine) | `investigation.py`, `model_runtime.py` |
-| Model catalog and billing policies (engine) | `models.py`, `billing.py` |
+| Model catalog and review policies (engine) | `models.py`, `review_policy.py` |
 | Viewer and revisions (app) | `paper_workspace/web/`, `paper_workspace/server.py`, `paper_workspace/revisions.py` |
 | Regression checks | `tests/` here, and `tests/engine/` in PeerReviewAgents |
 
@@ -71,7 +71,7 @@ Core 0.1.8 adds a Claude Code transport so collaborators can run every model wor
 
 ## Execution and collaboration
 
-Offline inspection and tests need no model login. New model runs require the operator's own authenticated subscription session and a fresh accepted billing record. Do not copy account credentials or reuse expired billing snapshots. The engine supports the Codex and Claude Code transports. Consult `capabilities()` for the accepted model IDs of each. Recent recovery runs used Terra at medium effort. Claude Code operators create their billing record with `paper-workbench confirm-billing`.
+Offline inspection and tests need no model login. New model runs require the operator's own authenticated subscription session. Do not copy account credentials. The engine supports the Claude Code transport, the default, and the Codex transport. Consult `capabilities()` for the accepted model IDs of each. The engine records usage in each run's `usage.jsonl` and does not gate on it, so how much a run may spend is the operator's own setting.
 
 Token limits are launch guards, not hard within-call caps. Unknown usage or interrupted execution must be reconciled before continuing. Use a new output directory for each new attempt. Do not overwrite frozen outputs or automatically rerun the full study as a setup check.
 

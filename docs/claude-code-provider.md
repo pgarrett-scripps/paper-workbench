@@ -1,6 +1,6 @@
 # Claude Code subscription provider
 
-Core 0.1.8 can run every model workflow through Claude Code on a Claude subscription. This covers the review modes (`ensemble`, `independent`, `plain`, `workspace`, `panel` and `self-revision`), `investigate`, `run_review` and `run_structured`. No API key is used. Calls draw on the subscription's included usage, the same way Codex runs draw on a ChatGPT plan.
+Claude Code on a Claude subscription is the default transport for every model workflow. This covers the review modes (`ensemble`, `independent`, `plain`, `workspace`, `panel` and `self-revision`), `investigate` and `run_review`. No API key is used. Calls draw on the subscription's included usage, the same way Codex runs draw on a ChatGPT plan.
 
 Claude Code runs are a separate condition. They do not reproduce the Codex study results, and comparisons must label the provider and model.
 
@@ -8,37 +8,35 @@ Claude Code runs are a separate condition. They do not reproduce the Codex study
 
 - The Claude Code CLI, installed and on `PATH`. Development used version 2.1.299. Each call receipt records the version that ran.
 - A Claude subscription login (Pro, Max, Team or Enterprise). Run `claude auth login`, then check that `claude auth status` reports `"authMethod": "claude.ai"`.
-- Paid extra usage turned off in Claude settings, so a run that reaches its included limit stops instead of buying more usage.
+- Your choice of paid extra usage in Claude settings. The engine records usage and does not gate on it, so turn extra usage off if a run that reaches its included limit should stop instead of buying more.
 
 ## Models
 
 | Model ID | Notes |
 | --- | --- |
-| `claude-sonnet-5-5` | Default for `--provider claude-code`. Lighter on included usage |
+| `claude-sonnet-5-5` | Default model. Lighter on included usage |
 | `claude-opus-5-5` | Stronger, but its safeguards can refuse life-science manuscripts |
 
-Sonnet is the default because Opus 5.5 refused a biology manuscript at the first request (see Limitations). The default is an exact model ID, not the moving `sonnet` alias, so every receipt names the model that ran. Moving to a newer Sonnet is a one-line change to `DEFAULT_MODELS` in `paper_workspace/models.py` and counts as a new condition. Reasoning effort stays at medium, as for Codex. Fable is not offered because some plans bill it from paid usage credits. Unknown models are rejected and never substituted.
+Sonnet is the default because Opus 5.5 refused a biology manuscript at the first request (see Limitations). The default is an exact model ID, not the moving `sonnet` alias, so every receipt names the model that ran. Moving to a newer Sonnet is a one-line change to `DEFAULT_MODELS` in `peerreviewagents/engine/models.py` and counts as a new condition. The review policy sets the reasoning effort, as for Codex. Fable is not offered because some plans bill it from paid usage credits. Unknown models are rejected and never substituted.
 
 ## Run a review
 
 ```bash
-paper-workbench confirm-billing billing.json --provider claude-code --extra-usage-disabled
-paper-workbench review workspaces/example runs/example-claude \
-  --provider claude-code --billing-confirmation billing.json --literature-cutoff 2026-01-01
+paper-workbench review workspaces/example runs/example-claude
 paper-workbench report runs/example-claude
 ```
 
-The last command writes `REVIEW.md` and `REVIEW.txt` to the run folder without any model call.
+The last command writes `REVIEW.md` and `REVIEW.txt` to the run folder without any model call. `--literature-cutoff YYYY-MM-DD` sets the latest eligible publication date and defaults to today.
 
-Add `--model claude-opus-5-5` to choose Opus. `investigate` accepts the same two options. A model from the other provider is rejected.
+Add `--model claude-opus-5-5` to choose Opus. `investigate` accepts the same `--provider` and `--model` options. A model from the other provider is rejected.
 
-`confirm-billing` reads `claude auth status`, refuses anything other than a subscription login, and writes a record valid for 24 hours. The flag is your statement that extra usage is off. Refresh the record each day you run reviews. A Codex billing record cannot start a Claude run, and a Claude record cannot start a Codex run.
+Before each run the engine reads `claude auth status` and refuses anything other than a subscription login, or a session that routes through a cloud API provider.
 
 The core API selects the provider from the model ID. `capabilities()["default_models"]` names each provider's default:
 
 ```python
-ReviewRequest(workspace=..., output=..., billing_confirmation=Path("billing.json"),
-              literature_cutoff="2026-01-01", model=capabilities()["default_models"]["claude-code"])
+ReviewRequest(workspace=..., output=..., literature_cutoff="2026-01-01",
+              model=capabilities()["default_models"]["claude-code"])
 ```
 
 ## What each call enforces
@@ -51,7 +49,7 @@ ReviewRequest(workspace=..., output=..., billing_confirmation=Path("billing.json
 - The prompt and source images go in as one message, with the images in their stated order. Images must be PNG, JPEG, GIF or WebP under the 5 MB Claude limit.
 - Manuscript tools use the same server, tool profile and allowances as Codex. Each approved tool is listed explicitly and anything else is denied.
 
-The engine reads the event stream while the call runs. It stops the call immediately if Claude Code reports an API key session, tools outside the manuscript server, or paid extra usage that is enabled or in use. After the call, the engine rejects the result when:
+The engine reads the event stream while the call runs. It rejects the call if Claude Code reports an API key session, tools outside the manuscript server, or a manuscript server that did not connect. After the call, the engine also rejects the result when:
 
 - no subscription usage limits were reported (API key sessions never report them)
 - a manuscript tool failed or was denied
@@ -68,9 +66,9 @@ Observed tokens count every input token Claude processes, including cache reads,
 
 ## Limitations
 
-- The extra usage confirmation is an operator statement. The live checks enforce it, but one model request can complete before a paid usage signal arrives.
+- The engine does not limit paid extra usage. That is the operator's Claude setting.
 - Claude Code adds a small amount of its own context, such as the date and platform. The engine does not control it.
-- Claude Code can retry a failed network request internally, similar to Codex reconnects. The engine never retries a call.
+- Claude Code can retry a failed network request internally, similar to Codex reconnects. The engine retries a call only when the review policy allows one bounded retry and the session crashed before it produced a result.
 - Response schemas travel on the command line and are limited to 120,000 characters. Current schemas are well below that.
 - Opus 5.5 safeguards can refuse life-science manuscripts. Claude Code then reports a failed call with a `[bio]` detail, and the engine stops without switching models. Rewording or trimming a manuscript to get past a refusal is not supported. Choose another model in a new output directory.
 - Sonnet 5.5 sometimes marks a supported clarification as omitted when it does not fit the final five findings. The synthesis rules require such an issue to stay as a supporting secondary concern with wording for the authors, so final validation rejects the run. This happened for 3 of 29 corpus papers on the first attempt. The engine does not retry, so start a fresh run in a new output directory.

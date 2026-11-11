@@ -8,7 +8,7 @@ The core owns source integrity, manuscript block identities, evidence handles, r
 
 Neither answer keys nor human evaluation labels belong in `ReviewRequest`. The benchmark must prepare a manuscript-only workspace and keep grading inputs outside it. Core outputs are review artifacts, not scores.
 
-## API version 1
+## API version 2
 
 ```python
 from pathlib import Path
@@ -24,7 +24,6 @@ supported = capabilities()
 request = ReviewRequest(
     workspace=Path("workspaces/example"),
     output=Path("runs/example-terra"),
-    billing_confirmation=Path("local-billing-verification.json"),
     literature_cutoff="2026-09-25",
     workflow="ensemble",
     model="gpt-5.6-terra",
@@ -38,7 +37,7 @@ request = ReviewRequest(
 
 `run_review` uses the existing engine. It rejects existing output directories, unsupported models and unsupported workflows. It returns a `paper-workbench-run-v1` artifact containing the editor package, requested model, workflow, manuscript identity, engine file hashes and observed usage. Unknown usage and execution failures remain errors with underlying run files preserved. Token budgets are launch guards, not hard within-session caps. Independent mode retains its existing per-session guard.
 
-The supported workflows are `manuscript-only`, `independent` and `ensemble`. Manuscript-only mode receives extracted text and supplied source images with review tools disabled. Independent and ensemble modes have manuscript tools. The transport supports Codex subscription execution with Astra, Sol, Terra, Luna, and GPT-5.5, and Claude Code subscription execution with Opus 5.5 and Sonnet 5.5, all at medium effort. The model ID selects the provider. See [the Claude Code provider guide](claude-code-provider.md). Arbitrary models and provider APIs require a separately designed transport extension. Do not silently route unsupported candidates through a different pipeline.
+The supported workflows are `manuscript-only`, `independent` and `ensemble`. Manuscript-only mode receives extracted text and supplied source images with review tools disabled. Independent and ensemble modes have manuscript tools. The transport supports Claude Code subscription execution with Opus 5.5 and Sonnet 5.5, the default, and Codex subscription execution with Astra, Sol, Terra, Luna, and GPT-5.5. The review policy sets the reasoning effort. The model ID selects the provider. See [the Claude Code provider guide](claude-code-provider.md). Arbitrary models and provider APIs require a separately designed transport extension. Do not silently route unsupported candidates through a different pipeline.
 
 The older PeerReviewAgents graph is a distinct benchmark backend. Its scores must retain a different workflow identifier. Pin the pipeline commit, model settings, source inputs and evidence access when comparing models.
 
@@ -48,67 +47,37 @@ The initial distribution bundles the engine and app resources, but importing the
 
 Before 1.0, consumers should pin a Git commit rather than follow the main branch. Changes to prompts, schemas, tool access or selection policy require a new benchmark condition, even when Python function signatures remain unchanged.
 
-## Subscription model comparisons and structured calls
+## Subscription models and usage
 
-Version 0.1.1 advertises five explicitly supported Codex subscription models:
-Astra, Sol, Terra, Luna, and GPT-5.5. Check `capabilities()["models"]` for their
-exact request IDs, then verify the current account can select those models.
-Medium reasoning remains fixed. No unknown model is substituted or retried.
+`capabilities()["models_by_provider"]` lists the exact request IDs for each
+transport: `claude-opus-5-5` and `claude-sonnet-5-5` through Claude Code, and
+Astra, Sol, Terra, Luna, and GPT-5.5 through Codex. `capabilities()["provider"]`
+names Claude Code as the default transport, and
+`capabilities()["default_models"]` names Sonnet 5.5 for Claude Code and Terra
+for Codex. Verify that the current account can select a model before a
+comparison. No unknown model is substituted.
 
-`StructuredRequest` and `run_structured` expose one tool-free structured call
-through the same subscription transport. External benchmarks own grading
-prompts and JSON schemas. The request contains `output`, `billing_confirmation`,
-`model`, `prompt`, and `schema`, with optional positive `token_budget` and
-`timeout_seconds`. The output directory must be new. Authentication and recent
-zero-paid-credit verification are required. No manuscript tools are enabled.
+Codex events do not currently expose the resolved model ID, so requested-model
+pinning remains the available identity evidence. Claude Code reports the models
+it used, and any model other than the requested one rejects the call.
 
-The returned artifact preserves the requested model, structured value, and
-observed usage. `usage_summary(output)` also reads durable receipts for failed
-or interrupted workflows. A usage summary is not proof of successful inference.
-Unknown usage must not be interpreted as zero. Codex events do not currently
-expose the resolved model ID, so requested-model pinning remains the available
-identity evidence. Claude Code reports the models it used, and any model other
-than the requested one rejects the call.
-
-Version 0.1.8 adds `claude-opus-5-5` and `claude-sonnet-5-5` through Claude
-Code. `capabilities()["models_by_provider"]` lists the IDs for each transport, and
-`capabilities()["default_models"]` names Terra for Codex and Sonnet 5.5 for Claude.
-The `provider` key still names the default Codex transport for older clients.
-A Claude run needs a `claude-subscription-v1` billing record from
-`paper-workbench confirm-billing`, and neither provider accepts the other's
-record.
-
+Each run checks for the provider's subscription login and refuses API keys and
+cloud API providers. Observed usage is recorded in the run's `usage.jsonl` and
+is not gated, as `capabilities()["usage_policy"]` states. How much a run may
+spend is the operator's own setting. Unknown usage must not be interpreted as
+zero.
 
 ## Versioned review presets
 
-`review_presets()` describes three presets. `review_request_from_preset()`
+`review_presets()` describes five presets. `review_request_from_preset()`
 constructs a validated request. Each completed run preserves its resolved
 configuration, configuration hash and both core and engine source hashes.
-The preset names are `manuscript-only-single-v1`, `workspace-independent-v1`
-and `workspace-ensemble-v1`. Current presets are bounded strategies, not an
+The preset names are `manuscript-only-single-v1`, `workspace-independent-v1`,
+`workspace-ensemble-v1`, `workspace-ensemble-ordinary-v1` and
+`workspace-agentic-v1`. Current presets are bounded strategies, not an
 arbitrary workflow language or demonstrated multi-provider framework.
 
 Manuscript-only execution denies review tools and external access. Source
 images are checked, deduplicated by content and capped at ten without silent
 truncation. Missing visual content is recorded. Preparation must establish
 whether the delivered packet is scientifically sufficient for a comparison.
-`StructuredRequest.source_images` gives external judges the same image access.
-
-## Included allowance execution policy
-
-The legacy recent zero-credit verification remains supported. Accounts with
-available credits can instead supply an `included-allowance-v1` record from the
-Codex app usage tool. It must be less than five minutes old, report Pro or Plus
-included limits, show every available window below 25 percent used, and report
-no reached spending or usage limit. Missing or invalid evidence fails closed.
-The record does not assert that the credit balance is zero.
-
-The coordinator refreshes this evidence before every workflow, maintains a
-separate cumulative study budget and checks usage between workflows. This is
-a conservative launch guard, not a provider-side hard spending cap. A running
-call may exceed its launch estimate. This policy never purchases credits,
-uses a reset, enables API billing or changes account settings.
-
-Pricing behavior is documented at https://learn.chatgpt.com/docs/pricing.
-Account-specific included allowance comes from the current usage snapshot,
-not from converting token counts to estimated subscription dollars.

@@ -20,12 +20,19 @@ ALIAS = re.compile(r'^\s*from peerreviewagents\.engine import (\w+) as _engine$'
 
 class EngineAliasSmokeTest(unittest.TestCase):
     def test_alias_modules_and_cli_pass_through_resolve(self):
-        aliases = {}
+        aliases, replaced = {}, set()
         for package in ('paper_workspace', 'paper_workbench_core'):
             for path in sorted((REPOSITORY / package).glob('*.py')):
-                match = ALIAS.search(path.read_text())
+                text = path.read_text()
+                if 'sys.modules[__name__]' in text:
+                    replaced.add(f'{package}.{path.stem}')
+                match = ALIAS.search(text)
                 if match:
                     aliases[f'{package}.{path.stem}'] = f'peerreviewagents.engine.{match.group(1)}'
+        # Every module that replaces itself must be an alias this test checks, and the
+        # count changes only when an alias is added or removed on purpose.
+        self.assertEqual(replaced, set(aliases))
+        self.assertEqual(len(aliases), 34)
         self.assertIn('paper_workbench_core.api', aliases)
         self.assertIn('paper_workspace.annotations', aliases)
         for name, target in aliases.items():

@@ -46,16 +46,15 @@ An offline replay of the three saved 0317140 drafts reported 38 of 38 components
 
 ```bash
 python -m paper_workspace review /path/to/workspace /path/to/new-run \
-  --billing-confirmation /path/to/billing-confirmation.json \
   --literature-cutoff 2026-09-25 \
   --reviewers 2 \
   --model gpt-5.6-terra \
   --token-budget 750000
 ```
 
-Add `--scaffold-root /path/to/paper-scaffold` for its offline advisory checks. Add up to three `--source-image /path/to/original-page.png` arguments for common initial figure pages. `--source-packet` supports frozen external records. `--historical-snapshots` supports curated registration snapshots. These inputs are optional and their absence is not evidence that a manuscript failed a check.
+Add up to three `--source-image /path/to/original-page.png` arguments for common initial figure pages. They are optional and their absence is not evidence that a manuscript failed a check. `--literature-cutoff` is optional and defaults to today.
 
-Terra at medium reasoning is the CLI default. Sol is also supported. Two reviewers require three generation calls, three reviewers require four. A blind evaluation is separate and is never automatically added by this runner.
+Without `--model`, the CLI runs Sonnet 5.5 through Claude Code. `--model gpt-5.6-terra` selects the Codex transport, and Sol is also supported. `--policy` names the review policy that sets the reasoning effort. Two reviewers require three generation calls, three reviewers require four. A blind evaluation is separate and is never automatically added by this runner.
 
 `--token-budget` is an observed-token threshold for launching another call. It is not a hard token cap on a call already running. Unknown usage or an incomplete call receipt stops the workflow. Failed calls do not trigger automatic retries. Each output directory is a single attempt and cannot be reused for an automatic restart.
 
