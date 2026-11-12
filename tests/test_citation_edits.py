@@ -4,11 +4,12 @@ import tempfile
 import unittest
 from unittest.mock import patch
 
-from paper_workspace.annotations import normalize_review
+from peerreviewagents.engine.annotations import normalize_review
+from peerreviewagents.engine.storage import digest, write
+
 from paper_workspace.revisions import create_revision, head, snapshot
 from paper_workspace.scaffold_import import import_scaffold
 from paper_workspace.scaffold_port import port_workspace
-from paper_workspace.storage import digest, write
 
 
 class CitationEdits(unittest.TestCase):

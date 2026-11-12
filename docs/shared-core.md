@@ -10,32 +10,39 @@ Neither answer keys nor human evaluation labels belong in a review. The benchmar
 
 ## What the app calls
 
-| Call | Used by | Model call |
-| --- | --- | --- |
-| `peerreviewagents.review(pdf, out, reviewers=, arm=, ...)` | `paper-workbench review` | Yes |
-| `peerreviewagents.import_paper(pdf, workspace, xml, ...)` | `paper-workbench import` | No |
-| `peerreviewagents.plugin.starter.build_parser()` and `exit_code(summary)` | `paper-workbench review` options and exit status | No |
-| `peerreviewagents.cli.main.report(argv)` | `paper-workbench report` | No |
-| `peerreviewagents.plugin.server.RUN_DIRECTORY` and `MANUSCRIPT_DIRECTORY` | `run_view.locate` | No |
-| `peerreviewagents.engine.annotations` and `storage` | the viewer, decisions, revisions and exports | No |
+| Call | Used by | Model call | Planned public name |
+| --- | --- | --- | --- |
+| `peerreviewagents.plugin.starter.main(argv)` | `paper-workbench review` | Yes | `cli.main.review_main(argv, prog=)` |
+| `peerreviewagents.cli.main.report(argv)` | `paper-workbench report` | No | `cli.main.report_main(argv)` |
+| `peerreviewagents.import_paper(pdf, workspace, xml, ...)` | `paper-workbench import` | No | already public |
+| `peerreviewagents.plugin.server.RUN_DIRECTORY` and `MANUSCRIPT_DIRECTORY` | `run_view.locate` | No | |
+| `peerreviewagents.engine.annotations.verify_workspace` and `export_draft` | `verify`, the viewer and exports | No | top-level `verify_workspace` and `export_draft` |
+| `peerreviewagents.engine.annotations` and `storage` | decisions, revisions and exports | No | |
 
-`review` returns the run summary and exits 0 when the review completed, 2 when it never started and 1 otherwise. The default arm is `full-two-track`. Without `claude` on `PATH`, `review` returns a blocked summary at the `startup` stage and launches nothing.
+`paper-workbench review` hands its arguments to the starter's own entry, so a new engine option reaches the review. The entry prints the run summary and exits 0 when the review completed, 2 when it never started and 1 otherwise. The default arm is `full-two-track`. Without `claude` on `PATH`, the starter writes `startup.json` and a blocked `runtime.json` and launches nothing. Until `review_main(argv, prog=)` lands, `paper-workbench review -h` names the program `peerreview review`.
 
-`starter.build_parser`, `starter.exit_code`, `cli.main.report` and the two directory names are not part of the engine's public surface, which is only `review`, `import_paper` and `write_reports`. The app uses them so its `review` command takes exactly the options of `peerreview review`.
+`paper-workbench report` passes a finished run to `cli.main.report`. A run with no `protocol.json` has no review to report, so the app prints its recorded status and cause and exits 1 without calling the engine.
+
+None of these entries, except `import_paper`, is part of the engine's public surface yet, which is `review`, `import_paper` and `write_reports`. The review and report calls sit only in `__main__.run_engine`, and the run reader only in `run_view.read_run`. `verify_workspace` and `export_draft` are imported in `__main__.py`, `server.py`, `revisions.py` and `scaffold_port.py`. The switch to the public names is a change to those imports.
 
 ## What the app reads from a run
 
-`run_view.py` reads these files from `RUN/review`. It never writes to them and never follows a symlink.
+`run_view.py` reads these files from `RUN/review`. It never writes to them. A symlinked run file is refused with an error rather than treated as missing.
 
 | File | Keys the viewer reads |
 | --- | --- |
-| `protocol.json` | `arm`, `reviewers`. Its presence marks a run folder |
-| `manifest.json` | `paper_id`, `source_sha256`, checked against the manuscript |
-| `progress.json` | `status`, `error`, `stages.missing`, `stages.none_found` |
+| `startup.json` | `problems`, the start-up probe's failures |
 | `runtime.json` | `status`, `blocked_reason`, `tokens_total`, `wall_seconds` |
+| `progress.json` | `status`, `error`, `arm`, `reviewers`, `stages.missing`, `stages.none_found` |
+| `protocol.json` | `arm`, `reviewers` |
+| `manifest.json` | `paper_id`, `source_sha256`, checked against the manuscript |
 | `editor-package.json` | `summary`, `findings`, `appendix`, `verdict`, `escalation_rulings`, `reviewer_provenance`, `findings_by_track`, `escalated_count`, `limitations`, `arm`, `reviewer_count`, `review_guard_status` |
-| `findings.jsonl` | every recorded finding, shown when there is no editor package |
+| `findings.jsonl` | the latest row per `finding_uid`, shown when there is no editor package |
 | `audit_<track>.md` | each specialist report, shown as plain text |
+
+Any of `protocol.json`, `progress.json`, `runtime.json` or `startup.json` marks a run folder. The engine writes `protocol.json` and `manifest.json` only when the run finishes or is marked blocked. A run the starter stopped early, from a token ceiling, a timeout, a rate limit or a session error, has neither. The viewer still opens it with its status, its cause and its recorded findings. Without a manifest it checks each finding's `block_sha256` against the manuscript block instead. A run blocked at startup, or stopped before it imported the manuscript, has nothing to show, so `serve` prints its status and cause and exits 1.
+
+`run_view.read_run(review)` returns `status`, `error`, `findings`, `manifest` and `audits` for any run, finished or not. It matches the engine's planned public `read_run(path)`, so the app switches to that with one import. `run_view.COMPLETE` holds the finished statuses until the engine publishes its status constants.
 
 Each finding keeps the annotation keys the viewer already used (`kind`, `block_id`, `quote`, `start`, `end`, `placement`, `comment`, `replacement`, `evidence_blocks`) and adds `finding_uid`, `track`, `basis`, `basis_reason` and `escalate`. Body findings add `editor_reason`, `reviewers_raising` and `duplicate_uids`. Appendix findings add `editor_placement`, `duplicate_of` and `rebuttal_quote`.
 

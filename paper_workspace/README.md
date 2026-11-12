@@ -24,25 +24,27 @@ python -m paper_workspace review manuscript.pdf run-output --reviewers 5 --liter
 python -m paper_workspace serve run-output
 ```
 
-`review` runs `peerreviewagents.review` with the same options as `peerreview review`. The default arm, `full-two-track`, runs three core reviewers and six specialist tracks in isolation, then an editor who rules on every finding. `--arm NAME` selects a study arm. The command prints the run summary and exits 0 when the review completed, 2 when it never started and 1 otherwise.
+`review` hands its arguments to the engine's `peerreview review` entry, so it takes exactly the same options. The default arm, `full-two-track`, runs three core reviewers and six specialist tracks in isolation, then an editor who rules on every finding. `--arm NAME` selects a study arm. The command prints the run summary and exits 0 when the review completed, 2 when it never started and 1 otherwise.
 
 This command performs model inference. It requires the `claude` CLI on `PATH`, signed in to a Claude subscription. API keys are never used. The run records its token use in `review/runtime.json` and stops at its own token and wall-clock ceilings. Without `claude`, the run is blocked at startup, records why in `review/startup.json` and launches nothing.
 
-The run folder holds `manuscript`, the imported workspace, and `review`, the run. `python -m paper_workspace report run-output` re-renders `REVIEW.md` and `REVIEW.txt` from the saved run with no model call. It also works on a blocked or stopped run and reports what was saved.
+The run folder holds `manuscript`, the imported workspace, and `review`, the run. `python -m paper_workspace report run-output` re-renders `REVIEW.md` and `REVIEW.txt` from the saved run with no model call. It needs a finished run. For a run with no `protocol.json`, one that was blocked at startup or stopped early, it prints the recorded status and cause, writes nothing and exits 1.
 
 `serve` on a run folder shows the run as the review named `run`. `run_view.py` reads it:
 
 - The editor package's body findings come first, numbered in the manuscript. Duplicates and appendix findings follow in a collapsed appendix, each linked to the finding it duplicates and with any rebuttal quotation.
 - Each finding shows its track, its basis with the reason the engine gave, whether a specialist escalated it, the editor's reason and the escalation ruling.
 - A run panel shows the arm, status, verdict, specialist audit reports, reviewer slots, findings by track and run limitations. An Escalated filter keeps only escalated findings.
-- A run without an editor package shows every recorded finding from `findings.jsonl` and says that the editor did not finish.
-- A run on a different manuscript version is refused. Audit reports outside the review folder, including symlinks, are never read.
+- A run without an editor package shows the findings recorded in `findings.jsonl`, keeping the latest row for each finding, and says that the editor did not finish.
+- A run the starter stopped early, from a token ceiling, a timeout, a rate limit or a session error, has no `protocol.json` or `manifest.json`. It still opens, with its status, its cause and its recorded findings. Without a manifest, the manuscript version is checked against each finding's block hash.
+- A run blocked at startup, or stopped before it imported the manuscript, has nothing to show. `serve` prints its status and cause and exits 1.
+- A run on a different manuscript version is refused. A symlinked run file is refused with an error, and files outside the review folder are never read.
 
 Author decisions on a run are saved in `manuscript/decisions/run.json`. The review folder stays as the run wrote it.
 
 ## Retired experiment runners
 
-Engine 0.8 removed the study-only modules behind the staged evidence workflow, the revised debate, the two-paper and four-paper pilots, the handoff retests, the ensemble and reliability trials, and the transfer and domain studies. Engine 0.9 removed the remaining Python review orchestration. Their runners are deleted from `experiments/`. Their protocols and frozen results remain in `docs/`, for example `docs/pra-evidence-workflow-protocol.md`, `docs/pra-debate-revision-results.md`, `docs/pra-workspace-two-paper-results.md` and `docs/pra-workspace-four-paper-results.md`. Study code that used the 0.8 engine runs only against PeerReviewAgents `v0.8.0`.
+Engine 0.8 removed the study-only modules behind the staged evidence workflow, the revised debate, the two-paper and four-paper pilots, the handoff retests, the ensemble and reliability trials, and the transfer and domain studies. Engine 0.9 removed the remaining Python review orchestration. Every experiment runner is deleted, and git history keeps them. `experiments/` keeps the study protocols and result files, and [its README](../experiments/README.md) says how to recover a runner. Their protocols and frozen results remain in `docs/`, for example `docs/pra-evidence-workflow-protocol.md`, `docs/pra-debate-revision-results.md`, `docs/pra-workspace-two-paper-results.md` and `docs/pra-workspace-four-paper-results.md`. Study code that used the 0.8 engine runs only against PeerReviewAgents `v0.8.0`.
 
 ## Boundaries
 
@@ -60,7 +62,7 @@ node tests/test_review_evidence_ui.js
 node --check paper_workspace/web/app.js
 ```
 
-Tests cover the run-folder reader, the run in the viewer, the review and report commands with the engine stubbed, Unicode anchors, source tampering, overlap rejection, revisions, Scaffold import and export, and Word review copies. No test starts a review.
+Tests cover the run-folder reader, finished, stopped and startup-blocked runs in the viewer, the review and report commands against the installed engine with `claude` off `PATH`, Unicode anchors, source tampering, overlap rejection, revisions, Scaffold import and export, and Word review copies. No test starts a review.
 
 ## Native Scaffold revisions
 

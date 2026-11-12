@@ -5,11 +5,12 @@ import tempfile
 import unittest
 from unittest.mock import patch
 
-from paper_workspace.annotations import normalize_review, verify_workspace
+from peerreviewagents.engine.annotations import normalize_review, verify_workspace
+from peerreviewagents.engine.storage import read
+
 from paper_workspace.revisions import (agent_request, automation_decisions, checkout, copyedit_proposals,
     create_revision, head, run_loop, safety_reasons, snapshot)
 from paper_workspace.scaffold_import import import_scaffold
-from paper_workspace.storage import read
 
 FIXTURE = Path(__file__).parent / 'fixtures/scaffold-revision'
 

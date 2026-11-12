@@ -9,6 +9,7 @@ remaining commands revise and export a workspace.
 import argparse
 import json
 import sys
+from pathlib import Path
 
 from peerreviewagents.engine.storage import read
 
@@ -87,20 +88,45 @@ def build_parser(prog='paper-workbench'):
     return parser
 
 
+def unfinished_run(argv):
+    """The review folder ``report`` names when it holds a run that never finished, else ``None``.
+
+    Only the run path is read here. Every option still goes to the engine.
+    """
+    parser=argparse.ArgumentParser(add_help=False)
+    parser.add_argument('run',nargs='?')
+    parser.add_argument('--workspace')
+    parser.add_argument('--output-dir')
+    known,_=parser.parse_known_args(argv)
+    if not known.run:
+        return None
+    from peerreviewagents.plugin.server import RUN_DIRECTORY
+    from .run_view import is_run
+    path=Path(known.run).resolve()
+    for review in (path,path/RUN_DIRECTORY):
+        if is_run(review) and not (review/'protocol.json').is_file():
+            return review
+    return None
+
+
 def run_engine(command,argv):
-    """Run an engine command with its own parser and return its exit status."""
+    """Run an engine command through the engine's own entry and return its exit status.
+
+    The engine parses the options, so a new engine option reaches the review.
+    """
     if command=='review':
-        import peerreviewagents
-        from peerreviewagents.plugin import starter
-        parser=starter.build_parser()
-        parser.prog='paper-workbench review'
-        args=parser.parse_args(argv)
-        summary=peerreviewagents.review(args.workspace,args.output,reviewers=args.reviewers,arm=args.arm,
-            literature_cutoff=args.literature_cutoff,tracks=args.track,
-            per_agent_tokens=args.per_agent_tokens,per_run_tokens=args.per_run_tokens,
-            wall_timeout=args.timeout,directory=args.plugin_dir)
-        print(json.dumps(summary,indent=2))
-        return starter.exit_code(summary)
+        # Becomes peerreviewagents.cli.main.review_main(argv,prog='paper-workbench review').
+        from peerreviewagents.plugin.starter import main as review_main
+        return review_main(argv)
+    review=unfinished_run(argv)
+    if review:
+        from .run_view import read_run
+        recorded=read_run(review)
+        print(f'The run in {review.parent} did not finish, so it has no review to report. '
+              f'Status: {recorded["status"] or "not recorded"}. Cause: {recorded["error"] or "not recorded"}. '
+              f'Open what it recorded with paper-workbench serve {review.parent}',file=sys.stderr)
+        return 1
+    # Becomes peerreviewagents.cli.main.report_main(argv).
     from peerreviewagents.cli.main import report
     return report(argv)
 
@@ -158,10 +184,16 @@ def dispatch(parser,args):
 
 def main(argv=None):
     argv=list(sys.argv[1:] if argv is None else argv)
-    if argv and argv[0] in ENGINE_COMMANDS:
-        return run_engine(argv[0],argv[1:])
-    parser=build_parser()
-    return dispatch(parser,parser.parse_args(argv))
+    from .run_view import RunError
+    try:
+        if argv and argv[0] in ENGINE_COMMANDS:
+            return run_engine(argv[0],argv[1:])
+        parser=build_parser()
+        return dispatch(parser,parser.parse_args(argv))
+    except RunError as exc:
+        # A run the viewer or the report cannot open is a plain message, not a traceback.
+        print(f'paper-workbench: {exc}',file=sys.stderr)
+        return 1
 
 
 if __name__=='__main__':

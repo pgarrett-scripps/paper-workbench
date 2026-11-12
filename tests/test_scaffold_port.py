@@ -3,9 +3,10 @@ from pathlib import Path
 import tempfile
 import unittest
 
-from paper_workspace.annotations import verify_workspace
+from peerreviewagents.engine.annotations import verify_workspace
+from peerreviewagents.engine.storage import digest, write
+
 from paper_workspace.scaffold_port import port_workspace
-from paper_workspace.storage import digest, write
 
 
 class ScaffoldPort(unittest.TestCase):

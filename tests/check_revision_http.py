@@ -9,11 +9,12 @@ from unittest.mock import patch
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from paper_workspace.annotations import save_review
+from peerreviewagents.engine.annotations import save_review
+from peerreviewagents.engine.storage import write, digest
+
 from paper_workspace.revisions import copyedit_proposals, create_revision as real_create_revision
 from paper_workspace.scaffold_import import import_scaffold
 from paper_workspace.server import make_server
-from paper_workspace.storage import write, digest
 
 
 FIXTURE = Path(__file__).parent / "fixtures/scaffold-revision"

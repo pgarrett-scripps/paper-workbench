@@ -33,7 +33,7 @@ paper-workbench serve runs/example --port 38744
 
 A review is model inference. It needs the `claude` CLI on `PATH`, signed in to a Claude subscription. It never uses an API key, and it records its own token use in `runtime.json`. How much a run may spend is the operator's own setting. Without `claude`, the run is blocked at startup and launches nothing.
 
-`serve RUN` opens the run in the viewer. Each finding shows its track, its basis (`computed`, `two-quotes` or `judgement`), whether a specialist escalated it and the editor's ruling. The editor's body findings come first, and duplicates and appendix findings follow in a separate appendix. A run panel shows the verdict, the specialist audit reports, the reviewer slots and the run limitations. `paper-workbench report RUN` re-renders the two report files with no model call.
+`serve RUN` opens the run in the viewer. Each finding shows its track, its basis (`computed`, `two-quotes` or `judgement`), whether a specialist escalated it and the editor's ruling. The editor's body findings come first, and duplicates and appendix findings follow in a separate appendix. A run panel shows the verdict, the specialist audit reports, the reviewer slots and the run limitations. A run that stopped early, from a token ceiling, a timeout, a rate limit or a session error, opens with its status, its cause and the findings it recorded. `paper-workbench report RUN` re-renders the two report files of a finished run with no model call.
 
 To inspect a manuscript without model inference:
 
@@ -48,23 +48,23 @@ paper-workbench serve workspaces/example --port 38744
 - PeerReviewAgents owns the review: ingest, the plugin, its agents and tools, the domain packs and the report writer. Its public Python surface is `review`, `import_paper` and `write_reports`.
 - `paper_workspace` (here) owns the viewer server, author decisions, revisions, Paper Scaffold import and export, and Word review copies.
 - `paper-workbench review` and `report` hand off to the engine. Every other command, including `import`, `verify` and `serve`, belongs to the app.
-- A few engine module names under `paper_workspace`, such as `annotations` and `storage`, are aliases for engine modules that still exist.
-- `experiments` and `docs` hold archived study code and development findings. Study code that used the 0.8 engine runs only against PeerReviewAgents `v0.8.0`.
+- The app imports engine modules directly from `peerreviewagents.engine`.
+- `experiments` and `docs` hold the protocols, results and development findings of earlier studies. The experiment runners were deleted, and git history keeps them. Study code that used the 0.8 engine runs only against PeerReviewAgents `v0.8.0`.
 
 See [the engine contract](docs/shared-core.md) for what the app reads from a run.
 
-CI installs this package with its test dependencies from PyPI, so it fails at the install step until PeerReviewAgents 0.9.0 is published there.
+CI runs the viewer checks first, with Node only. It then installs this package with its test dependencies from PyPI, so the Python tests fail at the install step until PeerReviewAgents 0.9.0 is published there.
 
 ## Validation status
 
-This is a research prototype, not a validated claim of superiority over a single agent or human reviewers. In the latest focused-evidence comparison, both reviews scored 8/10 and the judge narrowly preferred the saved review. See [the full result](docs/pra-focused-debate-results.md).
+This is a research prototype, not a validated claim of superiority over a single agent or human reviewers. No controlled comparison of the engine 0.9 workflow is reported in this repository. The last one, a focused debate comparison on the 0.8 engine, scored both reviews 8/10 and the judge narrowly preferred the saved review. See [the full result](docs/pra-focused-debate-results.md). That debate workflow is frozen at the PeerReviewAgents `v0.8.0` release.
 
 ```bash
 python -m unittest discover -s tests -p 'test_*.py'
 node tests/test_review_evidence_ui.js
 ```
 
-Tests use synthetic or local fixtures and never start a review. Some optional rendering checks require local document tooling. Historical experiment scripts reference local study inputs and are not portable benchmark commands.
+Tests use synthetic or local fixtures and never start a review. Some optional rendering checks require local document tooling.
 
 ## Provenance
 

@@ -45,6 +45,9 @@ def clear_stale_renders(folder):
 def make_server(root, port=38744):
     root, run = locate(root)
     original = verify_workspace(root)
+    if run:
+        # Read the run once before serving, so a run the viewer cannot open fails here in plain words.
+        run_review(run, original)
     clear_stale_renders(root / "page_images")
 
     def selected(query):

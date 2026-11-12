@@ -1,8 +1,8 @@
 import json,sys,subprocess,time,tempfile,urllib.request,urllib.error
 from pathlib import Path
 sys.path.insert(0,'/home/ty/Repos/insilico')
-from paper_workspace.storage import write,digest
-from paper_workspace.annotations import save_review
+from peerreviewagents.engine.storage import write,digest
+from peerreviewagents.engine.annotations import save_review
 with tempfile.TemporaryDirectory() as tmp:
     root=Path(tmp)
     text='A claim with 12 samples.'

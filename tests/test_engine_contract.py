@@ -1,14 +1,13 @@
 """The engine surface the app depends on. PeerReviewAgents tests the engine itself.
 
 These checks stay small on purpose, so they pass on every engine release that
-keeps the aliases, the review and report commands and the review keys the app
-and web/app.js read. No test starts a model session.
+keeps the review and report commands and the review keys the app and
+web/app.js read. No test starts a model session, and none patches the engine.
 """
 import contextlib
-import importlib
 import io
 import json
-import re
+import os
 import tempfile
 import unittest
 from pathlib import Path
@@ -19,10 +18,6 @@ from peerreviewagents.engine.storage import digest, write
 
 from paper_workspace.__main__ import ENGINE_COMMANDS, build_parser, main
 
-REPOSITORY = Path(__file__).resolve().parents[1]
-# Runnable aliases import the engine module inside an else branch, so allow indentation.
-ALIAS = re.compile(r'^\s*from peerreviewagents\.engine import (\w+) as _engine$', re.M)
-
 
 def run_main(argv):
     """Call the app command line and return its exit status and printed JSON."""
@@ -32,26 +27,7 @@ def run_main(argv):
     return status, json.loads(output.getvalue())
 
 
-class EngineAliasSmokeTest(unittest.TestCase):
-    def test_alias_modules_resolve_to_the_engine(self):
-        aliases, replaced = {}, set()
-        for path in sorted((REPOSITORY / 'paper_workspace').glob('*.py')):
-            text = path.read_text()
-            if 'sys.modules[__name__]' in text:
-                replaced.add(f'paper_workspace.{path.stem}')
-            match = ALIAS.search(text)
-            if match:
-                aliases[f'paper_workspace.{path.stem}'] = f'peerreviewagents.engine.{match.group(1)}'
-        # Every module that replaces itself must be an alias this test checks, and the
-        # count changes only when an alias is added or removed on purpose.
-        self.assertEqual(replaced, set(aliases))
-        self.assertEqual(len(aliases), 14)
-        self.assertIn('paper_workspace.annotations', aliases)
-        for name, target in aliases.items():
-            with self.subTest(name=name):
-                self.assertIs(importlib.import_module(name), importlib.import_module(target))
-        self.assertEqual(list((REPOSITORY / 'paper_workbench_core').glob('*.py')), [])
-
+class AppCommandTest(unittest.TestCase):
     def test_parser_knows_the_app_and_engine_commands(self):
         parser = build_parser()
         self.assertEqual(ENGINE_COMMANDS, ('review', 'report'))
@@ -69,28 +45,26 @@ class EngineCommandTest(unittest.TestCase):
     def tearDown(self):
         self.temporary.cleanup()
 
-    def test_review_starts_the_engine_review_and_returns_its_exit_status(self):
-        calls = []
-
-        def fake_review(pdf, out, **options):
-            calls.append((pdf, out, options))
-            return {'status': 'complete', 'run': out}
-
-        with patch('peerreviewagents.review', fake_review):
-            status, summary = run_main(['review', str(self.pdf), 'out', '--reviewers', '2'])
-        self.assertEqual((status, summary), (0, {'status': 'complete', 'run': 'out'}))
-        (pdf, out, options), = calls
-        self.assertEqual((pdf, out, options['reviewers'], options['arm']), (str(self.pdf), 'out', 2, 'full-two-track'))
-
     def test_review_without_claude_is_blocked_at_startup_and_launches_nothing(self):
-        from peerreviewagents.plugin import starter
         out = self.root / 'run'
-        with patch.object(starter, 'claude_binary', return_value=None), \
-                patch.object(starter, 'launch', side_effect=AssertionError('a session was launched')):
-            status, summary = run_main(['review', str(self.pdf), str(out)])
+        empty = self.root / 'bin'
+        empty.mkdir()
+        # With no claude on PATH the engine cannot launch a session, so nothing is patched.
+        with patch.dict(os.environ, {'PATH': str(empty)}):
+            status, summary = run_main(['review', str(self.pdf), str(out), '--arm', 'reviewers-only',
+                                        '--reviewers', '2'])
         self.assertEqual((status, summary['status'], summary['stage']), (2, 'blocked', 'startup'))
         self.assertIn('claude is not installed', summary['blocked_reason'])
+        # The options reach the engine, which records them in its summary.
+        self.assertEqual((summary['arm'], summary['reviewers']), ('reviewers-only', 2))
         self.assertTrue((out / 'review' / 'startup.json').is_file())
+        # The run never started, so serve and report say why in plain words and write nothing.
+        for argv in (['serve', str(out)], ['report', str(out)]):
+            stderr = io.StringIO()
+            with self.subTest(command=argv[0]), contextlib.redirect_stderr(stderr):
+                self.assertEqual(main(argv), 1)
+            self.assertIn('claude is not installed', stderr.getvalue())
+        self.assertFalse((out / 'review' / 'REVIEW.md').exists())
 
     def test_report_renders_a_finished_run_from_the_run_folder(self):
         from test_run_view import make_run
