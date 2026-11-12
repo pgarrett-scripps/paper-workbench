@@ -45,11 +45,14 @@ review = {id:'run', summary:'Editor summary', raw_response:undefined, findings:[
   finding('u2', 2, {start:6, end:10, quote:'beta', track:'core', basis:'two-quotes', escalate:false,
     editor_reason:'Same objection', editor_placement:'duplicate', duplicate_of:'u1', section:'appendix'}),
 ], run:{arm:'full-two-track', reviewer_count:3, status:'complete', escalated_count:1, review_guard_status:'clean',
+  cause:null, note:'the review was written and the run was marked blocked afterwards: rate limit',
+  problems:['runtime.json is not valid JSON <x>'],
   edited:true, missing_stages:[], none_found:[], limitations:['Advisory only.'],
   verdict:{significance:'High if true', strength_of_evidence:'Weak', reasoning:'Correlation only', basis:'judgement', limitation:'Not a score.'},
   escalation_rulings:[{finding_uid:'u1', ruling:'Accepted as central.'}],
   audits:{stats:'# Stats audit <script>x</script>'},
-  reviewer_provenance:[{slot:'spec-stats', track:'stats', model:'claude-sonnet-5-5', attempt:1, tool_calls:4, findings:1, none_found:false}],
+  agents:[{slot:'spec-stats', role:'specialist', track:'stats', model:'claude-sonnet-5-5', attempt:1, tool_calls:4,
+           session_calls:9, tokens:5000, state:'done', findings:1, none_found:false}],
   findings_by_track:{field:1, core:1}, wall_seconds:600, tokens_total:1234}};
 cards();
 `, context);
@@ -71,7 +74,9 @@ assert.ok(appendixAt > comments.indexOf('id="note-u1"'));
 assert.ok(comments.indexOf('id="note-u2"') > appendixAt);
 for (const text of ['Arm full-two-track', '3 reviewers', 'Status complete', '1 escalated', 'Guard clean', '10 min',
                     "Editor's verdict", 'High if true', 'Basis: judgement. Not a score.', 'Specialist reports (1)',
-                    '# Stats audit &lt;script&gt;x&lt;/script&gt;', 'spec-stats · stats track · claude-sonnet-5-5',
+                    '# Stats audit &lt;script&gt;x&lt;/script&gt;',
+                    'spec-stats · stats track · claude-sonnet-5-5 · attempt 1 · 4 tool calls · 5000 tokens · done · 1 findings',
+                    'marked blocked afterwards: rate limit', 'runtime.json is not valid JSON &lt;x&gt;',
                     'Findings by track: field 1 · core 1', 'Advisory only.']) {
   assert.ok(panel.includes(text), text);
 }

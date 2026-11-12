@@ -126,14 +126,17 @@ function runPanel(){
   Number.isInteger(run.escalated_count)&&`${run.escalated_count} escalated`,run.review_guard_status&&`Guard ${run.review_guard_status}`,
   run.quarantined_findings_count?`${run.quarantined_findings_count} quarantined`:'',
   Number.isFinite(run.wall_seconds)&&`${Math.round(run.wall_seconds/60)} min`,Number.isFinite(run.tokens_total)&&`${run.tokens_total} tokens`].filter(Boolean);
- const warnings=[run.error,(run.missing_stages||[]).length&&`Stages that did not report: ${run.missing_stages.join(', ')}`,
+ const warnings=[run.cause,run.note,...(run.problems||[]),(run.missing_stages||[]).length&&`Stages that did not report: ${run.missing_stages.join(', ')}`,
   !run.edited&&'The editor did not write a package. These are the findings recorded before editing.'].filter(Boolean);
  const verdict=run.verdict;
  const verdictHtml=verdict?`<details open><summary>Editor's verdict</summary><p><strong>Significance</strong><br>${esc(verdict.significance)}</p><p><strong>Strength of evidence</strong><br>${esc(verdict.strength_of_evidence)}</p>${verdict.reasoning?`<p><strong>Reasoning</strong><br>${esc(verdict.reasoning)}</p>`:''}<p class="muted">Basis: ${esc(verdict.basis||'unstated')}. ${esc(verdict.limitation||'')}</p></details>`:'';
  const audits=Object.entries(run.audits||{});
  const auditHtml=audits.length?`<details><summary>Specialist reports (${audits.length})</summary>${audits.map(([track,text])=>`<details class="audit"><summary>${esc(track)}</summary><pre>${esc(text)}</pre></details>`).join('')}</details>`:'';
- const reviewers=run.reviewer_provenance||[],tracks=Object.entries(run.findings_by_track||{});
- const reviewerHtml=reviewers.length||tracks.length?`<details><summary>Reviewers and specialists (${reviewers.length})</summary><ul>${reviewers.map(row=>`<li>${esc(row.slot)} · ${esc(row.track)} track · ${esc(row.model)} · attempt ${esc(row.attempt)} · ${esc(row.tool_calls)} tool calls · ${row.none_found?'reported no findings':esc(row.findings)+' findings'}</li>`).join('')}</ul>${tracks.length?`<p class="muted">Findings by track: ${tracks.map(([track,count])=>`${esc(track)} ${esc(count)}`).join(' · ')}</p>`:''}</details>`:'';
+ const reviewers=run.agents||[],tracks=Object.entries(run.findings_by_track||{});
+ const agentFacts=row=>[row.slot,row.track&&`${row.track} track`,row.model,Number.isInteger(row.attempt)&&`attempt ${row.attempt}`,
+  Number.isInteger(row.tool_calls)&&`${row.tool_calls} tool calls`,Number.isFinite(row.tokens)&&`${row.tokens} tokens`,row.state,
+  row.none_found?'reported no findings':`${row.findings||0} findings`].filter(Boolean).map(esc).join(' · ');
+ const reviewerHtml=reviewers.length||tracks.length?`<details><summary>Reviewers and specialists (${reviewers.length})</summary><ul>${reviewers.map(row=>`<li>${agentFacts(row)}</li>`).join('')}</ul>${tracks.length?`<p class="muted">Findings by track: ${tracks.map(([track,count])=>`${esc(track)} ${esc(count)}`).join(' · ')}</p>`:''}</details>`:'';
  $('#run-panel').innerHTML=`<p class="count">${facts.map(esc).join(' · ')}</p>${warnings.map(text=>`<p class="error">${esc(text)}</p>`).join('')}${verdictHtml}${auditHtml}${reviewerHtml}${(run.limitations||[]).map(text=>`<p class="muted">${esc(text)}</p>`).join('')}`;
 }
 function card(item){

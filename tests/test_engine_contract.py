@@ -13,7 +13,8 @@ import unittest
 from pathlib import Path
 from unittest.mock import patch
 
-from peerreviewagents.engine.annotations import export_draft, save_review, verify_workspace
+from peerreviewagents import export_draft, verify_workspace
+from peerreviewagents.engine.annotations import save_review
 from peerreviewagents.engine.storage import digest, write
 
 from paper_workspace.__main__ import ENGINE_COMMANDS, build_parser, main
@@ -58,19 +59,25 @@ class EngineCommandTest(unittest.TestCase):
         # The options reach the engine, which records them in its summary.
         self.assertEqual((summary['arm'], summary['reviewers']), ('reviewers-only', 2))
         self.assertTrue((out / 'review' / 'startup.json').is_file())
-        # The run never started, so serve and report say why in plain words and write nothing.
-        for argv in (['serve', str(out)], ['report', str(out)]):
-            stderr = io.StringIO()
-            with self.subTest(command=argv[0]), contextlib.redirect_stderr(stderr):
-                self.assertEqual(main(argv), 1)
-            self.assertIn('claude is not installed', stderr.getvalue())
-        self.assertFalse((out / 'review' / 'REVIEW.md').exists())
+        # The run never imported the manuscript, so serve says why in plain words.
+        stderr = io.StringIO()
+        with contextlib.redirect_stderr(stderr):
+            self.assertEqual(main(['serve', str(out)]), 1)
+        self.assertIn('claude is not installed', stderr.getvalue())
+        # report renders any run, and its report says why this one stopped.
+        status, report = run_main(['report', str(out)])
+        self.assertEqual((status, report['status']), (0, 'blocked'))
+        self.assertIn('claude is not installed', report['cause'])
 
     def test_report_renders_a_finished_run_from_the_run_folder(self):
         from test_run_view import make_run
         make_run(self.root / 'run')
-        status, paths = run_main(['report', str(self.root / 'run')])
-        self.assertEqual(status, 0)
+        status, report = run_main(['report', str(self.root / 'run')])
+        self.assertEqual((status, report['status'], report['findings']), (0, 'complete', 2))
+        # The summary keys come first, then one key per report path.
+        paths = {key: value for key, value in report.items()
+                 if key not in ('status', 'cause', 'findings', 'publishable', 'problems')}
+        self.assertTrue(paths)
         for path in paths.values():
             self.assertTrue(Path(path).is_file(), path)
         self.assertIn('One central question.', (self.root / 'run' / 'review' / 'REVIEW.md').read_text())

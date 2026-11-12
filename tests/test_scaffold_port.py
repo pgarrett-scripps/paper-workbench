@@ -3,7 +3,7 @@ from pathlib import Path
 import tempfile
 import unittest
 
-from peerreviewagents.engine.annotations import verify_workspace
+from peerreviewagents import verify_workspace
 from peerreviewagents.engine.storage import digest, write
 
 from paper_workspace.scaffold_port import port_workspace

@@ -10,43 +10,49 @@ Neither answer keys nor human evaluation labels belong in a review. The benchmar
 
 ## What the app calls
 
-| Call | Used by | Model call | Planned public name |
-| --- | --- | --- | --- |
-| `peerreviewagents.plugin.starter.main(argv)` | `paper-workbench review` | Yes | `cli.main.review_main(argv, prog=)` |
-| `peerreviewagents.cli.main.report(argv)` | `paper-workbench report` | No | `cli.main.report_main(argv)` |
-| `peerreviewagents.import_paper(pdf, workspace, xml, ...)` | `paper-workbench import` | No | already public |
-| `peerreviewagents.plugin.server.RUN_DIRECTORY` and `MANUSCRIPT_DIRECTORY` | `run_view.locate` | No | |
-| `peerreviewagents.engine.annotations.verify_workspace` and `export_draft` | `verify`, the viewer and exports | No | top-level `verify_workspace` and `export_draft` |
-| `peerreviewagents.engine.annotations` and `storage` | decisions, revisions and exports | No | |
+Every review, report and run-reading call goes through the engine's public surface:
 
-`paper-workbench review` hands its arguments to the starter's own entry, so a new engine option reaches the review. The entry prints the run summary and exits 0 when the review completed, 2 when it never started and 1 otherwise. The default arm is `full-two-track`. Without `claude` on `PATH`, the starter writes `startup.json` and a blocked `runtime.json` and launches nothing. Until `review_main(argv, prog=)` lands, `paper-workbench review -h` names the program `peerreview review`.
+| Call | Used by | Model call |
+| --- | --- | --- |
+| `peerreviewagents.review_main(argv, prog='paper-workbench review')` | `paper-workbench review` | Yes |
+| `peerreviewagents.report_main(argv)` | `paper-workbench report` | No |
+| `peerreviewagents.read_run(path)` | `run_view.run_review` | No |
+| `peerreviewagents.runs.locate` and `NotARunFolder` | `run_view.locate` | No |
+| `peerreviewagents.MANUSCRIPT_DIRECTORY` | `run_view.locate` | No |
+| `peerreviewagents.import_paper(pdf, workspace, xml, ...)` | `paper-workbench import` | No |
+| `peerreviewagents.verify_workspace` and `export_draft` | `verify`, the viewer, revisions and exports | No |
 
-`paper-workbench report` passes a finished run to `cli.main.report`. A run with no `protocol.json` has no review to report, so the app prints its recorded status and cause and exits 1 without calling the engine.
+`paper-workbench review` hands its arguments to `review_main`, so a new engine option reaches the review and `paper-workbench review -h` names the program `paper-workbench review`. It prints the run summary and exits 0 when the review completed, 1 when it was blocked and 2 when it never started or an argument was bad. The default arm is `full-two-track`. Without `claude` on `PATH`, the starter writes `startup.json` and a blocked `runtime.json` and launches nothing.
 
-None of these entries, except `import_paper`, is part of the engine's public surface yet, which is `review`, `import_paper` and `write_reports`. The review and report calls sit only in `__main__.run_engine`, and the run reader only in `run_view.read_run`. `verify_workspace` and `export_draft` are imported in `__main__.py`, `server.py`, `revisions.py` and `scaffold_port.py`. The switch to the public names is a change to those imports.
+`paper-workbench report` hands its arguments to `report_main`. It renders `REVIEW.md` and `REVIEW.txt` for any run, a stopped or startup-blocked one included, and exits 0. It prints JSON with `status`, `cause`, `findings`, `publishable`, `problems` and one key per report path. A path that is not a run, or a symlinked run file, is named on stderr with exit 1.
+
+No module imports `peerreviewagents.plugin`, `peerreviewagents.cli` or the starter. These helpers are not public yet, so the app still imports them from `peerreviewagents.engine`:
+
+| Import | Used by |
+| --- | --- |
+| `engine.storage`: `digest`, `read`, `write` | decisions, revisions, exports and tests |
+| `engine.annotations`: `save_review`, `normalize_review` | revisions, `revise` and tests |
+| `engine.ingest`: `words`, `text_of` | Paper Scaffold import and table structure |
 
 ## What the app reads from a run
 
-`run_view.py` reads these files from `RUN/review`. It never writes to them. A symlinked run file is refused with an error rather than treated as missing.
+`run_view.py` calls `read_run` and never opens a run file itself. Nothing in the app writes to `RUN/review`. `read_run` refuses a symlink anywhere under the review folder, and the app shows that refusal as a plain error. It names any file it could not read in full in `problems`, and the run panel shows each one.
 
-| File | Keys the viewer reads |
+| `read_run` key | What the viewer does with it |
 | --- | --- |
-| `startup.json` | `problems`, the start-up probe's failures |
-| `runtime.json` | `status`, `blocked_reason`, `tokens_total`, `wall_seconds` |
-| `progress.json` | `status`, `error`, `arm`, `reviewers`, `stages.missing`, `stages.none_found` |
-| `protocol.json` | `arm`, `reviewers` |
-| `manifest.json` | `paper_id`, `source_sha256`, checked against the manuscript |
-| `editor-package.json` | `summary`, `findings`, `appendix`, `verdict`, `escalation_rulings`, `reviewer_provenance`, `findings_by_track`, `escalated_count`, `limitations`, `arm`, `reviewer_count`, `review_guard_status` |
-| `findings.jsonl` | the latest row per `finding_uid`, shown when there is no editor package |
-| `audit_<track>.md` | each specialist report, shown as plain text |
+| `body`, `appendix`, `findings_source` | the findings, body first, and whether the editor wrote its package |
+| `identity.paper_id`, `identity.source_sha256`, each finding's `block_sha256` | the check that the run reviewed this manuscript version |
+| `status`, `complete`, `cause`, `note`, `problems`, `publishable` | the run panel's status and warnings, and the summary of a run with no editor package |
+| `summary`, `verdict`, `escalations`, `escalation_rulings`, `limitations`, `guard_status`, `counts` | the summary and the run panel |
+| `identity.arm`, `identity.reviewers`, `identity.workflow_version` | the run panel |
+| `stages.missing`, `stages.none_found`, `agents`, `runtime.tokens_total`, `runtime.wall_seconds` | the reviewer slots and the run facts |
+| `reports.audits` | each specialist report, read as plain text up to 400,000 bytes |
 
-Any of `protocol.json`, `progress.json`, `runtime.json` or `startup.json` marks a run folder. The engine writes `protocol.json` and `manifest.json` only when the run finishes or is marked blocked. A run the starter stopped early, from a token ceiling, a timeout, a rate limit or a session error, has neither. The viewer still opens it with its status, its cause and its recorded findings. Without a manifest it checks each finding's `block_sha256` against the manuscript block instead. A run blocked at startup, or stopped before it imported the manuscript, has nothing to show, so `serve` prints its status and cause and exits 1.
+The engine writes `protocol.json` and `manifest.json` only when the run finishes or is marked blocked. A run the starter stopped early, from a token ceiling, a timeout, a rate limit or a session error, has neither. The viewer still opens it with its status, its cause and the findings in the ledger. Each finding's `block_sha256` then pins the manuscript version. Its arm and reviewer count are empty, because `read_run` takes them only from `protocol.json` or the plan. A run blocked at startup, or stopped before it imported the manuscript, has nothing to show, so `serve` prints its status and cause and exits 1.
 
-`run_view.read_run(review)` returns `status`, `error`, `findings`, `manifest` and `audits` for any run, finished or not. It matches the engine's planned public `read_run(path)`, so the app switches to that with one import. `run_view.COMPLETE` holds the finished statuses until the engine publishes its status constants.
+Each finding keeps the annotation keys the viewer already used (`kind`, `block_id`, `quote`, `start`, `end`, `placement`, `comment`, `replacement`, `evidence_blocks`) and adds `finding_uid`, `slot`, `track`, `basis`, `basis_reason` and `escalate`. Body findings add `editor_reason`, `reviewers_raising` and `duplicate_uids`. Appendix findings add `editor_placement`, `duplicate_of` and `rebuttal_quote`.
 
-Each finding keeps the annotation keys the viewer already used (`kind`, `block_id`, `quote`, `start`, `end`, `placement`, `comment`, `replacement`, `evidence_blocks`) and adds `finding_uid`, `track`, `basis`, `basis_reason` and `escalate`. Body findings add `editor_reason`, `reviewers_raising` and `duplicate_uids`. Appendix findings add `editor_placement`, `duplicate_of` and `rebuttal_quote`.
-
-The viewer keys a finding by `finding_uid`, because the engine's finding `id` can repeat across reviewers. If the uids repeat or are malformed, it numbers the findings instead.
+The viewer keys a finding by `finding_uid`, because the engine's finding `id` can repeat across reviewers. `read_run` keeps one row per uid. If a uid is missing or malformed, the viewer numbers the findings instead.
 
 ## Versioning
 

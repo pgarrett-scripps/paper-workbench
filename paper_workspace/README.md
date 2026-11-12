@@ -28,16 +28,16 @@ python -m paper_workspace serve run-output
 
 This command performs model inference. It requires the `claude` CLI on `PATH`, signed in to a Claude subscription. API keys are never used. The run records its token use in `review/runtime.json` and stops at its own token and wall-clock ceilings. Without `claude`, the run is blocked at startup, records why in `review/startup.json` and launches nothing.
 
-The run folder holds `manuscript`, the imported workspace, and `review`, the run. `python -m paper_workspace report run-output` re-renders `REVIEW.md` and `REVIEW.txt` from the saved run with no model call. It needs a finished run. For a run with no `protocol.json`, one that was blocked at startup or stopped early, it prints the recorded status and cause, writes nothing and exits 1.
+The run folder holds `manuscript`, the imported workspace, and `review`, the run. `python -m paper_workspace report run-output` renders `REVIEW.md` and `REVIEW.txt` from the saved run with no model call. It works on any run, finished, stopped or blocked at startup, and prints the status, the cause, the finding count, whether the review is publishable, any file it could not read and the report paths.
 
-`serve` on a run folder shows the run as the review named `run`. `run_view.py` reads it:
+`serve` on a run folder shows the run as the review named `run`. `run_view.py` shows what the engine's `read_run` returns, and never opens a run file itself:
 
 - The editor package's body findings come first, numbered in the manuscript. Duplicates and appendix findings follow in a collapsed appendix, each linked to the finding it duplicates and with any rebuttal quotation.
 - Each finding shows its track, its basis with the reason the engine gave, whether a specialist escalated it, the editor's reason and the escalation ruling.
-- A run panel shows the arm, status, verdict, specialist audit reports, reviewer slots, findings by track and run limitations. An Escalated filter keeps only escalated findings.
+- A run panel shows the arm, status, verdict, specialist audit reports, reviewer slots with their tokens, findings by track and run limitations. It also shows why a run stopped, a limit that fired after the review was written, and every file the engine could not read in full. An Escalated filter keeps only escalated findings.
 - A run without an editor package shows the findings recorded in `findings.jsonl`, keeping the latest row for each finding, and says that the editor did not finish.
-- A run the starter stopped early, from a token ceiling, a timeout, a rate limit or a session error, has no `protocol.json` or `manifest.json`. It still opens, with its status, its cause and its recorded findings. Without a manifest, the manuscript version is checked against each finding's block hash.
-- A run blocked at startup, or stopped before it imported the manuscript, has nothing to show. `serve` prints its status and cause and exits 1.
+- A run the starter stopped early, from a token ceiling, a timeout, a rate limit or a session error, has no `protocol.json` or `manifest.json`. It still opens, with its status, its cause and its recorded findings. Each finding's block hash pins the manuscript version. The panel shows no arm or reviewer count for it, because `read_run` takes those only from `protocol.json`.
+- A run blocked at startup, or stopped before it imported the manuscript, has nothing to show. `serve` prints its status and cause and exits 1, and `report` still writes a report that says why.
 - A run on a different manuscript version is refused. A symlinked run file is refused with an error, and files outside the review folder are never read.
 
 Author decisions on a run are saved in `manuscript/decisions/run.json`. The review folder stays as the run wrote it.

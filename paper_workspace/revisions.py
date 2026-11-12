@@ -10,7 +10,8 @@ import tempfile
 from contextlib import contextmanager
 from pathlib import Path
 
-from peerreviewagents.engine.annotations import export_draft, save_review, verify_workspace
+from peerreviewagents import export_draft, verify_workspace
+from peerreviewagents.engine.annotations import save_review
 from peerreviewagents.engine.storage import digest, read, write
 
 from .source_edits import NATIVE_CITATION, citation_markers, decode_span, encode_span

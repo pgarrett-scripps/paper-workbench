@@ -1,15 +1,14 @@
 """Command line for the Paper Workbench app.
 
 ``review`` runs one PeerReviewAgents review of a manuscript PDF and ``report``
-re-renders a finished run, exactly as ``peerreview review`` and ``peerreview
-report`` do. ``serve RUN`` opens that run in the viewer. ``import`` and
+renders the reports of a run, finished or stopped, exactly as ``peerreview
+review`` and ``peerreview report`` do. ``serve RUN`` opens that run in the viewer. ``import`` and
 ``verify`` make and check a manuscript workspace without a model call, and the
 remaining commands revise and export a workspace.
 """
 import argparse
 import json
 import sys
-from pathlib import Path
 
 from peerreviewagents.engine.storage import read
 
@@ -83,52 +82,21 @@ def build_parser(prog='paper-workbench'):
     sub.add_parser('review',add_help=False,
         help='Review one manuscript PDF into a run folder (paper-workbench review -h for its options)')
     sub.add_parser('report',add_help=False,
-        help='Re-render REVIEW.md and REVIEW.txt of a finished run, with no model call')
+        help='Render REVIEW.md and REVIEW.txt of a run, finished or stopped, with no model call')
     add_app_subcommands(sub)
     return parser
 
 
-def unfinished_run(argv):
-    """The review folder ``report`` names when it holds a run that never finished, else ``None``.
-
-    Only the run path is read here. Every option still goes to the engine.
-    """
-    parser=argparse.ArgumentParser(add_help=False)
-    parser.add_argument('run',nargs='?')
-    parser.add_argument('--workspace')
-    parser.add_argument('--output-dir')
-    known,_=parser.parse_known_args(argv)
-    if not known.run:
-        return None
-    from peerreviewagents.plugin.server import RUN_DIRECTORY
-    from .run_view import is_run
-    path=Path(known.run).resolve()
-    for review in (path,path/RUN_DIRECTORY):
-        if is_run(review) and not (review/'protocol.json').is_file():
-            return review
-    return None
-
-
 def run_engine(command,argv):
-    """Run an engine command through the engine's own entry and return its exit status.
+    """Run an engine command through the engine's public entry and return its exit status.
 
     The engine parses the options, so a new engine option reaches the review.
     """
     if command=='review':
-        # Becomes peerreviewagents.cli.main.review_main(argv,prog='paper-workbench review').
-        from peerreviewagents.plugin.starter import main as review_main
-        return review_main(argv)
-    review=unfinished_run(argv)
-    if review:
-        from .run_view import read_run
-        recorded=read_run(review)
-        print(f'The run in {review.parent} did not finish, so it has no review to report. '
-              f'Status: {recorded["status"] or "not recorded"}. Cause: {recorded["error"] or "not recorded"}. '
-              f'Open what it recorded with paper-workbench serve {review.parent}',file=sys.stderr)
-        return 1
-    # Becomes peerreviewagents.cli.main.report_main(argv).
-    from peerreviewagents.cli.main import report
-    return report(argv)
+        from peerreviewagents import review_main
+        return review_main(argv,prog='paper-workbench review')
+    from peerreviewagents import report_main
+    return report_main(argv)
 
 
 def dispatch(parser,args):
@@ -138,7 +106,7 @@ def dispatch(parser,args):
         paper=import_paper(args.pdf,args.workspace,args.xml,args.title,args.source_url,args.supplements)
         print(json.dumps(paper['statistics'],indent=2))
     elif args.command=='verify':
-        from peerreviewagents.engine.annotations import verify_workspace
+        from peerreviewagents import verify_workspace
         paper=verify_workspace(args.workspace)
         print(json.dumps({'paper_id':paper['id'],'source_sha256':paper['source_sha256'],
                           'blocks':len(paper['blocks']),'status':'verified'},indent=2))

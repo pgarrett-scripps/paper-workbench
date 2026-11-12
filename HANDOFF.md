@@ -6,7 +6,7 @@ Snapshot: 12 November 2026. Start here for the current framework. The companion 
 
 PeerReviewAgents runs the review. Version 0.9.0 replaced its Python orchestration with the `pra` Claude Code plugin, run headless by `peerreview review`. The debate, the six review modes, the three policies, `ReviewRequest`, `run_review` and the Codex provider are gone, with no shim. The 0.8 engine is frozen at the PeerReviewAgents `v0.8.0` release.
 
-This repository is the workspace, viewer and revision app. It needs engine 0.9.0 or newer. It starts a review through the engine's `peerreview review` entry and reads the run folder the review writes. Make review changes in PeerReviewAgents, not here.
+This repository is the workspace, viewer and revision app. It needs engine 0.9.0 or newer. It starts a review through the engine's public `review_main`, the entry `peerreview review` uses, and reads the run folder with the engine's `read_run`. Make review changes in PeerReviewAgents, not here.
 
 Engine 0.9.0 is not on PyPI yet. CI installs from PyPI, so it stays red at the install step until 0.9.0 is published.
 
@@ -62,7 +62,7 @@ The engine anchors every finding to an exact source quotation and labels its bas
 
 ## Next step
 
-The app reads the run folder by file name in `run_view.read_run`, because the engine has no public run reader yet. That function returns the keys the engine's planned public `read_run` will return, so the switch is one import. A rename in `editor-package.json` breaks the viewer without an import error. The next engineering task is a versioned run-folder fixture shared by both repositories, so an engine change that breaks the viewer fails a test.
+The app reads a run only through the engine's public `read_run`, so a renamed key in a run file is the engine's to absorb. The viewer still reads `read_run`'s result keys by name, and a rename there breaks it without an import error. The next engineering task is a versioned run-folder fixture shared by both repositories, so an engine change that breaks the viewer fails a test. The storage, `save_review`, `normalize_review`, `words` and `text_of` imports from `peerreviewagents.engine` move when the engine makes them public.
 
 ## Execution and collaboration
 

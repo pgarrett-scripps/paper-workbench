@@ -5,7 +5,8 @@ import tempfile
 import unittest
 from unittest.mock import patch
 
-from peerreviewagents.engine.annotations import normalize_review, verify_workspace
+from peerreviewagents import verify_workspace
+from peerreviewagents.engine.annotations import normalize_review
 from peerreviewagents.engine.storage import read
 
 from paper_workspace.revisions import (agent_request, automation_decisions, checkout, copyedit_proposals,

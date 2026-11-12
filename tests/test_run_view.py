@@ -11,7 +11,7 @@ from pathlib import Path
 from peerreviewagents.engine.storage import digest, write
 
 from paper_workspace.__main__ import main
-from paper_workspace.run_view import RunError, locate, read_run, run_review
+from paper_workspace.run_view import RunError, locate, run_review
 from paper_workspace.server import make_server
 
 TEXT = 'Knockdown lowered VPS35 in 12 samples.'
@@ -73,11 +73,11 @@ def stop_run(review):
 
 
 def run_quietly(argv):
-    """Call the app command line and return its exit status and what it wrote to stderr."""
-    stderr = io.StringIO()
-    with contextlib.redirect_stderr(stderr), contextlib.redirect_stdout(io.StringIO()):
+    """Call the app command line and return its exit status, its stdout and its stderr."""
+    stdout, stderr = io.StringIO(), io.StringIO()
+    with contextlib.redirect_stderr(stderr), contextlib.redirect_stdout(stdout):
         status = main(argv)
-    return status, stderr.getvalue()
+    return status, stdout.getvalue(), stderr.getvalue()
 
 
 class RunReviewTests(unittest.TestCase):
@@ -111,11 +111,15 @@ class RunReviewTests(unittest.TestCase):
         self.assertEqual((run['tokens_total'], run['wall_seconds']), (900, 120))
         self.assertEqual(run['audits'], {'stats': '# Statistics audit\n'})
 
-    def test_repeated_finding_uids_fall_back_to_positional_ids(self):
-        package = json.loads((self.review / 'editor-package.json').read_text())
-        package['appendix'][0]['finding_uid'] = 'aa11'
-        write(self.review / 'editor-package.json', package)
-        self.assertEqual([f['id'] for f in run_review(self.review, self.paper)['findings']], ['run-1', 'run-2'])
+    def test_missing_or_malformed_finding_uids_fall_back_to_positional_ids(self):
+        original = json.loads((self.review / 'editor-package.json').read_text())
+        for uid in (None, 'not a uid'):
+            with self.subTest(uid=uid):
+                package = json.loads(json.dumps(original))
+                package['appendix'][0]['finding_uid'] = uid
+                write(self.review / 'editor-package.json', package)
+                self.assertEqual([f['id'] for f in run_review(self.review, self.paper)['findings']],
+                                 ['run-1', 'run-2'])
 
     def test_a_run_on_another_manuscript_version_is_refused(self):
         write(self.review / 'manifest.json', {'paper_id': 'qa', 'source_sha256': 'other'})
@@ -125,6 +129,7 @@ class RunReviewTests(unittest.TestCase):
     def test_a_run_without_an_editor_package_shows_the_recorded_findings(self):
         (self.review / 'editor-package.json').unlink()
         write(self.review / 'progress.json', {'status': 'blocked', 'error': 'editor timed out', 'stages': {}})
+        write(self.review / 'runtime.json', {'status': 'blocked', 'tokens_total': 900, 'wall_seconds': 120})
         review = run_review(self.review, self.paper)
         self.assertEqual([(f['id'], f['section']) for f in review['findings']], [('aa11', 'body'), ('bb22', 'body')])
         self.assertFalse(review['run']['edited'])
@@ -134,11 +139,11 @@ class RunReviewTests(unittest.TestCase):
         (self.review / 'editor-package.json').unlink()
         with (self.review / 'findings.jsonl').open('a') as stream:
             stream.write(json.dumps(finding('aa11', 'lowered VPS35', comment='Second submission.')) + '\n')
-        findings = read_run(self.review)['findings']
+        findings = run_review(self.review, self.paper)['findings']
         self.assertEqual([(f['finding_uid'], f['comment']) for f in findings],
                          [('aa11', 'Second submission.'), ('bb22', 'Name the control.')])
         # Saved decisions stay attached, because the ids are still the finding uids.
-        self.assertEqual([f['id'] for f in run_review(self.review, self.paper)['findings']], ['aa11', 'bb22'])
+        self.assertEqual([f['id'] for f in findings], ['aa11', 'bb22'])
 
     def test_an_empty_editor_summary_is_not_reported_as_a_missing_package(self):
         package = json.loads((self.review / 'editor-package.json').read_text())
@@ -152,14 +157,24 @@ class RunReviewTests(unittest.TestCase):
         outside = self.root / 'outside.json'
         package.rename(outside)
         package.symlink_to(outside)
-        with self.assertRaisesRegex(RunError, 'editor-package.json is a symbolic link'):
+        with self.assertRaisesRegex(RunError, 'Refusing to read editor-package.json: a run file must not be a symlink'):
             run_review(self.review, self.paper)
         package.unlink()
         secret = self.root / 'secret.md'
         secret.write_text('outside the review folder')
         (self.review / 'audit_leak.md').symlink_to(secret)
-        with self.assertRaisesRegex(RunError, 'audit_leak.md is a symbolic link'):
+        with self.assertRaisesRegex(RunError, 'Refusing to read audit_leak.md'):
             run_review(self.review, self.paper)
+        status, _, message = run_quietly(['serve', str(self.root)])
+        self.assertEqual(status, 1)
+        self.assertIn('Refusing to read audit_leak.md', message)
+
+    def test_the_engine_problems_reach_the_run_panel(self):
+        (self.review / 'runtime.json').write_text('{"status": "comp')
+        run = run_review(self.review, self.paper)['run']
+        self.assertEqual(run['status'], 'complete')
+        self.assertTrue(any('runtime.json' in problem for problem in run['problems']), run['problems'])
+        self.assertFalse(run['publishable'])
 
 
 class StoppedRunTests(unittest.TestCase):
@@ -181,9 +196,9 @@ class StoppedRunTests(unittest.TestCase):
         self.assertEqual([(f['id'], f['comment']) for f in review['findings']],
                          [('aa11', 'Name the knockdown control.'), ('bb22', 'Name the control.')])
         run = review['run']
-        self.assertEqual((run['status'], run['error'], run['edited'], run['missing_stages']),
+        self.assertEqual((run['status'], run['cause'], run['edited'], run['missing_stages']),
                          ('blocked', CEILING, False, ['editor']))
-        self.assertEqual((run['arm'], run['reviewer_count'], run['tokens_total']), ('reviewers-only', 2, 4000))
+        self.assertEqual((run['tokens_total'], run['wall_seconds'], run['problems']), (4000, 300, []))
         self.assertEqual(review['summary'], f'The run stopped before the editor wrote its package: {CEILING}')
         make_server(self.root, 0).server_close()
 
@@ -194,24 +209,26 @@ class StoppedRunTests(unittest.TestCase):
         with self.assertRaisesRegex(RunError, 'different manuscript version'):
             run_review(self.review, self.paper)
 
-    def test_report_says_the_run_did_not_finish_and_writes_nothing(self):
-        status, message = run_quietly(['report', str(self.root)])
-        self.assertEqual(status, 1)
-        self.assertIn('did not finish', message)
-        self.assertIn(CEILING, message)
-        self.assertFalse((self.review / 'REVIEW.md').exists())
+    def test_report_renders_what_the_stopped_run_recorded(self):
+        status, output, _ = run_quietly(['report', str(self.root)])
+        self.assertEqual(status, 0)
+        summary = json.loads(output)
+        self.assertEqual((summary['status'], summary['cause']), ('blocked', CEILING))
+        self.assertTrue((self.review / 'REVIEW.md').is_file())
 
-    def test_a_startup_blocked_run_is_a_plain_message(self):
+    def test_a_startup_blocked_run_cannot_be_served_and_its_report_says_why(self):
         run = self.root / 'startup-only'
         write(run / 'review' / 'startup.json', {'problems': ['claude is not installed']})
         write(run / 'review' / 'runtime.json', {'status': 'blocked',
             'blocked_reason': 'the start-up probe failed: claude is not installed'})
-        for argv in (['serve', str(run)], ['report', str(run)]):
-            with self.subTest(command=argv[0]):
-                status, message = run_quietly(argv)
-                self.assertEqual(status, 1)
-                self.assertIn('claude is not installed', message)
-                self.assertNotIn('Traceback', message)
+        status, _, message = run_quietly(['serve', str(run)])
+        self.assertEqual(status, 1)
+        self.assertIn('stopped before it imported the manuscript', message)
+        self.assertIn('claude is not installed', message)
+        self.assertNotIn('Traceback', message)
+        status, output, _ = run_quietly(['report', str(run)])
+        self.assertEqual(status, 0)
+        self.assertIn('claude is not installed', json.loads(output)['cause'])
 
 
 class RunServerTests(unittest.TestCase):
@@ -269,7 +286,7 @@ class RunServerTests(unittest.TestCase):
         stop_run(self.review)
         status, review = self.request('/api/review?review=run')
         self.assertEqual(status, 200)
-        self.assertEqual((review['run']['status'], review['run']['error']), ('blocked', CEILING))
+        self.assertEqual((review['run']['status'], review['run']['cause']), ('blocked', CEILING))
         self.assertEqual([f['id'] for f in review['findings']], ['aa11', 'bb22'])
 
 

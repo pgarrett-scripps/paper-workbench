@@ -19,7 +19,7 @@ from pathlib import Path
 from urllib.parse import parse_qs, urlparse
 import zipfile
 
-from peerreviewagents.engine.annotations import export_draft, verify_workspace
+from peerreviewagents import export_draft, verify_workspace
 from peerreviewagents.engine.storage import digest, read, write
 
 from .revisions import checkout, create_revision, head, snapshot, valid_id
