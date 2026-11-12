@@ -11,8 +11,7 @@ from contextlib import contextmanager
 from pathlib import Path
 
 from peerreviewagents import export_draft, verify_workspace
-from peerreviewagents.engine.annotations import save_review
-from peerreviewagents.engine.storage import digest, read, write
+from peerreviewagents.workspace import digest, read_json, save_review, write_json
 
 from .source_edits import NATIVE_CITATION, citation_markers, decode_span, encode_span
 
@@ -44,7 +43,7 @@ def revision_lock(root):
 
 def head(root):
     path = Path(root) / 'revision-head.json'
-    return read(path) if path.exists() else {'revision_id': 'original', 'version': 0}
+    return read_json(path) if path.exists() else {'revision_id': 'original', 'version': 0}
 
 
 def snapshot(root, revision_id='original'):
@@ -153,7 +152,7 @@ def agent_request(root):
     """Return a version-bound handoff for a coding agent or orchestration client."""
     current = head(root)
     source, paper = snapshot(root, current['revision_id'])
-    ledger = read(source / 'issue-ledger.json') if (source / 'issue-ledger.json').exists() else []
+    ledger = read_json(source / 'issue-ledger.json') if (source / 'issue-ledger.json').exists() else []
     return {'head': current, 'paper_id': paper['id'], 'source_sha256': paper['source_sha256'],
             'paper': paper, 'historical_issues': ledger, 'policy': POLICY,
             'instructions': [
@@ -260,30 +259,30 @@ def create_revision(root, review, decisions, revision_id, expected_head, *, buil
                     raise ValueError('Draft compilation failed. Current draft preserved. ' + result.stderr[-1500:])
                 build_result = {'pdf': 'built', 'compiler': subprocess.run(['typst', '--version'],
                     capture_output=True, text=True, check=True).stdout.strip(), 'warnings': result.stderr}
-            ledger = read(parent / 'issue-ledger.json') if (parent / 'issue-ledger.json').exists() else []
+            ledger = read_json(parent / 'issue-ledger.json') if (parent / 'issue-ledger.json').exists() else []
             for finding in review['findings']:
                 ledger.append({'origin_revision': expected_head['revision_id'], 'paper_id': paper['id'],
                     'finding': finding, 'wording_decision': decisions['items'].get(finding['id'], 'proposed'),
                     'author_feedback': decisions.get('annotations', {}).get(finding['id'], {}),
                     'scientific_status': 'open' if finding.get('category') != 'copyedit' else 'not_applicable',
                     'anchor_status': 'historical', 'note': 'Anchor refers to the originating draft. Reassess against current text.'})
-            write(output / 'review-package.json', package)
-            write(output / 'issue-ledger.json', ledger)
+            write_json(output / 'review-package.json', package)
+            write_json(output / 'issue-ledger.json', ledger)
             (output / 'changes.patch').write_text(''.join(patches))
             metadata = {'id': revision_id, 'parent': expected_head['revision_id'],
                 'parent_paper_id': paper['id'], 'paper_id': updated['id'],
                 'applied_findings': [f['id'] for f in accepted], 'build': build_result,
                 'policy': decisions.get('policy', 'explicit_decisions'),
                 'limitations': ['Mechanical checks cannot prove that an edit preserves scientific meaning.']}
-            write(output / 'revision.json', metadata)
-            manifest = read(output / 'manifest.json')
+            write_json(output / 'revision.json', metadata)
+            manifest = read_json(output / 'manifest.json')
             for path in output.rglob('*'):
                 if path.is_file() and path.name != 'manifest.json':
                     manifest['files'][path.relative_to(output).as_posix()] = digest(path.read_bytes())
-            write(output / 'manifest.json', manifest)
+            write_json(output / 'manifest.json', manifest)
             verify_workspace(output)
             output.rename(target)
-        write(root / 'revision-head.json', {'revision_id': revision_id, 'version': expected_head['version'] + 1})
+        write_json(root / 'revision-head.json', {'revision_id': revision_id, 'version': expected_head['version'] + 1})
         return metadata
 
 
@@ -294,7 +293,7 @@ def checkout(root, revision_id, expected_head):
             raise ValueError('Draft changed before rollback')
         snapshot(root, revision_id)
         value = {'revision_id': revision_id, 'version': expected_head['version'] + 1}
-        write(Path(root) / 'revision-head.json', value)
+        write_json(Path(root) / 'revision-head.json', value)
         return value
 
 
@@ -315,7 +314,7 @@ def run_loop(root, run_id, *, max_rounds=2, max_edits=10, provider=None, build=T
     path.mkdir(parents=True, exist_ok=False)
     state = {'id': run_id, 'policy': POLICY, 'max_rounds': max_rounds, 'max_edits': max_edits,
              'rounds': [], 'status': 'running', 'provider': 'external' if provider else 'offline'}
-    write(path / 'run.json', state)
+    write_json(path / 'run.json', state)
     used = 0
     seen = set()
     try:
@@ -328,15 +327,15 @@ def run_loop(root, run_id, *, max_rounds=2, max_edits=10, provider=None, build=T
             seen.add(paper['source_sha256'])
             request = {'round': round_number, 'head': current_head, 'paper_id': paper['id'],
                        'source_sha256': paper['source_sha256'], 'remaining_edits': max_edits - used}
-            write(path / f'{round_number}-request.json', request)
+            write_json(path / f'{round_number}-request.json', request)
             response = (provider or copyedit_proposals)(copy.deepcopy(paper))
             if response.get('paper_id') != paper['id'] or response.get('source_sha256') != paper['source_sha256']:
                 raise ValueError('Agent review is not bound to the current draft')
-            write(path / f'{round_number}-response.json', response)
+            write_json(path / f'{round_number}-response.json', response)
             review = save_review(current_root, response, f'{run_id}-r{round_number}')
             decisions = automation_decisions(paper, review, max_edits - used)
-            write(current_root / 'decisions' / f'{review["id"]}.json', decisions)
-            write(path / f'{round_number}-decisions.json', decisions)
+            write_json(current_root / 'decisions' / f'{review["id"]}.json', decisions)
+            write_json(path / f'{round_number}-decisions.json', decisions)
             count = sum(v == 'accepted' for v in decisions['items'].values())
             entry = {**request, 'applied': count, 'held': len(review['findings']) - count}
             state['rounds'].append(entry)
@@ -346,7 +345,7 @@ def run_loop(root, run_id, *, max_rounds=2, max_edits=10, provider=None, build=T
             revision_id = valid_id(f'{run_id}-{round_number}')
             entry['revision'] = create_revision(root, review, decisions, revision_id, current_head, build=build)
             used += count
-            write(path / 'run.json', state)
+            write_json(path / 'run.json', state)
             if used >= max_edits:
                 state['status'] = 'edit_limit'
                 break
@@ -359,5 +358,5 @@ def run_loop(root, run_id, *, max_rounds=2, max_edits=10, provider=None, build=T
     finally:
         state['applied_edits'] = used
         state['final_head'] = head(root)
-        write(path / 'run.json', state)
+        write_json(path / 'run.json', state)
     return state

@@ -8,7 +8,7 @@ import threading
 import unittest
 from pathlib import Path
 
-from peerreviewagents.engine.storage import digest, write
+from peerreviewagents.workspace import digest, write_json
 
 from paper_workspace.__main__ import main
 from paper_workspace.run_view import RunError, locate, run_review
@@ -30,20 +30,20 @@ def finding(uid, quote, **extra):
 def make_run(root, package=True):
     """A run folder as ``peerreview review`` leaves it, with one body finding and one duplicate."""
     manuscript, review = root / 'manuscript', root / 'review'
-    write(manuscript / 'paper.json', {'id': 'qa', 'title': 'QA', 'source_sha256': 'qa-source',
+    write_json(manuscript / 'paper.json', {'id': 'qa', 'title': 'QA', 'source_sha256': 'qa-source',
         'blocks': [{'id': 'b1', 'text': TEXT, 'sha256': digest(TEXT)}], 'statistics': {'pdf_pages': 1}})
-    write(manuscript / 'manifest.json', {'files': {'paper.json': digest((manuscript / 'paper.json').read_bytes())}})
-    write(review / 'startup.json', {'problems': []})
-    write(review / 'protocol.json', {'arm': 'full-two-track', 'reviewers': 3, 'agents': {
+    write_json(manuscript / 'manifest.json', {'files': {'paper.json': digest((manuscript / 'paper.json').read_bytes())}})
+    write_json(review / 'startup.json', {'problems': []})
+    write_json(review / 'protocol.json', {'arm': 'full-two-track', 'reviewers': 3, 'agents': {
         'core-1': {'role': 'core', 'track': 'core', 'tool_calls': 3, 'model': 'claude-sonnet-5-5'},
         'recorder': {'role': 'recorder', 'track': 'ingest', 'tool_calls': 4, 'model': None},
         'spec-citations': {'role': 'specialist', 'track': 'citations', 'tool_calls': 2,
                            'model': 'claude-sonnet-5-5'}}})
-    write(review / 'manifest.json', {'paper_id': 'qa', 'source_sha256': 'qa-source'})
-    write(review / 'progress.json', {'status': 'complete', 'error': None, 'arm': 'full-two-track', 'reviewers': 3,
+    write_json(review / 'manifest.json', {'paper_id': 'qa', 'source_sha256': 'qa-source'})
+    write_json(review / 'progress.json', {'status': 'complete', 'error': None, 'arm': 'full-two-track', 'reviewers': 3,
         'stages': {'missing': [], 'none_found': ['spec-citations']}})
     # The stream names the recorder by its two tasks, and the last row is a label-only placeholder.
-    write(review / 'runtime.json', {'status': 'complete', 'tokens_total': 900, 'wall_seconds': 120, 'agents': [
+    write_json(review / 'runtime.json', {'status': 'complete', 'tokens_total': 900, 'wall_seconds': 120, 'agents': [
         {'label': 'core-1', 'agentType': 'pra:core', 'tokens': 500, 'toolCalls': 9, 'state': 'completed',
          'model': 'claude-sonnet-5-5'},
         {'label': 'ingest', 'agentType': 'pra:recorder', 'tokens': 120, 'toolCalls': 5, 'state': 'completed',
@@ -57,7 +57,7 @@ def make_run(root, package=True):
                        editor_reason='Same objection.', rebuttal_quote=None)
     (review / 'findings.jsonl').write_text(json.dumps(body) + '\n' + json.dumps(appendix) + '\n')
     if package:
-        write(review / 'editor-package.json', {'summary': 'One central question.', 'arm': 'full-two-track',
+        write_json(review / 'editor-package.json', {'summary': 'One central question.', 'arm': 'full-two-track',
             'findings': [body], 'appendix': [appendix], 'escalated_count': 1, 'reviewer_count': 3,
             'review_guard_status': 'clean', 'findings_by_track': {'field': 1, 'core': 1},
             'verdict': {'significance': 'High', 'strength_of_evidence': 'Weak', 'reasoning': 'Correlation.',
@@ -76,9 +76,9 @@ def stop_run(review):
     """
     for name in ('protocol.json', 'manifest.json', 'editor-package.json'):
         (review / name).unlink()
-    write(review / 'progress.json', {'status': 'blocked', 'error': CEILING, 'arm': 'reviewers-only',
+    write_json(review / 'progress.json', {'status': 'blocked', 'error': CEILING, 'arm': 'reviewers-only',
         'reviewers': 2, 'stages': {'missing': ['editor'], 'none_found': []}})
-    write(review / 'runtime.json', {'status': 'blocked', 'blocked_reason': CEILING,
+    write_json(review / 'runtime.json', {'status': 'blocked', 'blocked_reason': CEILING,
                                     'tokens_total': 4000, 'wall_seconds': 300})
     with (review / 'findings.jsonl').open('a') as stream:
         stream.write(json.dumps(finding('aa11', 'lowered VPS35', comment='Name the knockdown control.')) + '\n')
@@ -142,11 +142,11 @@ class RunReviewTests(unittest.TestCase):
     def test_a_review_without_findings_is_publishable_unless_the_guard_held_some(self):
         package = json.loads((self.review / 'editor-package.json').read_text())
         package['findings'], package['appendix'] = [], []
-        write(self.review / 'editor-package.json', package)
+        write_json(self.review / 'editor-package.json', package)
         (self.review / 'findings.jsonl').write_text('')
         for name in ('progress.json', 'runtime.json'):
             record = json.loads((self.review / name).read_text())
-            write(self.review / name, {**record, 'status': 'complete-without-findings'})
+            write_json(self.review / name, {**record, 'status': 'complete-without-findings'})
         run = run_review(self.review, self.paper)['run']
         self.assertEqual((run['status'], run['quarantined_findings_count'], run['publishable']),
                          ('complete-without-findings', 0, True))
@@ -163,19 +163,19 @@ class RunReviewTests(unittest.TestCase):
             with self.subTest(uid=uid):
                 package = json.loads(json.dumps(original))
                 package['appendix'][0]['finding_uid'] = uid
-                write(self.review / 'editor-package.json', package)
+                write_json(self.review / 'editor-package.json', package)
                 self.assertEqual([f['id'] for f in run_review(self.review, self.paper)['findings']],
                                  ['run-1', 'run-2'])
 
     def test_a_run_on_another_manuscript_version_is_refused(self):
-        write(self.review / 'manifest.json', {'paper_id': 'qa', 'source_sha256': 'other'})
+        write_json(self.review / 'manifest.json', {'paper_id': 'qa', 'source_sha256': 'other'})
         with self.assertRaisesRegex(ValueError, 'different manuscript version'):
             run_review(self.review, self.paper)
 
     def test_a_run_without_an_editor_package_shows_the_recorded_findings(self):
         (self.review / 'editor-package.json').unlink()
-        write(self.review / 'progress.json', {'status': 'blocked', 'error': 'editor timed out', 'stages': {}})
-        write(self.review / 'runtime.json', {'status': 'blocked', 'tokens_total': 900, 'wall_seconds': 120})
+        write_json(self.review / 'progress.json', {'status': 'blocked', 'error': 'editor timed out', 'stages': {}})
+        write_json(self.review / 'runtime.json', {'status': 'blocked', 'tokens_total': 900, 'wall_seconds': 120})
         review = run_review(self.review, self.paper)
         self.assertEqual([(f['id'], f['section']) for f in review['findings']], [('aa11', 'body'), ('bb22', 'body')])
         self.assertFalse(review['run']['edited'])
@@ -194,7 +194,7 @@ class RunReviewTests(unittest.TestCase):
     def test_an_empty_editor_summary_is_not_reported_as_a_missing_package(self):
         package = json.loads((self.review / 'editor-package.json').read_text())
         package['summary'] = ''
-        write(self.review / 'editor-package.json', package)
+        write_json(self.review / 'editor-package.json', package)
         review = run_review(self.review, self.paper)
         self.assertEqual((review['summary'], review['run']['edited']), ('The editor wrote no summary.', True))
 
@@ -266,8 +266,8 @@ class StoppedRunTests(unittest.TestCase):
 
     def test_a_startup_blocked_run_cannot_be_served_and_its_report_says_why(self):
         run = self.root / 'startup-only'
-        write(run / 'review' / 'startup.json', {'problems': ['claude is not installed']})
-        write(run / 'review' / 'runtime.json', {'status': 'blocked',
+        write_json(run / 'review' / 'startup.json', {'problems': ['claude is not installed']})
+        write_json(run / 'review' / 'runtime.json', {'status': 'blocked',
             'blocked_reason': 'the start-up probe failed: claude is not installed'})
         status, _, message = run_quietly(['serve', str(run)])
         self.assertEqual(status, 1)
@@ -326,7 +326,7 @@ class RunServerTests(unittest.TestCase):
         self.assertEqual([f['finding_uid'] for f in exported['findings']], ['aa11', 'bb22'])
 
     def test_a_mismatched_run_is_an_error_not_a_misplaced_review(self):
-        write(self.review / 'manifest.json', {'paper_id': 'qa', 'source_sha256': 'other'})
+        write_json(self.review / 'manifest.json', {'paper_id': 'qa', 'source_sha256': 'other'})
         status, body = self.request('/api/review?review=run')
         self.assertEqual((status, body), (400, {'error': 'The run reviewed a different manuscript version'}))
 

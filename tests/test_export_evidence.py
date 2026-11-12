@@ -6,7 +6,7 @@ import unittest
 from pypdf import PdfReader, PdfWriter
 from PIL import Image
 
-from peerreviewagents.engine.storage import digest
+from peerreviewagents.workspace import digest
 
 from paper_workspace.export_evidence import extract_main_figures, preserve_source_evidence
 

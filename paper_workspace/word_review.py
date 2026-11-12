@@ -8,7 +8,7 @@ import shutil
 import tempfile
 import zipfile
 
-from peerreviewagents.engine.storage import digest, read, write
+from peerreviewagents.workspace import digest, read_json, write_json
 
 from .revisions import snapshot
 
@@ -203,7 +203,7 @@ def patch_document(source, destination, parent, current, ledger):
 def export_review(root, revision_id, clean_export, output):
     """Add a review copy to a verified export without altering saved sources."""
     source, paper = snapshot(root, revision_id)
-    metadata = read(source / 'revision.json')
+    metadata = read_json(source / 'revision.json')
     _, parent = snapshot(root, metadata['parent'])
     clean_export, output = Path(clean_export).resolve(), Path(output).resolve()
     workspace = Path(root).resolve()
@@ -211,7 +211,7 @@ def export_review(root, revision_id, clean_export, output):
         raise ValueError('Review export needs a new output directory')
     if output.is_relative_to(workspace) and output.relative_to(workspace).parts[0] != 'exports':
         raise ValueError('Exports inside a workspace must use its exports directory')
-    record = read(clean_export / 'export.json')
+    record = read_json(clean_export / 'export.json')
     if record['paper_id'] != paper['id'] or record['source_sha256'] != paper['source_sha256']:
         raise ValueError('Clean export belongs to a different draft')
     for path in clean_export.rglob('*'):
@@ -227,15 +227,15 @@ def export_review(root, revision_id, clean_export, output):
     with tempfile.TemporaryDirectory(prefix='.review-export-', dir=output.parent) as temporary:
         stage = Path(temporary) / 'artifacts'
         shutil.copytree(clean_export, stage)
-        audit = patch_document(stage / 'paper.docx', stage / 'review.docx', parent, paper, read(source / 'issue-ledger.json'))
+        audit = patch_document(stage / 'paper.docx', stage / 'review.docx', parent, paper, read_json(source / 'issue-ledger.json'))
         audit.update({'revision_id': revision_id, 'parent_revision': metadata['parent'],
                       'clean_docx_sha256': record['files']['paper.docx'], 'new_review_model_calls': 0})
-        write(stage / 'word-review.json', audit)
+        write_json(stage / 'word-review.json', audit)
         record['word_review'] = audit
         record['limitations'] = [item for item in record.get('limitations', []) if item != 'Word tracked changes and embedded review comments are not exported.']
         record['limitations'].append('Review copy tracks the immediate revision only. Comment anchors cover exact matching paragraphs. Unlocated questions appear in an appendix.')
         record['files'].update({name: digest((stage / name).read_bytes()) for name in ('review.docx', 'word-review.json')})
         snapshot(root, revision_id)
-        write(stage / 'export.json', record)
+        write_json(stage / 'export.json', record)
         stage.rename(output)
     return audit

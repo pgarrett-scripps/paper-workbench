@@ -20,7 +20,7 @@ from urllib.parse import parse_qs, urlparse
 import zipfile
 
 from peerreviewagents import export_draft, verify_workspace
-from peerreviewagents.engine.storage import digest, read, write
+from peerreviewagents.workspace import digest, read_json, write_json
 
 from .revisions import checkout, create_revision, head, snapshot, valid_id
 from .run_view import RUN_REVIEW_ID, locate, run_review
@@ -73,7 +73,7 @@ def make_server(root, port=38744):
             if path.is_symlink() or path.parent.is_symlink() or not path.resolve().is_relative_to(folder.resolve()):
                 continue
             try:
-                record = read(path)
+                record = read_json(path)
                 valid_id(path.parent.name)
             except (ValueError, OSError):
                 continue
@@ -87,12 +87,12 @@ def make_server(root, port=38744):
             raise ValueError("Invalid review ID")
         if run and rid == RUN_REVIEW_ID and path == root:
             return run_review(run, paper)
-        return read(path / "reviews" / f"{rid}.json")
+        return read_json(path / "reviews" / f"{rid}.json")
 
     def decisions_for(path, paper, rid):
         review_for(path, paper, rid)
         target = path / "decisions" / f"{rid}.json"
-        return read(target) if target.exists() else {
+        return read_json(target) if target.exists() else {
             "paper_id": paper["id"], "review_id": rid, "revision": 0,
             "items": {}, "annotations": {},
         }
@@ -105,7 +105,7 @@ def make_server(root, port=38744):
                 if not path.is_dir() or not REVIEW_ID.fullmatch(path.name):
                     continue
                 snapshot(root, path.name)
-                metadata = read(path / "revision.json") if (path / "revision.json").exists() else {"id": path.name}
+                metadata = read_json(path / "revision.json") if (path / "revision.json").exists() else {"id": path.name}
                 revisions.append(metadata)
         current = head(root)
         path, paper = snapshot(root, draft)
@@ -193,7 +193,7 @@ def make_server(root, port=38744):
                     if path.is_symlink() or not path.resolve().is_relative_to(directory.resolve()):
                         raise ValueError('Export file escapes its package')
                     data = path.read_bytes()
-                    if digest(data) != read(directory / 'export.json')['files'][name]:
+                    if digest(data) != read_json(directory / 'export.json')['files'][name]:
                         raise ValueError('Export file changed after verification')
                     mime = 'application/pdf' if name.endswith('.pdf') else 'application/vnd.openxmlformats-officedocument.wordprocessingml.document'
                     return self.send(200, data, mime,
@@ -206,7 +206,7 @@ def make_server(root, port=38744):
                     return self.send(200, decisions_for(workspace, paper, rid))
                 if url.path == "/api/ledger":
                     ledger = workspace / "issue-ledger.json"
-                    return self.send(200, read(ledger) if ledger.exists() else [])
+                    return self.send(200, read_json(ledger) if ledger.exists() else [])
                 if url.path == "/api/export":
                     verify_workspace(workspace)
                     review = review_for(workspace, paper, rid)
@@ -329,7 +329,7 @@ def make_server(root, port=38744):
                         annotations[finding["id"]] = {"author_comment": comment,
                             "issue_status": issue_status, "rationale": rationale, "history": history}
                         decisions["revision"] = next_revision
-                        write(workspace / "decisions" / f"{rid}.json", decisions)
+                        write_json(workspace / "decisions" / f"{rid}.json", decisions)
                         return self.send(200, decisions)
                     if url.path == "/api/revisions":
                         revision_id = valid_id(value["revision_id"])

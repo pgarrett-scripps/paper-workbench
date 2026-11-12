@@ -10,7 +10,7 @@ import argparse
 import json
 import sys
 
-from peerreviewagents.engine.storage import read
+from peerreviewagents.workspace import read_json
 
 ENGINE_COMMANDS = ('review', 'report')
 APP_COMMANDS = ('import', 'verify', 'port-scaffold', 'import-scaffold', 'revise', 'revision-loop',
@@ -117,11 +117,11 @@ def dispatch(parser,args):
         from .scaffold_import import import_scaffold
         print(import_scaffold(args.source,args.output,args.title)['statistics'])
     elif args.command=='revise':
-        from peerreviewagents.engine.annotations import normalize_review
+        from peerreviewagents.workspace import normalize_review
         from .revisions import snapshot,automation_decisions,create_revision
         _,paper=snapshot(args.workspace,args.source_revision)
-        review=normalize_review(paper,read(args.response),args.id)
-        decisions=read(args.decisions) if args.decisions else automation_decisions(paper,review)
+        review=normalize_review(paper,read_json(args.response),args.id)
+        decisions=read_json(args.decisions) if args.decisions else automation_decisions(paper,review)
         print(create_revision(args.workspace,review,decisions,args.id,
             {'revision_id':args.source_revision,'version':args.expected_version},build=not args.no_build))
     elif args.command=='revision-loop':

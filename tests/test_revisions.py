@@ -6,8 +6,7 @@ import unittest
 from unittest.mock import patch
 
 from peerreviewagents import verify_workspace
-from peerreviewagents.engine.annotations import normalize_review
-from peerreviewagents.engine.storage import read
+from peerreviewagents.workspace import normalize_review, read_json
 
 from paper_workspace.revisions import (agent_request, automation_decisions, checkout, copyedit_proposals,
     create_revision, head, run_loop, safety_reasons, snapshot)
@@ -38,7 +37,7 @@ class Revisions(unittest.TestCase):
         self.assertIn('were imaged', (draft / 'scaffold/paper.typ').read_text())
         for name in ('config.typ', 'references.bib', 'results.typ'):
             self.assertEqual((draft / 'scaffold' / name).read_bytes(), (FIXTURE / name).read_bytes())
-        self.assertIn('changes.patch', read(draft / 'manifest.json')['files'])
+        self.assertIn('changes.patch', read_json(draft / 'manifest.json')['files'])
         verify_workspace(self.root)
         verify_workspace(draft)
 
@@ -89,7 +88,7 @@ class Revisions(unittest.TestCase):
         review = normalize_review(self.paper, response, 'mixed')
         decisions = automation_decisions(self.paper, review)
         create_revision(self.root, review, decisions, 'mixed', head(self.root), build=False)
-        ledger = read(self.root / 'revisions/mixed/issue-ledger.json')
+        ledger = read_json(self.root / 'revisions/mixed/issue-ledger.json')
         self.assertEqual(ledger[-1]['scientific_status'], 'open')
         self.assertEqual(ledger[-1]['anchor_status'], 'historical')
 
@@ -98,7 +97,7 @@ class Revisions(unittest.TestCase):
         response['source_sha256'] = 'stale'
         with self.assertRaisesRegex(ValueError, 'not bound'):
             run_loop(self.root, 'bad', provider=lambda _: response, build=False)
-        self.assertEqual(read(self.root / 'revision-runs/bad/run.json')['status'], 'failed')
+        self.assertEqual(read_json(self.root / 'revision-runs/bad/run.json')['status'], 'failed')
         self.assertEqual(head(self.root)['version'], 0)
 
     def test_numeric_removal_and_reordering_rejected(self):

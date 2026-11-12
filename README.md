@@ -45,10 +45,10 @@ paper-workbench serve workspaces/example --port 38744
 
 ## Engine and app
 
-- PeerReviewAgents owns the review: ingest, the plugin, its agents and tools, the domain packs and the report writer. Its public Python surface is `review`, `review_main`, `report_main`, `read_run`, `import_paper`, `write_reports`, `verify_workspace`, `export_draft` and the run constants.
+- PeerReviewAgents owns the review: ingest, the plugin, its agents and tools, the domain packs and the report writer. Its public Python surface is `review`, `review_main`, `report_main`, `read_run`, `locate_run`, `NotARunFolder`, `import_paper`, `write_reports`, `verify_workspace`, `export_draft`, the run constants and the helpers in `peerreviewagents.workspace`.
 - `paper_workspace` (here) owns the viewer server, author decisions, revisions, Paper Scaffold import and export, and Word review copies.
 - `paper-workbench review` and `report` hand off to the engine. Every other command, including `import`, `verify` and `serve`, belongs to the app.
-- The app calls the engine through that surface, and uses `peerreviewagents.runs.NotARunFolder` and `locate` to tell a run folder from a workspace. It still imports `storage`, `save_review`, `normalize_review`, `words` and `text_of` from `peerreviewagents.engine`, because those are not public yet.
+- The app calls the engine only through that surface. It uses `locate_run` and `NotARunFolder` to tell a run folder from a workspace, and takes `digest`, `read_json`, `write_json`, `save_review`, `normalize_review`, `words` and `text_of` from `peerreviewagents.workspace`. A test fails if any module imports a private engine module.
 - `experiments` holds the protocols and results of earlier studies. The experiment runners and most study records in `docs` were deleted, and git history keeps them. Study code that used the 0.8 engine runs only against PeerReviewAgents `v0.8.0`.
 
 See [the engine contract](docs/shared-core.md) for what the app reads from a run.

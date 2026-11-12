@@ -62,7 +62,7 @@ The engine anchors every finding to an exact source quotation and labels its bas
 
 ## Next step
 
-The app reads a run only through the engine's public `read_run`, so a renamed key in a run file is the engine's to absorb. The viewer still reads `read_run`'s result keys by name, and a rename there breaks it without an import error. The next engineering task is a versioned run-folder fixture shared by both repositories, so an engine change that breaks the viewer fails a test. The storage, `save_review`, `normalize_review`, `words` and `text_of` imports from `peerreviewagents.engine` move when the engine makes them public.
+The app reads a run only through the engine's public `read_run`, so a renamed key in a run file is the engine's to absorb. The viewer still reads `read_run`'s result keys by name, and a rename there breaks it without an import error. The next engineering task is a versioned run-folder fixture shared by both repositories, so an engine change that breaks the viewer fails a test. Every engine import is a public name, and a test fails if a private one comes back.
 
 ## Execution and collaboration
 

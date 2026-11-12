@@ -9,8 +9,7 @@ from unittest.mock import patch
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from peerreviewagents.engine.annotations import save_review
-from peerreviewagents.engine.storage import write, digest
+from peerreviewagents.workspace import digest, save_review, write_json
 
 from paper_workspace.revisions import copyedit_proposals, create_revision as real_create_revision
 from paper_workspace.scaffold_import import import_scaffold
@@ -89,7 +88,7 @@ with tempfile.TemporaryDirectory() as temporary:
         export_folder.mkdir(parents=True)
         (export_folder / 'paper.pdf').write_bytes(b'%PDF-fixture')
         (export_folder / 'review.docx').write_bytes(b'PK-review-fixture')
-        write(export_folder / 'export.json', {'paper_id':revised['id'],
+        write_json(export_folder / 'export.json', {'paper_id':revised['id'],
             'source_sha256':revised['source_sha256'],'files':{'paper.pdf':digest(b'%PDF-fixture'),'review.docx':digest(b'PK-review-fixture')}})
         assert request('/api/exports?draft=ui-1')[1][0]['id'] == 'verified'
         assert request('/api/exports?draft=original')[1] == []

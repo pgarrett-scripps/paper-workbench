@@ -17,7 +17,7 @@ Every review, report and run-reading call goes through the engine's public surfa
 | `peerreviewagents.review_main(argv, prog='paper-workbench review')` | `paper-workbench review` | Yes |
 | `peerreviewagents.report_main(argv, prog='paper-workbench report')` | `paper-workbench report` | No |
 | `peerreviewagents.read_run(path)` | `run_view.run_review` | No |
-| `peerreviewagents.runs.locate` and `NotARunFolder` | `run_view.locate` | No |
+| `peerreviewagents.locate_run` and `NotARunFolder` | `run_view.locate` | No |
 | `peerreviewagents.MANUSCRIPT_DIRECTORY` | `run_view.locate` | No |
 | `peerreviewagents.import_paper(pdf, workspace, xml, ...)` | `paper-workbench import` | No |
 | `peerreviewagents.verify_workspace` and `export_draft` | `verify`, the viewer, revisions and exports | No |
@@ -28,13 +28,15 @@ The app's `ENGINE_COMMANDS` must equal `peerreviewagents.CLI_COMMANDS`, and a te
 
 `paper-workbench report` hands its arguments to `report_main`, and `paper-workbench report -h` names the program `paper-workbench report`. It renders `REVIEW.md` and `REVIEW.txt` for any run, a stopped or startup-blocked one included, and exits 0. It prints JSON with `status`, `cause`, `findings`, `publishable`, `not_publishable_reasons`, `problems` and one key per report path. A path that is not a run, or a symlinked run file, is named on stderr with exit 1.
 
-No module imports `peerreviewagents.plugin`, `peerreviewagents.cli` or the starter. These helpers are not public yet, so the app still imports them from `peerreviewagents.engine`:
+The smaller helpers come from the public `peerreviewagents.workspace`:
 
 | Import | Used by |
 | --- | --- |
-| `engine.storage`: `digest`, `read`, `write` | decisions, revisions, exports and tests |
-| `engine.annotations`: `save_review`, `normalize_review` | revisions, `revise` and tests |
-| `engine.ingest`: `words`, `text_of` | Paper Scaffold import and table structure |
+| `digest`, `read_json`, `write_json` | decisions, revisions, exports and tests |
+| `save_review`, `normalize_review` | revisions, `revise` and tests |
+| `words`, `text_of` | Paper Scaffold import and table structure |
+
+No module under `paper_workspace/` or `tests/` imports `peerreviewagents.engine`, `.plugin`, `.cli` or `.runs`, or imports one of those modules from `peerreviewagents`. `PublicSurfaceTest` in `tests/test_engine_contract.py` fails if one comes back.
 
 ## What the app reads from a run
 

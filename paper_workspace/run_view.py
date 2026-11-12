@@ -13,7 +13,7 @@ from collections import Counter
 from pathlib import Path
 
 from peerreviewagents import MANUSCRIPT_DIRECTORY, read_run
-from peerreviewagents.runs import NotARunFolder, locate as locate_run
+from peerreviewagents import locate_run, NotARunFolder
 
 RUN_REVIEW_ID = 'run'
 AUDIT_LIMIT = 400_000

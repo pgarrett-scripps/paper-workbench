@@ -4,18 +4,19 @@ These checks stay small on purpose, so they pass on every engine release that
 keeps the review and report commands and the review keys the app and
 web/app.js read. No test starts a model session, and none patches the engine.
 """
+import ast
 import contextlib
 import io
 import json
 import os
+import re
 import tempfile
 import unittest
 from pathlib import Path
 from unittest.mock import patch
 
 from peerreviewagents import CLI_COMMANDS, export_draft, verify_workspace
-from peerreviewagents.engine.annotations import save_review
-from peerreviewagents.engine.storage import digest, write
+from peerreviewagents.workspace import digest, save_review, write_json
 
 from paper_workspace.__main__ import ENGINE_COMMANDS, build_parser, main
 
@@ -98,10 +99,10 @@ class EngineOutputContractTest(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
             text = 'A claim with 12 samples.'
-            write(root / 'paper.json', {'id': 'qa', 'title': 'QA', 'source_sha256': 'qa',
+            write_json(root / 'paper.json', {'id': 'qa', 'title': 'QA', 'source_sha256': 'qa',
                 'blocks': [{'id': 'b1', 'text': text, 'sha256': digest(text)}],
                 'statistics': {'pdf_pages': 1}})
-            write(root / 'manifest.json', {'files': {'paper.json': digest((root / 'paper.json').read_bytes())}})
+            write_json(root / 'manifest.json', {'files': {'paper.json': digest((root / 'paper.json').read_bytes())}})
             review = save_review(root, {'summary': 'One edit and one question.', 'findings': [
                 {'kind': 'edit', 'block_id': 'b1', 'quote': '12 samples', 'replacement': '12 donors',
                  'evidence_blocks': ['b1']},
@@ -125,6 +126,26 @@ class EngineOutputContractTest(unittest.TestCase):
                          [('b1', 'A claim with 12 donors.')])
         self.assertEqual([b['text'] for b in exported['original_blocks']], [text])
         self.assertEqual([f['issue_status'] for f in exported['findings']], ['open', 'open'])
+
+
+class PublicSurfaceTest(unittest.TestCase):
+    PRIVATE = ('engine', 'plugin', 'cli', 'runs')
+
+    def test_the_app_and_its_tests_use_only_public_engine_names(self):
+        # A dotted name catches an import, a lazy import or a patch target. The AST catches
+        # `from peerreviewagents import runs`. The pattern is built here so this file does not match it.
+        dotted = re.compile(r'peerreviewagents\.(%s)\b' % '|'.join(self.PRIVATE))
+        root = Path(__file__).resolve().parents[1]
+        found = []
+        for folder in ('paper_workspace', 'tests'):
+            for path in sorted((root / folder).rglob('*.py')):
+                source, name = path.read_text(), path.relative_to(root)
+                found += [f'{name}: {match.group(0)}' for match in dotted.finditer(source)]
+                for node in ast.walk(ast.parse(source)):
+                    if isinstance(node, ast.ImportFrom) and node.module == 'peerreviewagents':
+                        found += [f'{name}: from peerreviewagents import {alias.name}'
+                                  for alias in node.names if alias.name in self.PRIVATE]
+        self.assertEqual(found, [])
 
 
 if __name__ == '__main__':
