@@ -96,7 +96,7 @@ def run_engine(command,argv):
         from peerreviewagents import review_main
         return review_main(argv,prog='paper-workbench review')
     from peerreviewagents import report_main
-    return report_main(argv)
+    return report_main(argv,prog='paper-workbench report')
 
 
 def dispatch(parser,args):

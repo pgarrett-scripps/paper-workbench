@@ -15,7 +15,7 @@ Every review, report and run-reading call goes through the engine's public surfa
 | Call | Used by | Model call |
 | --- | --- | --- |
 | `peerreviewagents.review_main(argv, prog='paper-workbench review')` | `paper-workbench review` | Yes |
-| `peerreviewagents.report_main(argv)` | `paper-workbench report` | No |
+| `peerreviewagents.report_main(argv, prog='paper-workbench report')` | `paper-workbench report` | No |
 | `peerreviewagents.read_run(path)` | `run_view.run_review` | No |
 | `peerreviewagents.runs.locate` and `NotARunFolder` | `run_view.locate` | No |
 | `peerreviewagents.MANUSCRIPT_DIRECTORY` | `run_view.locate` | No |
@@ -24,7 +24,7 @@ Every review, report and run-reading call goes through the engine's public surfa
 
 `paper-workbench review` hands its arguments to `review_main`, so a new engine option reaches the review and `paper-workbench review -h` names the program `paper-workbench review`. It prints the run summary and exits 0 when the review completed, 1 when it was blocked and 2 when it never started or an argument was bad. The default arm is `full-two-track`. Without `claude` on `PATH`, the starter writes `startup.json` and a blocked `runtime.json` and launches nothing.
 
-`paper-workbench report` hands its arguments to `report_main`. It renders `REVIEW.md` and `REVIEW.txt` for any run, a stopped or startup-blocked one included, and exits 0. It prints JSON with `status`, `cause`, `findings`, `publishable`, `problems` and one key per report path. A path that is not a run, or a symlinked run file, is named on stderr with exit 1.
+`paper-workbench report` hands its arguments to `report_main`, and `paper-workbench report -h` names the program `paper-workbench report`. It renders `REVIEW.md` and `REVIEW.txt` for any run, a stopped or startup-blocked one included, and exits 0. It prints JSON with `status`, `cause`, `findings`, `publishable`, `not_publishable_reasons`, `problems` and one key per report path. A path that is not a run, or a symlinked run file, is named on stderr with exit 1.
 
 No module imports `peerreviewagents.plugin`, `peerreviewagents.cli` or the starter. These helpers are not public yet, so the app still imports them from `peerreviewagents.engine`:
 
@@ -43,6 +43,7 @@ No module imports `peerreviewagents.plugin`, `peerreviewagents.cli` or the start
 | `body`, `appendix`, `findings_source` | the findings, body first, and whether the editor wrote its package |
 | `identity.paper_id`, `identity.source_sha256`, each finding's `block_sha256` | the check that the run reviewed this manuscript version |
 | `status`, `complete`, `cause`, `note`, `problems`, `publishable` | the run panel's status and warnings, and the summary of a run with no editor package |
+| `not_publishable_reasons` | one run panel warning per reason, when `publishable` is false |
 | `summary`, `verdict`, `escalations`, `escalation_rulings`, `limitations`, `guard_status`, `counts` | the summary and the run panel |
 | `identity.arm`, `identity.reviewers`, `identity.workflow_version` | the run panel |
 | `stages.missing`, `stages.none_found`, `agents`, `runtime.tokens_total`, `runtime.wall_seconds` | the reviewer slots and the run facts |

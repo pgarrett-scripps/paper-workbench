@@ -183,6 +183,8 @@ class RunReviewTests(unittest.TestCase):
         self.assertEqual(run['status'], 'complete')
         self.assertTrue(any('runtime.json' in problem for problem in run['problems']), run['problems'])
         self.assertFalse(run['publishable'])
+        self.assertTrue(any('could not be read' in reason for reason in run['not_publishable_reasons']),
+                        run['not_publishable_reasons'])
 
 
 class StoppedRunTests(unittest.TestCase):

@@ -119,6 +119,7 @@ def run_review(review, paper):
         'note': run['note'],
         'problems': run['problems'],
         'publishable': run['publishable'],
+        'not_publishable_reasons': run['not_publishable_reasons'],
         'edited': edited,
         'escalated_count': len(run['escalations']),
         'review_guard_status': run['guard_status'],

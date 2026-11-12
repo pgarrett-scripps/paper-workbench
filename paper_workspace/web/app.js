@@ -126,7 +126,8 @@ function runPanel(){
   Number.isInteger(run.escalated_count)&&`${run.escalated_count} escalated`,run.review_guard_status&&`Guard ${run.review_guard_status}`,
   run.quarantined_findings_count?`${run.quarantined_findings_count} quarantined`:'',
   Number.isFinite(run.wall_seconds)&&`${Math.round(run.wall_seconds/60)} min`,Number.isFinite(run.tokens_total)&&`${run.tokens_total} tokens`].filter(Boolean);
- const warnings=[run.cause,run.note,...(run.problems||[]),(run.missing_stages||[]).length&&`Stages that did not report: ${run.missing_stages.join(', ')}`,
+ const warnings=[run.cause,run.note,...(run.problems||[]),
+  ...(run.publishable===false?(run.not_publishable_reasons||[]).map(reason=>`Not publishable: ${reason}`):[]),(run.missing_stages||[]).length&&`Stages that did not report: ${run.missing_stages.join(', ')}`,
   !run.edited&&'The editor did not write a package. These are the findings recorded before editing.'].filter(Boolean);
  const verdict=run.verdict;
  const verdictHtml=verdict?`<details open><summary>Editor's verdict</summary><p><strong>Significance</strong><br>${esc(verdict.significance)}</p><p><strong>Strength of evidence</strong><br>${esc(verdict.strength_of_evidence)}</p>${verdict.reasoning?`<p><strong>Reasoning</strong><br>${esc(verdict.reasoning)}</p>`:''}<p class="muted">Basis: ${esc(verdict.basis||'unstated')}. ${esc(verdict.limitation||'')}</p></details>`:'';

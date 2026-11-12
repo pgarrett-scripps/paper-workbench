@@ -35,6 +35,14 @@ class AppCommandTest(unittest.TestCase):
         for argv in (['serve', 'run'], ['verify', 'ws'], ['import', 'paper.pdf', 'ws', '--xml', 'paper.xml']):
             self.assertEqual(parser.parse_args(argv).command, argv[0])
 
+    def test_engine_command_help_names_the_app(self):
+        for command in ENGINE_COMMANDS:
+            output = io.StringIO()
+            with contextlib.redirect_stdout(output), self.assertRaises(SystemExit) as stop:
+                main([command, '-h'])
+            self.assertEqual(stop.exception.code, 0)
+            self.assertTrue(output.getvalue().startswith(f'usage: paper-workbench {command}'), output.getvalue())
+
 
 class EngineCommandTest(unittest.TestCase):
     def setUp(self):
@@ -74,9 +82,10 @@ class EngineCommandTest(unittest.TestCase):
         make_run(self.root / 'run')
         status, report = run_main(['report', str(self.root / 'run')])
         self.assertEqual((status, report['status'], report['findings']), (0, 'complete', 2))
+        self.assertEqual((report['publishable'], report['not_publishable_reasons']), (True, []))
         # The summary keys come first, then one key per report path.
         paths = {key: value for key, value in report.items()
-                 if key not in ('status', 'cause', 'findings', 'publishable', 'problems')}
+                 if key not in ('status', 'cause', 'findings', 'publishable', 'not_publishable_reasons', 'problems')}
         self.assertTrue(paths)
         for path in paths.values():
             self.assertTrue(Path(path).is_file(), path)
