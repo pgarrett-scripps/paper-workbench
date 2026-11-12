@@ -122,10 +122,16 @@ function runStatus(run){
 function agentFacts(row){
  const tasks=(row.labels||[]).filter(label=>label!==row.slot);
  const raises=['core','specialist'].includes(row.role)||row.findings>0||row.none_found;
- return [row.slot,row.track&&`${row.track} track`,row.model,Number.isInteger(row.attempt)&&`attempt ${row.attempt}`,
+ return [row.slot,row.track&&`${row.track} track`,`model asked ${row.assigned_model||'not recorded'}`,
+  `model ran ${row.model||'not recorded'}`,Number.isInteger(row.attempt)&&`attempt ${row.attempt}`,
   Number.isInteger(row.tool_calls)&&`${row.tool_calls} tool calls`,Number.isFinite(row.tokens)&&`${row.tokens} tokens`,row.state,
   tasks.length&&`tasks ${tasks.join(', ')}`,
   raises&&(row.none_found?'reported no findings':`${row.findings||0} findings`)].filter(Boolean).map(esc).join(' · ');
+}
+function unverifiedNote(slots){
+ if(!(slots||[]).length)return '';
+ const one=slots.length===1;
+ return `The model that ran was not recorded for ${slots.length} ${one?'slot':'slots'} (${slots.join(', ')}), so the model asked for ${one?'it':'them'} is unverified.`;
 }
 function runPanel(){
  const run=review.run;
@@ -142,13 +148,14 @@ function runPanel(){
  const warnings=[run.cause,run.note,...(run.problems||[]),
   ...(run.publishable===false?(run.not_publishable_reasons||[]).map(reason=>`Not publishable: ${reason}`):[]),(run.missing_stages||[]).length&&`Stages that did not report: ${run.missing_stages.join(', ')}`,
   !run.edited&&'The editor did not write a package. These are the findings recorded before editing.'].filter(Boolean);
+ const unverified=unverifiedNote(run.models_unverified);
  const verdict=run.verdict;
  const verdictHtml=verdict?`<details open><summary>Editor's verdict</summary><p><strong>Significance</strong><br>${esc(verdict.significance)}</p><p><strong>Strength of evidence</strong><br>${esc(verdict.strength_of_evidence)}</p>${verdict.reasoning?`<p><strong>Reasoning</strong><br>${esc(verdict.reasoning)}</p>`:''}<p class="muted">Basis: ${esc(verdict.basis||'unstated')}. ${esc(verdict.limitation||'')}</p></details>`:'';
  const audits=Object.entries(run.audits||{});
  const auditHtml=audits.length?`<details><summary>Specialist reports (${audits.length})</summary>${audits.map(([track,text])=>`<details class="audit"><summary>${esc(track)}</summary><pre>${esc(text)}</pre></details>`).join('')}</details>`:'';
  const reviewers=run.agents||[],tracks=Object.entries(run.findings_by_track||{});
  const reviewerHtml=reviewers.length||tracks.length?`<details><summary>Agents (${reviewers.length})</summary><ul>${reviewers.map(row=>`<li>${agentFacts(row)}</li>`).join('')}</ul>${tracks.length?`<p class="muted">Findings by track: ${tracks.map(([track,count])=>`${esc(track)} ${esc(count)}`).join(' · ')}</p>`:''}</details>`:'';
- $('#run-panel').innerHTML=`<p class="count">${facts.map(esc).join(' · ')}</p>${warnings.map(text=>`<p class="error">${esc(text)}</p>`).join('')}${verdictHtml}${auditHtml}${reviewerHtml}${(run.limitations||[]).map(text=>`<p class="muted">${esc(text)}</p>`).join('')}`;
+ $('#run-panel').innerHTML=`<p class="count">${facts.map(esc).join(' · ')}</p>${warnings.map(text=>`<p class="error">${esc(text)}</p>`).join('')}${unverified?`<p class="unverified">${esc(unverified)}</p>`:''}${verdictHtml}${auditHtml}${reviewerHtml}${(run.limitations||[]).map(text=>`<p class="muted">${esc(text)}</p>`).join('')}`;
 }
 function card(item){
  const wording=decisions.items[item.id]||'proposed';

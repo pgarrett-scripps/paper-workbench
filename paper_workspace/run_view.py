@@ -127,8 +127,11 @@ def run_review(review, paper):
         'findings_delivered': run['counts']['findings_delivered'],
         'missing_stages': list(stages.get('missing') or []),
         'none_found': none_found,
+        # Each agent row keeps `assigned_model`, the model asked, beside `model`, the model ran,
+        # which is None when nothing observed it. Neither stands in for the other.
         'agents': [{**row, 'findings': per_slot.get(row.get('slot'), 0), 'none_found': row.get('slot') in none_found}
                    for row in run['agents']],
+        'models_unverified': list(run['identity'].get('models_unverified') or []),
         'findings_by_track': dict(Counter(row['track'] for row in findings if row.get('track'))),
         'verdict': run['verdict'],
         'escalation_rulings': run['escalation_rulings'],

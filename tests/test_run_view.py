@@ -16,6 +16,7 @@ from paper_workspace.server import make_server
 
 TEXT = 'Knockdown lowered VPS35 in 12 samples.'
 CEILING = 'the run reached its per-run token ceiling'
+SONNET, HAIKU = 'claude-sonnet-5-5', 'claude-haiku-5-5'
 
 
 def finding(uid, quote, **extra):
@@ -34,11 +35,17 @@ def make_run(root, package=True):
         'blocks': [{'id': 'b1', 'text': TEXT, 'sha256': digest(TEXT)}], 'statistics': {'pdf_pages': 1}})
     write_json(manuscript / 'manifest.json', {'files': {'paper.json': digest((manuscript / 'paper.json').read_bytes())}})
     write_json(review / 'startup.json', {'problems': []})
-    write_json(review / 'protocol.json', {'arm': 'full-two-track', 'reviewers': 3, 'agents': {
-        'core-1': {'role': 'core', 'track': 'core', 'tool_calls': 3, 'model': 'claude-sonnet-5-5'},
-        'recorder': {'role': 'recorder', 'track': 'ingest', 'tool_calls': 4, 'model': None},
-        'spec-citations': {'role': 'specialist', 'track': 'citations', 'tool_calls': 2,
-                           'model': 'claude-sonnet-5-5'}}})
+    # `models` and each agent's `assigned_model` are the plan. An agent's `model` is what it reported
+    # running, and the stream rows below carry the model each task was seen running.
+    write_json(review / 'protocol.json', {'arm': 'full-two-track', 'reviewers': 3,
+        'models': {'core-1': SONNET, 'recorder': HAIKU, 'spec-citations': SONNET},
+        'reviewer_models': [SONNET, 'claude-opus-5-5', HAIKU],
+        'agents': {
+            'core-1': {'role': 'core', 'track': 'core', 'tool_calls': 3, 'model': SONNET, 'assigned_model': SONNET},
+            'recorder': {'role': 'recorder', 'track': 'ingest', 'tool_calls': 4, 'model': None,
+                         'assigned_model': HAIKU},
+            'spec-citations': {'role': 'specialist', 'track': 'citations', 'tool_calls': 2, 'model': SONNET,
+                               'assigned_model': SONNET}}})
     write_json(review / 'manifest.json', {'paper_id': 'qa', 'source_sha256': 'qa-source'})
     write_json(review / 'progress.json', {'status': 'complete', 'error': None, 'arm': 'full-two-track', 'reviewers': 3,
         'stages': {'missing': [], 'none_found': ['spec-citations']}})
@@ -47,9 +54,9 @@ def make_run(root, package=True):
         {'label': 'core-1', 'agentType': 'pra:core', 'tokens': 500, 'toolCalls': 9, 'state': 'completed',
          'model': 'claude-sonnet-5-5'},
         {'label': 'ingest', 'agentType': 'pra:recorder', 'tokens': 120, 'toolCalls': 5, 'state': 'completed',
-         'model': 'claude-sonnet-5-5'},
+         'model': HAIKU},
         {'label': 'write review', 'agentType': 'pra:recorder', 'tokens': 280, 'toolCalls': 7,
-         'state': 'completed', 'model': 'claude-sonnet-5-5'},
+         'state': 'completed', 'model': HAIKU},
         {'label': 'spec-field'}]})
     body = finding('aa11', 'lowered VPS35', track='field', escalate=True, editor_reason='Central claim.',
                    reviewers_raising=2, duplicate_uids=['bb22'])
@@ -63,7 +70,7 @@ def make_run(root, package=True):
             'verdict': {'significance': 'High', 'strength_of_evidence': 'Weak', 'reasoning': 'Correlation.',
                         'basis': 'judgement', 'limitation': 'Advisory.'},
             'escalation_rulings': [{'finding_uid': 'aa11', 'ruling': 'Accepted.'}],
-            'reviewer_provenance': [{'slot': 'core-1', 'track': 'core', 'model': 'claude-sonnet-5-5',
+            'reviewer_provenance': [{'slot': 'core-1', 'track': 'core', 'model': SONNET, 'assigned_model': SONNET,
                                      'attempt': 1, 'tool_calls': 3, 'findings': 1, 'none_found': False}]})
     (review / 'audit_stats.md').write_text('# Statistics audit\n')
     return manuscript, review
@@ -138,6 +145,29 @@ class RunReviewTests(unittest.TestCase):
         self.assertEqual((recorder['labels'], recorder['tokens'], recorder['session_calls'], recorder['tool_calls']),
                          (['ingest', 'write review'], 400, 12, 4))
         self.assertEqual((agents['spec-citations']['none_found'], agents['spec-citations']['tokens']), (True, None))
+
+    def test_each_agent_keeps_the_model_asked_beside_the_model_ran(self):
+        run = run_review(self.review, self.paper)['run']
+        self.assertEqual({row['slot']: (row['assigned_model'], row['model']) for row in run['agents']},
+                         {'core-1': (SONNET, SONNET), 'recorder': (HAIKU, HAIKU), 'spec-citations': (SONNET, SONNET)})
+        self.assertEqual((run['models_unverified'], run['publishable'], run['problems']), ([], True, []))
+        protocol = json.loads((self.review / 'protocol.json').read_text())
+        # A slot nothing observed has no model ran, never its model asked, and is named as unverified.
+        protocol['agents']['spec-citations']['model'] = None
+        write_json(self.review / 'protocol.json', protocol)
+        run = run_review(self.review, self.paper)['run']
+        row = next(row for row in run['agents'] if row['slot'] == 'spec-citations')
+        self.assertEqual((row['assigned_model'], row['model']), (SONNET, None))
+        self.assertEqual((run['models_unverified'], run['publishable'], run['problems']),
+                         (['spec-citations'], True, []))
+        # A slot that ran another model family is a problem, and the review is not publishable.
+        protocol['agents']['spec-citations']['model'] = 'claude-opus-5-5'
+        write_json(self.review / 'protocol.json', protocol)
+        run = run_review(self.review, self.paper)['run']
+        self.assertEqual((run['models_unverified'], run['publishable']), ([], False))
+        for lines in (run['problems'], run['not_publishable_reasons']):
+            self.assertTrue(any(line.startswith('spec-citations was assigned') and 'ran claude-opus-5-5' in line
+                                for line in lines), lines)
 
     def test_a_review_without_findings_is_publishable_unless_the_guard_held_some(self):
         package = json.loads((self.review / 'editor-package.json').read_text())

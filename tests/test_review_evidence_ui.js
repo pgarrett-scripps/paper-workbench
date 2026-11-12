@@ -52,10 +52,11 @@ review = {id:'run', summary:'Editor summary', raw_response:undefined, findings:[
   verdict:{significance:'High if true', strength_of_evidence:'Weak', reasoning:'Correlation only', basis:'judgement', limitation:'Not a score.'},
   escalation_rulings:[{finding_uid:'u1', ruling:'Accepted as central.'}],
   audits:{stats:'# Stats audit <script>x</script>'},
-  agents:[{slot:'spec-stats', role:'specialist', track:'stats', model:'claude-sonnet-5-5', attempt:1, tool_calls:4,
-           session_calls:9, tokens:5000, state:'done', findings:1, none_found:false, labels:['spec-stats']},
-          {slot:'recorder', role:'recorder', track:'ingest', model:'claude-sonnet-5-5', attempt:1, tool_calls:4,
+  agents:[{slot:'spec-stats', role:'specialist', track:'stats', assigned_model:'claude-sonnet-5-5', model:'claude-sonnet-5-5',
+           attempt:1, tool_calls:4, session_calls:9, tokens:5000, state:'done', findings:1, none_found:false, labels:['spec-stats']},
+          {slot:'recorder', role:'recorder', track:'ingest', assigned_model:'claude-haiku-5-5', model:null, attempt:1, tool_calls:4,
            session_calls:12, tokens:42000, state:'completed', findings:0, none_found:false, labels:['ingest', 'write review']}],
+  models_unverified:['recorder'],
   findings_by_track:{field:1, core:1}, wall_seconds:600, tokens_total:1234}};
 cards();
 `, context);
@@ -78,15 +79,25 @@ assert.ok(comments.indexOf('id="note-u2"') > appendixAt);
 for (const text of ['Arm full-two-track', '3 reviewers', 'Status complete', '1 escalated', 'Guard clean', '10 min',
                     "Editor's verdict", 'High if true', 'Basis: judgement. Not a score.', 'Specialist reports (1)',
                     '# Stats audit &lt;script&gt;x&lt;/script&gt;',
-                    'spec-stats · stats track · claude-sonnet-5-5 · attempt 1 · 4 tool calls · 5000 tokens · done · 1 findings</li>',
+                    'spec-stats · stats track · model asked claude-sonnet-5-5 · model ran claude-sonnet-5-5 · attempt 1 · 4 tool calls · 5000 tokens · done · 1 findings</li>',
                     'Agents (2)',
-                    'recorder · ingest track · claude-sonnet-5-5 · attempt 1 · 4 tool calls · 42000 tokens · completed · tasks ingest, write review</li>',
+                    'recorder · ingest track · model asked claude-haiku-5-5 · model ran not recorded · attempt 1 · 4 tool calls · 42000 tokens · completed · tasks ingest, write review</li>',
+                    '<p class="unverified">The model that ran was not recorded for 1 slot (recorder), so the model asked for it is unverified.</p>',
                     'marked blocked afterwards: rate limit', 'runtime.json is not valid JSON &lt;x&gt;',
                     'Not publishable: 1 file(s) could not be read in full',
                     'Findings by track: field 1 · core 1', 'Advisory only.']) {
   assert.ok(panel.includes(text), text);
 }
 assert.ok(!panel.includes('<script>'));
+// The model asked is never shown as the model that ran.
+assert.ok(!panel.includes('model ran claude-haiku-5-5'));
+
+// A run that records no plan says so, and a run with every model observed shows no unverified note.
+assert.equal(vm.runInContext("agentFacts({slot:'core-1', model:'claude-opus-5-5'})", context),
+             'core-1 · model asked not recorded · model ran claude-opus-5-5');
+assert.equal(vm.runInContext("unverifiedNote([])", context), '');
+assert.equal(vm.runInContext("unverifiedNote(['core-2', 'editor'])", context),
+             'The model that ran was not recorded for 2 slots (core-2, editor), so the model asked for them is unverified.');
 
 // A review with no findings says whether the reviewers raised none or the guard held them all.
 assert.equal(vm.runInContext("runStatus({status:'complete-without-findings', quarantined_findings_count:0})", context),

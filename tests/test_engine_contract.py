@@ -45,6 +45,13 @@ class AppCommandTest(unittest.TestCase):
             self.assertEqual(stop.exception.code, 0)
             self.assertTrue(output.getvalue().startswith(f'usage: paper-workbench {command}'), output.getvalue())
 
+    def test_review_help_lists_the_per_slot_model_options(self):
+        output = io.StringIO()
+        with contextlib.redirect_stdout(output), self.assertRaises(SystemExit):
+            main(['review', '-h'])
+        for flag in ('--reviewer-models', '--specialist-model', '--editor-model', '--recorder-model'):
+            self.assertIn(flag, output.getvalue())
+
 
 class EngineCommandTest(unittest.TestCase):
     def setUp(self):
@@ -63,11 +70,14 @@ class EngineCommandTest(unittest.TestCase):
         # With no claude on PATH the engine cannot launch a session, so nothing is patched.
         with patch.dict(os.environ, {'PATH': str(empty)}):
             status, summary = run_main(['review', str(self.pdf), str(out), '--arm', 'reviewers-only',
-                                        '--reviewers', '2'])
+                                        '--reviewers', '2', '--reviewer-models', 'claude-haiku-5-5,claude-opus-5-5',
+                                        '--editor-model', 'claude-opus-5-5', '--recorder-model', 'claude-sonnet-5-5'])
         self.assertEqual((status, summary['status'], summary['stage']), (2, 'blocked', 'startup'))
         self.assertIn('claude is not installed', summary['blocked_reason'])
         # The options reach the engine, which records them in its summary.
         self.assertEqual((summary['arm'], summary['reviewers']), ('reviewers-only', 2))
+        self.assertEqual(summary['models_requested'], {'core-1': 'claude-haiku-5-5', 'core-2': 'claude-opus-5-5',
+                                                       'editor': 'claude-opus-5-5', 'recorder': 'claude-sonnet-5-5'})
         self.assertTrue((out / 'review' / 'startup.json').is_file())
         # The run never imported the manuscript, so serve says why in plain words.
         stderr = io.StringIO()
