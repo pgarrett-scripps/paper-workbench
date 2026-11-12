@@ -98,6 +98,14 @@ class RunReviewTests(unittest.TestCase):
         with self.assertRaisesRegex(RunError, 'stopped before it imported the manuscript'):
             locate(self.root)
 
+    def test_a_folder_that_is_neither_a_workspace_nor_a_run_is_a_plain_error(self):
+        (self.root / 'empty').mkdir()
+        for path in (self.root / 'empty', self.root / 'missing'):
+            status, output, message = run_quietly(['serve', str(path)])
+            self.assertEqual((status, output), (1, ''))
+            self.assertEqual(message,
+                             f'paper-workbench: {path} is neither a manuscript workspace nor a run folder\n')
+
     def test_body_then_appendix_keyed_by_finding_uid(self):
         review = run_review(self.review, self.paper)
         self.assertEqual((review['id'], review['paper_id'], review['summary']), ('run', 'qa', 'One central question.'))

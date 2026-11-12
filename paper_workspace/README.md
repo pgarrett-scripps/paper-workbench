@@ -44,7 +44,7 @@ Author decisions on a run are saved in `manuscript/decisions/run.json`. The revi
 
 ## Retired experiment runners
 
-Engine 0.8 removed the study-only modules behind the staged evidence workflow, the revised debate, the two-paper and four-paper pilots, the handoff retests, the ensemble and reliability trials, and the transfer and domain studies. Engine 0.9 removed the remaining Python review orchestration. Every experiment runner is deleted, and git history keeps them. `experiments/` keeps the study protocols and result files, and [its README](../experiments/README.md) says how to recover a runner. Their protocols and frozen results remain in `docs/`, for example `docs/pra-evidence-workflow-protocol.md`, `docs/pra-debate-revision-results.md`, `docs/pra-workspace-two-paper-results.md` and `docs/pra-workspace-four-paper-results.md`. Study code that used the 0.8 engine runs only against PeerReviewAgents `v0.8.0`.
+Engine 0.8 removed the study-only modules behind the staged evidence workflow, the revised debate, the two-paper and four-paper pilots, the handoff retests, the ensemble and reliability trials, and the transfer and domain studies. Engine 0.9 removed the remaining Python review orchestration. Every experiment runner is deleted, and git history keeps them. `experiments/` keeps the study protocols and result files, and [its README](../experiments/README.md) says how to recover a runner. The study records in `docs/` that described only the deleted system were deleted too, and git history keeps them. Study code that used the 0.8 engine runs only against PeerReviewAgents `v0.8.0`.
 
 ## Boundaries
 

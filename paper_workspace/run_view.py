@@ -35,15 +35,17 @@ def recorded(review):
 def locate(path):
     """Split a served path into the manuscript workspace and the run's review folder.
 
-    A run folder, or the review folder inside it, gives both. Any other path
-    is a workspace with no run, and the review folder is ``None``. A run that
-    stopped before it imported the manuscript raises :class:`RunError` with
-    the status and cause the run recorded.
+    A run folder, or the review folder inside it, gives both. A workspace
+    gives itself, and the review folder is ``None``. A path that is neither,
+    or a run that stopped before it imported the manuscript, raises
+    :class:`RunError` with a plain message.
     """
     path = Path(path).resolve()
     try:
         root, review = locate_run(path)
     except NotARunFolder:
+        if not (path / 'manifest.json').is_file():
+            raise RunError(f'{path} is neither a manuscript workspace nor a run folder') from None
         return path, None
     except ValueError as exc:
         raise RunError(str(exc)) from None

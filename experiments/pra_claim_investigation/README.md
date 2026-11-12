@@ -27,4 +27,4 @@ arbitrary Python evaluation, external retrieval, public review access, or delega
 Successful calculations have deterministic receipts validated against actual logs.
 Receipts prove expression execution, not scientific applicability.
 
-Full protocol and decision rules: `docs/pra-claim-investigation-plan.md`.
+The full protocol and decision rules were in `docs/pra-claim-investigation-plan.md`, deleted and kept at commit 148ebf6.
