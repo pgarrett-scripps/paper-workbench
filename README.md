@@ -33,7 +33,7 @@ paper-workbench serve runs/example --port 38744
 
 A review is model inference. It needs the `claude` CLI on `PATH`, signed in to a Claude subscription. It never uses an API key, and it records its own token use in `runtime.json`. How much a run may spend is the operator's own setting. Without `claude`, the run is blocked at startup and launches nothing.
 
-`serve RUN` opens the run in the viewer. Each finding shows its track, its basis (`computed`, `two-quotes` or `judgement`), whether a specialist escalated it and the editor's ruling. The editor's body findings come first, and duplicates and appendix findings follow in a separate appendix. A run panel shows the verdict, the specialist audit reports, the reviewer slots and the run limitations. A run that stopped early, from a token ceiling, a timeout, a rate limit or a session error, opens with its status, its cause and the findings it recorded. `paper-workbench report RUN` renders the two report files of any run, finished or stopped, with no model call.
+`serve RUN` opens the run in the viewer. Each finding shows its track, its basis (`computed`, `two-quotes` or `judgement`), whether a specialist escalated it and the editor's ruling. The editor's body findings come first, and duplicates and appendix findings follow in a separate appendix. A run panel shows the verdict, the specialist audit reports, one line per agent and the run limitations. A run that stopped early, from a token ceiling, a timeout, a rate limit or a session error, opens with its status, its cause and the findings it recorded. `paper-workbench report RUN` renders the two report files of any run, finished or stopped, with no model call.
 
 To inspect a manuscript without model inference:
 

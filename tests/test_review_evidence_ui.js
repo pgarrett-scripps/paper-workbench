@@ -53,7 +53,9 @@ review = {id:'run', summary:'Editor summary', raw_response:undefined, findings:[
   escalation_rulings:[{finding_uid:'u1', ruling:'Accepted as central.'}],
   audits:{stats:'# Stats audit <script>x</script>'},
   agents:[{slot:'spec-stats', role:'specialist', track:'stats', model:'claude-sonnet-5-5', attempt:1, tool_calls:4,
-           session_calls:9, tokens:5000, state:'done', findings:1, none_found:false}],
+           session_calls:9, tokens:5000, state:'done', findings:1, none_found:false, labels:['spec-stats']},
+          {slot:'recorder', role:'recorder', track:'ingest', model:'claude-sonnet-5-5', attempt:1, tool_calls:4,
+           session_calls:12, tokens:42000, state:'completed', findings:0, none_found:false, labels:['ingest', 'write review']}],
   findings_by_track:{field:1, core:1}, wall_seconds:600, tokens_total:1234}};
 cards();
 `, context);
@@ -76,13 +78,21 @@ assert.ok(comments.indexOf('id="note-u2"') > appendixAt);
 for (const text of ['Arm full-two-track', '3 reviewers', 'Status complete', '1 escalated', 'Guard clean', '10 min',
                     "Editor's verdict", 'High if true', 'Basis: judgement. Not a score.', 'Specialist reports (1)',
                     '# Stats audit &lt;script&gt;x&lt;/script&gt;',
-                    'spec-stats · stats track · claude-sonnet-5-5 · attempt 1 · 4 tool calls · 5000 tokens · done · 1 findings',
+                    'spec-stats · stats track · claude-sonnet-5-5 · attempt 1 · 4 tool calls · 5000 tokens · done · 1 findings</li>',
+                    'Agents (2)',
+                    'recorder · ingest track · claude-sonnet-5-5 · attempt 1 · 4 tool calls · 42000 tokens · completed · tasks ingest, write review</li>',
                     'marked blocked afterwards: rate limit', 'runtime.json is not valid JSON &lt;x&gt;',
                     'Not publishable: 1 file(s) could not be read in full',
                     'Findings by track: field 1 · core 1', 'Advisory only.']) {
   assert.ok(panel.includes(text), text);
 }
 assert.ok(!panel.includes('<script>'));
+
+// A review with no findings says whether the reviewers raised none or the guard held them all.
+assert.equal(vm.runInContext("runStatus({status:'complete-without-findings', quarantined_findings_count:0})", context),
+             'Status complete-without-findings: the reviewers raised none');
+assert.equal(vm.runInContext("runStatus({status:'complete-without-findings', quarantined_findings_count:2})", context),
+             'Status complete-without-findings: the guard quarantined all 2');
 
 // The manuscript marks only the report's findings, numbered as in the comment column.
 const markup = vm.runInContext("quoteMarkup(paper.blocks[0])", context);

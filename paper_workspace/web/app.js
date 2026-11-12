@@ -114,6 +114,19 @@ function runNotes(item){
  const links=(item.source_urls||[]).filter(url=>typeof url==='string'&&url.startsWith('https://')).map(url=>`<a href="${esc(url)}" target="_blank" rel="noopener noreferrer">${esc(url)}</a>`).join('<br>');
  return editor+(ruling?`<div class="cross-check ruling"><p><strong>Escalation ruling</strong><br>${esc(ruling.ruling)}</p></div>`:'')+(links?`<p class="muted">Sources cited: ${links}</p>`:'');
 }
+function runStatus(run){
+ if(run.status!=='complete-without-findings')return `Status ${run.status}`;
+ return run.quarantined_findings_count?`Status ${run.status}: the guard quarantined all ${run.quarantined_findings_count}`
+  :`Status ${run.status}: the reviewers raised none`;
+}
+function agentFacts(row){
+ const tasks=(row.labels||[]).filter(label=>label!==row.slot);
+ const raises=['core','specialist'].includes(row.role)||row.findings>0||row.none_found;
+ return [row.slot,row.track&&`${row.track} track`,row.model,Number.isInteger(row.attempt)&&`attempt ${row.attempt}`,
+  Number.isInteger(row.tool_calls)&&`${row.tool_calls} tool calls`,Number.isFinite(row.tokens)&&`${row.tokens} tokens`,row.state,
+  tasks.length&&`tasks ${tasks.join(', ')}`,
+  raises&&(row.none_found?'reported no findings':`${row.findings||0} findings`)].filter(Boolean).map(esc).join(' · ');
+}
 function runPanel(){
  const run=review.run;
  $('#run-panel').hidden=!run;$('#filter-escalated').hidden=!run;
@@ -122,7 +135,7 @@ function runPanel(){
   if(filter==='escalated'){filter='all';document.querySelectorAll('[data-filter]').forEach(item=>item.setAttribute('aria-pressed',item.dataset.filter==='all'));}
   return;
  }
- const facts=[run.arm&&`Arm ${run.arm}`,run.reviewer_count&&`${run.reviewer_count} reviewers`,run.status&&`Status ${run.status}`,
+ const facts=[run.arm&&`Arm ${run.arm}`,run.reviewer_count&&`${run.reviewer_count} reviewers`,run.status&&runStatus(run),
   Number.isInteger(run.escalated_count)&&`${run.escalated_count} escalated`,run.review_guard_status&&`Guard ${run.review_guard_status}`,
   run.quarantined_findings_count?`${run.quarantined_findings_count} quarantined`:'',
   Number.isFinite(run.wall_seconds)&&`${Math.round(run.wall_seconds/60)} min`,Number.isFinite(run.tokens_total)&&`${run.tokens_total} tokens`].filter(Boolean);
@@ -134,10 +147,7 @@ function runPanel(){
  const audits=Object.entries(run.audits||{});
  const auditHtml=audits.length?`<details><summary>Specialist reports (${audits.length})</summary>${audits.map(([track,text])=>`<details class="audit"><summary>${esc(track)}</summary><pre>${esc(text)}</pre></details>`).join('')}</details>`:'';
  const reviewers=run.agents||[],tracks=Object.entries(run.findings_by_track||{});
- const agentFacts=row=>[row.slot,row.track&&`${row.track} track`,row.model,Number.isInteger(row.attempt)&&`attempt ${row.attempt}`,
-  Number.isInteger(row.tool_calls)&&`${row.tool_calls} tool calls`,Number.isFinite(row.tokens)&&`${row.tokens} tokens`,row.state,
-  row.none_found?'reported no findings':`${row.findings||0} findings`].filter(Boolean).map(esc).join(' · ');
- const reviewerHtml=reviewers.length||tracks.length?`<details><summary>Reviewers and specialists (${reviewers.length})</summary><ul>${reviewers.map(row=>`<li>${agentFacts(row)}</li>`).join('')}</ul>${tracks.length?`<p class="muted">Findings by track: ${tracks.map(([track,count])=>`${esc(track)} ${esc(count)}`).join(' · ')}</p>`:''}</details>`:'';
+ const reviewerHtml=reviewers.length||tracks.length?`<details><summary>Agents (${reviewers.length})</summary><ul>${reviewers.map(row=>`<li>${agentFacts(row)}</li>`).join('')}</ul>${tracks.length?`<p class="muted">Findings by track: ${tracks.map(([track,count])=>`${esc(track)} ${esc(count)}`).join(' · ')}</p>`:''}</details>`:'';
  $('#run-panel').innerHTML=`<p class="count">${facts.map(esc).join(' · ')}</p>${warnings.map(text=>`<p class="error">${esc(text)}</p>`).join('')}${verdictHtml}${auditHtml}${reviewerHtml}${(run.limitations||[]).map(text=>`<p class="muted">${esc(text)}</p>`).join('')}`;
 }
 function card(item){

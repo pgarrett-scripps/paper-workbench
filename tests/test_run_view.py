@@ -34,11 +34,23 @@ def make_run(root, package=True):
         'blocks': [{'id': 'b1', 'text': TEXT, 'sha256': digest(TEXT)}], 'statistics': {'pdf_pages': 1}})
     write(manuscript / 'manifest.json', {'files': {'paper.json': digest((manuscript / 'paper.json').read_bytes())}})
     write(review / 'startup.json', {'problems': []})
-    write(review / 'protocol.json', {'arm': 'full-two-track', 'reviewers': 3})
+    write(review / 'protocol.json', {'arm': 'full-two-track', 'reviewers': 3, 'agents': {
+        'core-1': {'role': 'core', 'track': 'core', 'tool_calls': 3, 'model': 'claude-sonnet-5-5'},
+        'recorder': {'role': 'recorder', 'track': 'ingest', 'tool_calls': 4, 'model': None},
+        'spec-citations': {'role': 'specialist', 'track': 'citations', 'tool_calls': 2,
+                           'model': 'claude-sonnet-5-5'}}})
     write(review / 'manifest.json', {'paper_id': 'qa', 'source_sha256': 'qa-source'})
     write(review / 'progress.json', {'status': 'complete', 'error': None, 'arm': 'full-two-track', 'reviewers': 3,
         'stages': {'missing': [], 'none_found': ['spec-citations']}})
-    write(review / 'runtime.json', {'status': 'complete', 'tokens_total': 900, 'wall_seconds': 120})
+    # The stream names the recorder by its two tasks, and the last row is a label-only placeholder.
+    write(review / 'runtime.json', {'status': 'complete', 'tokens_total': 900, 'wall_seconds': 120, 'agents': [
+        {'label': 'core-1', 'agentType': 'pra:core', 'tokens': 500, 'toolCalls': 9, 'state': 'completed',
+         'model': 'claude-sonnet-5-5'},
+        {'label': 'ingest', 'agentType': 'pra:recorder', 'tokens': 120, 'toolCalls': 5, 'state': 'completed',
+         'model': 'claude-sonnet-5-5'},
+        {'label': 'write review', 'agentType': 'pra:recorder', 'tokens': 280, 'toolCalls': 7,
+         'state': 'completed', 'model': 'claude-sonnet-5-5'},
+        {'label': 'spec-field'}]})
     body = finding('aa11', 'lowered VPS35', track='field', escalate=True, editor_reason='Central claim.',
                    reviewers_raising=2, duplicate_uids=['bb22'])
     appendix = finding('bb22', '12 samples', editor_placement='duplicate', duplicate_of='aa11',
@@ -118,6 +130,32 @@ class RunReviewTests(unittest.TestCase):
         self.assertEqual(run['escalation_rulings'], [{'finding_uid': 'aa11', 'ruling': 'Accepted.'}])
         self.assertEqual((run['tokens_total'], run['wall_seconds']), (900, 120))
         self.assertEqual(run['audits'], {'stats': '# Statistics audit\n'})
+
+    def test_each_agent_is_one_row_and_placeholders_are_dropped(self):
+        agents = {row['slot']: row for row in run_review(self.review, self.paper)['run']['agents']}
+        self.assertEqual(list(agents), ['core-1', 'recorder', 'spec-citations'])
+        recorder = agents['recorder']
+        self.assertEqual((recorder['labels'], recorder['tokens'], recorder['session_calls'], recorder['tool_calls']),
+                         (['ingest', 'write review'], 400, 12, 4))
+        self.assertEqual((agents['spec-citations']['none_found'], agents['spec-citations']['tokens']), (True, None))
+
+    def test_a_review_without_findings_is_publishable_unless_the_guard_held_some(self):
+        package = json.loads((self.review / 'editor-package.json').read_text())
+        package['findings'], package['appendix'] = [], []
+        write(self.review / 'editor-package.json', package)
+        (self.review / 'findings.jsonl').write_text('')
+        for name in ('progress.json', 'runtime.json'):
+            record = json.loads((self.review / name).read_text())
+            write(self.review / name, {**record, 'status': 'complete-without-findings'})
+        run = run_review(self.review, self.paper)['run']
+        self.assertEqual((run['status'], run['quarantined_findings_count'], run['publishable']),
+                         ('complete-without-findings', 0, True))
+        held = finding('cc33', '12 samples')
+        (self.review / 'quarantined.jsonl').write_text(json.dumps(held) + '\n' + json.dumps(held) + '\n')
+        run = run_review(self.review, self.paper)['run']
+        self.assertEqual((run['quarantined_findings_count'], run['publishable']), (2, False))
+        self.assertTrue(any('quarantined 2' in reason for reason in run['not_publishable_reasons']),
+                        run['not_publishable_reasons'])
 
     def test_missing_or_malformed_finding_uids_fall_back_to_positional_ids(self):
         original = json.loads((self.review / 'editor-package.json').read_text())
