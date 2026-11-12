@@ -1,25 +1,34 @@
 """Command line for the Paper Workbench app.
 
-The workspace, revision and export commands run here. The engine commands
-(import, verify, add-review, review, report and the rest) pass through to
-peerreviewagents.engine, which also serves them as ``peerreview <command>``.
+``review`` runs one PeerReviewAgents review of a manuscript PDF and ``report``
+re-renders a finished run, exactly as ``peerreview review`` and ``peerreview
+report`` do. ``serve RUN`` opens that run in the viewer. ``import`` and
+``verify`` make and check a manuscript workspace without a model call, and the
+remaining commands revise and export a workspace.
 """
 import argparse
 import json
+import sys
 
-from peerreviewagents.engine.__main__ import (
-    COMMANDS as ENGINE_COMMANDS, MODEL_HELP, add_model_arguments, add_subcommands,
-    dispatch as engine_dispatch, resolve_model)
 from peerreviewagents.engine.storage import read
 
-APP_COMMANDS = ('port-scaffold', 'import-scaffold', 'revise', 'revision-loop', 'revision-request',
-                'checkout-revision', 'export-revision', 'export-review', 'serve')
-__all__ = ['APP_COMMANDS', 'ENGINE_COMMANDS', 'MODEL_HELP', 'add_model_arguments',
-           'build_parser', 'main', 'resolve_model']
+ENGINE_COMMANDS = ('review', 'report')
+APP_COMMANDS = ('import', 'verify', 'port-scaffold', 'import-scaffold', 'revise', 'revision-loop',
+                'revision-request', 'checkout-revision', 'export-revision', 'export-review', 'serve')
+__all__ = ['APP_COMMANDS', 'ENGINE_COMMANDS', 'build_parser', 'main']
 
 
 def add_app_subcommands(sub):
     """Attach the workspace, revision and export commands to a subparser group."""
+    p=sub.add_parser('import',help='Import a manuscript PDF into a workspace, with no model call')
+    p.add_argument('pdf')
+    p.add_argument('workspace')
+    p.add_argument('--xml',help='Publisher JATS XML for the text and references')
+    p.add_argument('--title')
+    p.add_argument('--source-url',default='')
+    p.add_argument('--supplements',help='Folder of supplementary files')
+    p=sub.add_parser('verify',help='Check that a workspace still matches its manifest')
+    p.add_argument('workspace')
     p=sub.add_parser('port-scaffold',help='Make a Paper Scaffold reading copy of a review workspace')
     p.add_argument('workspace')
     p.add_argument('output')
@@ -41,7 +50,6 @@ def add_app_subcommands(sub):
     p.add_argument('--max-rounds',type=int,default=2)
     p.add_argument('--max-edits',type=int,default=10)
     p.add_argument('--no-build',action='store_true')
-    p.add_argument('--scaffold-root',help='Record offline prose and readability checks before and after edits')
     p=sub.add_parser('revision-request',help='Print the revision request an editing agent would receive')
     p.add_argument('workspace')
     p=sub.add_parser('checkout-revision',help='Make a saved revision the current head')
@@ -59,26 +67,55 @@ def add_app_subcommands(sub):
     p.add_argument('revision')
     p.add_argument('clean_export')
     p.add_argument('output')
-    p=sub.add_parser('serve',help='Open the loopback review and revision viewer')
-    p.add_argument('workspace')
+    p=sub.add_parser('serve',help='Open the loopback viewer on a workspace or a run folder')
+    p.add_argument('workspace',help='A manuscript workspace, or a run folder from review')
     p.add_argument('--port',type=int,default=38744)
     return sub
 
 
 def build_parser(prog='paper-workbench'):
     parser=argparse.ArgumentParser(prog=prog,
-        description='Paper Workbench: review, revise and export a local annotated manuscript workspace. '
-                    'Engine commands run peerreviewagents.engine, also available as peerreview <command>.')
+        description='Paper Workbench: review, revise and export a local annotated manuscript. '
+                    'review and report run PeerReviewAgents, also available as peerreview review and peerreview report.')
     sub=parser.add_subparsers(dest='command',required=True)
+    # Each engine command parses its own options, so its help comes from the engine.
+    sub.add_parser('review',add_help=False,
+        help='Review one manuscript PDF into a run folder (paper-workbench review -h for its options)')
+    sub.add_parser('report',add_help=False,
+        help='Re-render REVIEW.md and REVIEW.txt of a finished run, with no model call')
     add_app_subcommands(sub)
-    add_subcommands(sub)
     return parser
 
 
+def run_engine(command,argv):
+    """Run an engine command with its own parser and return its exit status."""
+    if command=='review':
+        import peerreviewagents
+        from peerreviewagents.plugin import starter
+        parser=starter.build_parser()
+        parser.prog='paper-workbench review'
+        args=parser.parse_args(argv)
+        summary=peerreviewagents.review(args.workspace,args.output,reviewers=args.reviewers,arm=args.arm,
+            literature_cutoff=args.literature_cutoff,tracks=args.track,
+            per_agent_tokens=args.per_agent_tokens,per_run_tokens=args.per_run_tokens,
+            wall_timeout=args.timeout,directory=args.plugin_dir)
+        print(json.dumps(summary,indent=2))
+        return starter.exit_code(summary)
+    from peerreviewagents.cli.main import report
+    return report(argv)
+
+
 def dispatch(parser,args):
-    """Run one parsed app command, or hand an engine command to the engine."""
-    if args.command in ENGINE_COMMANDS:
-        engine_dispatch(parser,args)
+    """Run one parsed app command."""
+    if args.command=='import':
+        from peerreviewagents import import_paper
+        paper=import_paper(args.pdf,args.workspace,args.xml,args.title,args.source_url,args.supplements)
+        print(json.dumps(paper['statistics'],indent=2))
+    elif args.command=='verify':
+        from peerreviewagents.engine.annotations import verify_workspace
+        paper=verify_workspace(args.workspace)
+        print(json.dumps({'paper_id':paper['id'],'source_sha256':paper['source_sha256'],
+                          'blocks':len(paper['blocks']),'status':'verified'},indent=2))
     elif args.command=='port-scaffold':
         from .scaffold_port import port_workspace
         print(port_workspace(args.workspace,args.output)['statistics'])
@@ -96,7 +133,7 @@ def dispatch(parser,args):
     elif args.command=='revision-loop':
         from .revisions import run_loop
         print(run_loop(args.workspace,args.id,max_rounds=args.max_rounds,max_edits=args.max_edits,
-            build=not args.no_build,scaffold_root=args.scaffold_root))
+            build=not args.no_build))
     elif args.command=='revision-request':
         from .revisions import agent_request
         print(json.dumps(agent_request(args.workspace),indent=2,ensure_ascii=False))
@@ -116,12 +153,16 @@ def dispatch(parser,args):
         serve(args.workspace,args.port)
     else:
         parser.error(f'unknown command {args.command}')
+    return 0
 
 
 def main(argv=None):
+    argv=list(sys.argv[1:] if argv is None else argv)
+    if argv and argv[0] in ENGINE_COMMANDS:
+        return run_engine(argv[0],argv[1:])
     parser=build_parser()
-    dispatch(parser,parser.parse_args(argv))
+    return dispatch(parser,parser.parse_args(argv))
 
 
 if __name__=='__main__':
-    main()
+    raise SystemExit(main())

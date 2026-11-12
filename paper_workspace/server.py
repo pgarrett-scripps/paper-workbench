@@ -1,4 +1,9 @@
-"""Loopback-only review viewer with durable decisions and native revisions."""
+"""Loopback-only review viewer with durable decisions and native revisions.
+
+The served path is a manuscript workspace, or a PeerReviewAgents run folder.
+A run folder serves its ``manuscript`` workspace with the run's review listed
+as ``run``. Decisions on it are saved in that workspace, never in the review.
+"""
 from datetime import datetime, timezone
 import io
 import json
@@ -18,6 +23,7 @@ from peerreviewagents.engine.annotations import export_draft, verify_workspace
 from peerreviewagents.engine.storage import digest, read, write
 
 from .revisions import checkout, create_revision, head, snapshot, valid_id
+from .run_view import RUN_REVIEW_ID, locate, run_review
 
 
 LOCK = threading.Lock()
@@ -37,7 +43,7 @@ def clear_stale_renders(folder):
 
 
 def make_server(root, port=38744):
-    root = Path(root).resolve()
+    root, run = locate(root)
     original = verify_workspace(root)
     clear_stale_renders(root / "page_images")
 
@@ -51,7 +57,11 @@ def make_server(root, port=38744):
 
     def reviews(path):
         folder = path / "reviews"
-        return [item.stem for item in sorted(folder.glob("*.json"))] if folder.is_dir() else []
+        saved = [item.stem for item in sorted(folder.glob("*.json"))] if folder.is_dir() else []
+        # The run reviewed the original manuscript, so revisions never list it.
+        if run and path == root:
+            return [RUN_REVIEW_ID] + [rid for rid in saved if rid != RUN_REVIEW_ID]
+        return saved
 
     def exports(paper):
         records = []
@@ -69,13 +79,15 @@ def make_server(root, port=38744):
                     'files':[name for name in ('paper.pdf','paper.docx','review.docx') if name in record.get('files',{})]})
         return sorted(records, key=lambda record: record['modified'], reverse=True)
 
-    def review_for(path, rid):
+    def review_for(path, paper, rid):
         if not isinstance(rid, str) or not REVIEW_ID.fullmatch(rid):
             raise ValueError("Invalid review ID")
+        if run and rid == RUN_REVIEW_ID and path == root:
+            return run_review(run, paper)
         return read(path / "reviews" / f"{rid}.json")
 
     def decisions_for(path, paper, rid):
-        review_for(path, rid)
+        review_for(path, paper, rid)
         target = path / "decisions" / f"{rid}.json"
         return read(target) if target.exists() else {
             "paper_id": paper["id"], "review_id": rid, "revision": 0,
@@ -186,7 +198,7 @@ def make_server(root, port=38744):
                 if url.path == "/api/reviews":
                     return self.send(200, reviews(workspace))
                 if url.path == "/api/review":
-                    return self.send(200, review_for(workspace, rid))
+                    return self.send(200, review_for(workspace, paper, rid))
                 if url.path == "/api/decisions":
                     return self.send(200, decisions_for(workspace, paper, rid))
                 if url.path == "/api/ledger":
@@ -194,8 +206,12 @@ def make_server(root, port=38744):
                     return self.send(200, read(ledger) if ledger.exists() else [])
                 if url.path == "/api/export":
                     verify_workspace(workspace)
-                    return self.send(200, export_draft(paper, review_for(workspace, rid),
-                                                       decisions_for(workspace, paper, rid)))
+                    review = review_for(workspace, paper, rid)
+                    package = export_draft(paper, review, decisions_for(workspace, paper, rid))
+                    # A run's verdict, tracks and specialist reports travel with its package.
+                    if "run" in review:
+                        package["run"] = review["run"]
+                    return self.send(200, package)
                 if url.path == "/original.pdf":
                     target = root / "original.pdf"
                     if not target.is_file():
@@ -274,7 +290,7 @@ def make_server(root, port=38744):
                     if url.path == "/api/decisions":
                         verify_workspace(workspace)
                         rid = value["review_id"]
-                        review = review_for(workspace, rid)
+                        review = review_for(workspace, paper, rid)
                         decisions = decisions_for(workspace, paper, rid)
                         if value["revision"] != decisions["revision"]:
                             return self.send(409, {"error": "Another tab changed the decisions. Reload before saving."})
@@ -320,7 +336,7 @@ def make_server(root, port=38744):
                         if draft != expected.get("revision_id"):
                             raise ValueError("Create the revision from the active draft")
                         rid = value["review_id"]
-                        review = review_for(workspace, rid)
+                        review = review_for(workspace, paper, rid)
                         decisions = decisions_for(workspace, paper, rid)
                         if value.get("decision_revision") != decisions["revision"]:
                             return self.send(409, {"error": "Decisions changed before the revision build. Reload and retry."})
@@ -339,6 +355,7 @@ def make_server(root, port=38744):
 
 
 def serve(root, port=38744):
+    """Serve a manuscript workspace, or a run folder with its review, on the loopback address."""
     server = make_server(root, port)
     print(f"Review workspace: http://127.0.0.1:{server.server_port}", flush=True)
     server.serve_forever()

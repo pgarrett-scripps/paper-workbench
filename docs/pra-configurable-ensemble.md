@@ -44,19 +44,7 @@ An offline replay of the three saved 0317140 drafts reported 38 of 38 components
 
 ## Run
 
-```bash
-python -m paper_workspace review /path/to/manuscript.pdf /path/to/new-run \
-  --literature-cutoff 2026-09-25 \
-  --reviewers 2
-```
-
-A PDF is imported, reviewed and reported in one command. An already imported workspace works in its place. Add up to three `--source-image /path/to/original-page.png` arguments for common initial figure pages. They are optional and their absence is not evidence that a manuscript failed a check. `--literature-cutoff` is optional and defaults to today.
-
-Without `--model`, the CLI runs Sonnet 5.5 through Claude Code. `--model gpt-5.6-terra` selects the Codex transport, and Sol is also supported. `--policy` names the review policy. The default, agentic-v1, runs every stage at high effort with no finding cap. `--policy standard-v1` keeps the bounded study budget of at most five findings at medium effort. Two reviewers require three generation calls, three reviewers require four. A blind evaluation is separate and is never automatically added by this runner.
-
-`--token-budget` is an observed-token threshold for launching another call. It is not a hard token cap on a call already running. Without it, the threshold is what the policy needs for every reviewer and the synthesis. A single 750,000 ceiling across three agentic stages refuses the debate before it starts. Unknown usage or an incomplete call receipt stops the workflow. A crashed call is retried once when the policy allows it, as agentic-v1 does. Other failed calls do not trigger automatic retries. Each output directory is a single attempt and cannot be reused for an automatic restart.
-
-For callers using Python, use `ensemble_review(...)` or `review(..., mode='ensemble', reviewers=2)`. The older `review()` function retains its previous default mode for compatibility with existing experiments. Explicit `--mode panel` also retains the earlier one-investigator debate workflow.
+This workflow ran on the 0.8 engine, with its `--model`, `--policy`, `--token-budget` and `--mode` options and the `ensemble_review` Python call. Engine 0.9.0 removed all of them, and the workflow is frozen at the PeerReviewAgents `v0.8.0` release. A current review is `paper-workbench review manuscript.pdf RUN`, as described in [the engine contract](shared-core.md).
 
 ## Evidence and remaining questions
 

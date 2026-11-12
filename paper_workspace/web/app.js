@@ -9,14 +9,15 @@ const withDraft=path=>path+(path.includes('?')?'&':'?')+'draft='+encodeURICompon
 function error(message){$('#error').textContent=message;$('#error').hidden=!message;}
 async function api(path,options){const response=await fetch(path,options);const value=await response.json();if(!response.ok){const failure=Error(value.error||response.statusText);failure.status=response.status;throw failure;}return value;}
 function quoteMarkup(block){
- const notes=review.findings.filter(item=>item.block_id===block.id&&item.placement==='anchored').sort((a,b)=>a.start-b.start);
+ // The editor's appendix stays in the comment column, so only the report's own findings mark the text.
+ const notes=review.findings.filter(item=>item.block_id===block.id&&item.placement==='anchored'&&item.section!=='appendix').sort((a,b)=>a.start-b.start);
  let position=0,output='';
  for(const item of notes){
   if(item.start<position)continue;
   output+=esc(segment(block.text,position,item.start));
   const quote=esc(item.quote);
   const mark=item.kind==='edit'?`<span class="before">${quote}</span> <span class="after">${esc(item.replacement)}</span>`:`<mark class="question-mark">${quote}</mark>`;
-  output+=`<span class="anchor" id="anchor-${esc(item.id)}">${mark}<a class="pin" href="#note-${esc(item.id)}" aria-label="Comment ${esc(item.id)}">${esc(item.id.split('-').at(-1))}</a></span>`;
+  output+=`<span class="anchor" id="anchor-${esc(item.id)}">${mark}<a class="pin" href="#note-${esc(item.id)}" aria-label="Comment ${esc(item.number??item.id)}">${esc(item.number??item.id.split('-').at(-1))}</a></span>`;
   position=item.end;
  }
  return output+esc(segment(block.text,position));
@@ -89,35 +90,72 @@ function history(){
   return `<div class="cross-check"><p><strong>${esc(categoryOf(finding))}: ${esc(finding.title||'Historical finding')}</strong></p><p>${esc(finding.comment||'')}</p><blockquote>${esc(finding.quote||'')}</blockquote>${location}<p>Origin draft: ${esc(row.origin_revision||'unknown')}<br>Wording decision: ${esc(row.wording_decision||'proposed')}<br>Scientific status: ${esc(row.scientific_status||'open')}</p>${feedback.author_comment?`<p>Author response: ${esc(feedback.author_comment)}<br>Author status: ${esc(feedback.issue_status)}<br>${esc(feedback.rationale||'')}</p>`:''}<p>${esc(row.note||'Historical anchors require reassessment on this draft.')}</p></div>`;
  }).join('');
 }
+function findingLink(uid){
+ const target=review.findings.find(row=>row.finding_uid===uid);
+ return target?`<a href="#note-${esc(target.id)}">${esc(target.number??target.id)}</a>`:esc(uid);
+}
+function runBadges(item){
+ if(!review.run||!item.track)return '';
+ const placement=item.section!=='appendix'?'':item.editor_placement==='duplicate'?'Duplicate':'Appendix';
+ const badges=[`<span class="badge">${esc(item.track)} track</span>`,
+  item.basis?`<span class="badge basis" title="${esc(item.basis_reason||'')}">Basis: ${esc(item.basis)}</span>`:'',
+  item.escalate?'<span class="badge escalated">Escalated</span>':'',
+  placement?`<span class="badge">${placement}</span>`:'',
+  item.reviewers_raising>1?`<span class="badge">Raised by ${esc(item.reviewers_raising)}</span>`:''];
+ return `<div class="run-badges">${badges.join('')}</div>${item.basis_reason?`<p class="muted">${esc(item.basis_reason)}</p>`:''}`;
+}
+function runNotes(item){
+ if(!review.run||!item.track)return '';
+ const ruling=(review.run.escalation_rulings||[]).find(row=>row.finding_uid===item.finding_uid);
+ const original=item.duplicate_of?`<p>Duplicate of finding ${findingLink(item.duplicate_of)}</p>`:'';
+ const merged=(item.duplicate_uids||[]).length?`<p>Merged duplicates: ${item.duplicate_uids.map(findingLink).join(' ')}</p>`:'';
+ const rebuttal=item.rebuttal_quote?`<p>Manuscript text the editor weighed against it</p><blockquote>${esc(item.rebuttal_quote)}</blockquote>`:'';
+ const editor=item.editor_reason||original||merged||rebuttal?`<div class="cross-check"><p><strong>Editor</strong><br>${esc(item.editor_reason||'')}</p>${original}${merged}${rebuttal}</div>`:'';
+ const links=(item.source_urls||[]).filter(url=>typeof url==='string'&&url.startsWith('https://')).map(url=>`<a href="${esc(url)}" target="_blank" rel="noopener noreferrer">${esc(url)}</a>`).join('<br>');
+ return editor+(ruling?`<div class="cross-check ruling"><p><strong>Escalation ruling</strong><br>${esc(ruling.ruling)}</p></div>`:'')+(links?`<p class="muted">Sources cited: ${links}</p>`:'');
+}
+function runPanel(){
+ const run=review.run;
+ $('#run-panel').hidden=!run;$('#filter-escalated').hidden=!run;
+ if(!run){
+  $('#run-panel').innerHTML='';
+  if(filter==='escalated'){filter='all';document.querySelectorAll('[data-filter]').forEach(item=>item.setAttribute('aria-pressed',item.dataset.filter==='all'));}
+  return;
+ }
+ const facts=[run.arm&&`Arm ${run.arm}`,run.reviewer_count&&`${run.reviewer_count} reviewers`,run.status&&`Status ${run.status}`,
+  Number.isInteger(run.escalated_count)&&`${run.escalated_count} escalated`,run.review_guard_status&&`Guard ${run.review_guard_status}`,
+  run.quarantined_findings_count?`${run.quarantined_findings_count} quarantined`:'',
+  Number.isFinite(run.wall_seconds)&&`${Math.round(run.wall_seconds/60)} min`,Number.isFinite(run.tokens_total)&&`${run.tokens_total} tokens`].filter(Boolean);
+ const warnings=[run.error,(run.missing_stages||[]).length&&`Stages that did not report: ${run.missing_stages.join(', ')}`,
+  !run.edited&&'The editor did not write a package. These are the findings recorded before editing.'].filter(Boolean);
+ const verdict=run.verdict;
+ const verdictHtml=verdict?`<details open><summary>Editor's verdict</summary><p><strong>Significance</strong><br>${esc(verdict.significance)}</p><p><strong>Strength of evidence</strong><br>${esc(verdict.strength_of_evidence)}</p>${verdict.reasoning?`<p><strong>Reasoning</strong><br>${esc(verdict.reasoning)}</p>`:''}<p class="muted">Basis: ${esc(verdict.basis||'unstated')}. ${esc(verdict.limitation||'')}</p></details>`:'';
+ const audits=Object.entries(run.audits||{});
+ const auditHtml=audits.length?`<details><summary>Specialist reports (${audits.length})</summary>${audits.map(([track,text])=>`<details class="audit"><summary>${esc(track)}</summary><pre>${esc(text)}</pre></details>`).join('')}</details>`:'';
+ const reviewers=run.reviewer_provenance||[],tracks=Object.entries(run.findings_by_track||{});
+ const reviewerHtml=reviewers.length||tracks.length?`<details><summary>Reviewers and specialists (${reviewers.length})</summary><ul>${reviewers.map(row=>`<li>${esc(row.slot)} · ${esc(row.track)} track · ${esc(row.model)} · attempt ${esc(row.attempt)} · ${esc(row.tool_calls)} tool calls · ${row.none_found?'reported no findings':esc(row.findings)+' findings'}</li>`).join('')}</ul>${tracks.length?`<p class="muted">Findings by track: ${tracks.map(([track,count])=>`${esc(track)} ${esc(count)}`).join(' · ')}</p>`:''}</details>`:'';
+ $('#run-panel').innerHTML=`<p class="count">${facts.map(esc).join(' · ')}</p>${warnings.map(text=>`<p class="error">${esc(text)}</p>`).join('')}${verdictHtml}${auditHtml}${reviewerHtml}${(run.limitations||[]).map(text=>`<p class="muted">${esc(text)}</p>`).join('')}`;
+}
+function card(item){
+ const wording=decisions.items[item.id]||'proposed';
+ const annotation=pendingResponses.get(responseKey(item.id))||decisions.annotations?.[item.id]||{};
+ const issueStatus=annotation.issue_status||'open';
+ const source=item.placement==='anchored'?`<a href="#${esc(item.block_id)}">Go to passage</a>`:'Unplaced comment: source anchor needs review';
+ const actions=item.kind==='edit'?`<button data-action="accepted" ${wording!=='proposed'?'disabled':''}>Accept wording</button><button data-action="rejected" ${wording!=='proposed'?'disabled':''}>Decline wording</button>`:`<button data-action="noted" ${wording!=='proposed'?'disabled':''}>Mark for follow-up</button>`;
+ const number=item.number?`${esc(item.number)}. `:'';
+ return `<article class="finding" id="note-${esc(item.id)}" data-id="${esc(item.id)}"><div class="card-top"><span class="category ${esc(categoryOf(item))}">${esc(categoryOf(item))} · ${esc(item.kind)} · ${esc(item.severity||'unspecified')}</span><span>${esc(wording)}</span></div>${runBadges(item)}<h3>${number}${esc(item.title||'Review finding')}</h3><p class="comment-text">${esc(item.comment||item.text||'')}</p>${item.counterevidence?`<div class="cross-check"><p><strong>Counterevidence checked</strong><br>${esc(item.counterevidence)}</p></div>`:''}${runNotes(item)}<div class="evidence">${source}<br>Evidence: ${(item.evidence_blocks||[]).map(id=>`<a href="#${esc(id)}">${esc(id)}</a>`).join(' ')}</div>${externalFinding(item)}<div class="actions">${actions}${wording!=='proposed'?'<button data-action="proposed">Undo wording decision</button>':''}</div><div class="author-response"><label>Author comment<textarea data-field="comment" maxlength="4000">${esc(annotation.author_comment||'')}</textarea></label><label>Issue status<select data-field="issue"><option value="open" ${issueStatus==='open'?'selected':''}>Open</option><option value="addressed" ${issueStatus==='addressed'?'selected':''}>Addressed by author</option></select></label><label>Rationale for status<textarea data-field="rationale" maxlength="2000">${esc(annotation.rationale||'')}</textarea></label><button data-save-response>Save author response</button><p class="muted">Addressed records the author's assessment. It does not verify the scientific issue.</p></div>${annotation.history?.length?`<details><summary>Author response history (${annotation.history.length})</summary><ol>${annotation.history.map(row=>`<li>${esc(row.at)} · ${esc(row.issue_status)} · ${esc(row.rationale||'No rationale')}</li>`).join('')}</ol></details>`:''}</article>`;
+}
 function cards(){
  const openHistorical=ledger.filter(row=>row.scientific_status==='open').length;
- $('#finding-count').textContent=review.findings.length+' new'+(openHistorical?' · '+openHistorical+' earlier questions open':'');$('#review-summary').textContent=review.summary||'';
- const raw=review.raw_response||{},sources=[...(raw.source_findings||[]),...(raw.source_hypotheses||[]).map(source=>({...source,finding:{title:'Previously discarded hypothesis',comment:source.text}}))];
- $('#handoff-details').hidden=!sources.length&&!(raw.source_cards||[]).length&&!raw.domain_profile&&!raw.result_map&&!raw.epistemic_audit;
- $('#handoff-ledger').innerHTML=sources.map(source=>{
-  const id=source.source_finding_id||`r${source.review_number}-f${source.finding_number}`;
-  if(['debate-v2','debate-v3'].includes(raw.workflow_version)){
-   const decision=(raw.component_decisions||[]).find(d=>d.issue_id===id);
-   const components=(source.components||[]).map(c=>{
-    const treatment=(decision?.components||[]).find(d=>d.component_id===c.component_id);
-    const destination=treatment?.final_finding_number;
-    const link=Number.isInteger(destination)&&destination>=1&&destination<=review.findings.length?` <a href="#note-${esc(review.id)}-${destination}">Final finding ${destination}</a>`:'';
-    return `<li><p>${esc(c.text)}</p><p><strong>${esc(treatment?.treatment||'Unresolved')}</strong>: ${esc(treatment?.reason||'No treatment recorded.')}${link}</p></li>`;
-   }).join('');
-   return `<div class="cross-check"><p><strong>${esc(id)}: ${esc(source.finding?.title)}</strong></p><p>Model assessment: ${esc(decision?.scientific_status||'unresolved')}<br>Presentation: ${esc(decision?.presentation||'unassigned')}</p><p>${esc(decision?.decision_reason||'')}</p><details><summary>Arguments and preserved requests</summary><p><strong>Criticism</strong><br>${esc(decision?.strongest_criticism||'')}</p><p><strong>Author defense</strong><br>${esc(decision?.strongest_author_defense||'')}</p><p><strong>Decisive question</strong><br>${esc(decision?.decisive_question||'')}</p><ol>${components}</ol></details><p>Source references and accounting can be checked. Scientific correctness still requires judgment.</p></div>`;
-  }
-  const entries=(raw.source_dispositions||[]).filter(d=>d.source_finding_id===id);
-  const validation=(raw.source_disposition_validation||[]).find(d=>d.source_finding_id===id);
-  const decision=validation?.status==='valid'&&entries.length===1?entries[0]:null;
-  const links=decision?(decision.final_finding_numbers||[]).filter(n=>Number.isInteger(n)&&n>=1&&n<=review.findings.length).map(n=>`<a href="#note-${esc(review.id)}-${n}">Final finding ${n}</a>`).join(' '):'';
-  return `<div class="cross-check"><p><strong>${esc(id)}: ${esc(source.finding?.title)}</strong><br>${esc(decision?.disposition||'See original finding and verification queue')}</p><p>${esc(decision?.reason||source.finding?.comment)}</p>${links}</div>`;
- }).join('');
+ const appendixCount=review.findings.filter(item=>item.section==='appendix').length;
+ const counted=review.run?`${review.findings.length-appendixCount} in the report`+(appendixCount?` · ${appendixCount} in the appendix`:''):review.findings.length+' new';
+ $('#finding-count').textContent=counted+(openHistorical?' · '+openHistorical+' earlier questions open':'');$('#review-summary').textContent=review.summary||'';
+ runPanel();
+ const raw=review.raw_response||{};
+ $('#handoff-details').hidden=!(raw.source_cards||[]).length&&!raw.domain_profile&&!raw.result_map&&!(raw.result_comparisons||[]).length;
+ $('#handoff-ledger').innerHTML='';
  if(raw.domain_profile)$('#handoff-ledger').innerHTML+=`<p><strong>Selected domain guidance</strong>: ${(raw.domain_profile.selected||[]).map(item=>esc(item.name)).join(', ')||'Shared methods only'}</p><p>${esc(raw.domain_profile.limitation)}</p>`;
  $('#handoff-ledger').innerHTML+=(raw.source_cards||[]).map(card=>externalCard(card)).join('');
- if(raw.epistemic_audit){
-  const audit=raw.epistemic_audit;
-  $('#handoff-ledger').innerHTML+=`<details><summary>Evidence and decision history</summary>${audit.limitations.map(text=>`<p>${esc(text)}</p>`).join('')}${audit.issues.map(issue=>`<article class="cross-check"><p><strong>${esc(issue.issue_id)}</strong>: ${esc(issue.assertion_status.replaceAll('_',' '))}<br>Editorial inclusion: ${esc(issue.selection_status.replaceAll('_',' '))}<br>Scientific truth: ${esc(issue.scientific_truth_status.replaceAll('_',' '))}</p><p>Retained qualifications: ${issue.qualifications.map(esc).join(' ')}</p><ol>${issue.decision_history.map(row=>`<li><p>${esc(row.decision_reason)}</p><p>Author defense: ${esc(row.strongest_author_defense)}</p></li>`).join('')}</ol></article>`).join('')}</details>`;
- }
  if(raw.result_map){
   const map=raw.result_map;
   $('#handoff-ledger').innerHTML+=`<details><summary>Claims, figures and tables (${map.nodes.length} passages)</summary><p>${esc(map.limitation)}</p><p>Figure pixels require separate inspection.</p>${map.edges.map(edge=>`<p><a href="#${esc(edge.from)}">${esc(edge.from)}</a> cites ${esc(edge.quote)}: ${edge.to.length?edge.to.map(id=>`<a href="#${esc(id)}">${esc(id)}</a>`).join(', '):'Target not extracted'}</p>`).join('')}${map.checks.map(check=>`<p>${esc(check.reason)} ${check.blocks.map(id=>`<a href="#${esc(id)}">${esc(id)}</a>`).join(', ')}</p>`).join('')}</details>`;
@@ -125,15 +163,11 @@ function cards(){
  for(const comparison of raw.result_comparisons||[]){
   $('#handoff-ledger').innerHTML+=`<details><summary>Quantity comparison: ${esc(comparison.status.replaceAll('_',' '))}</summary><p>${esc(comparison.limitation)}</p>${comparison.observations.map(obs=>`<p><a href="#${esc(obs.block_id)}">${esc(obs.block_id)}</a>: ${esc(obs.value)} (${esc(obs.metric)})</p><blockquote>${esc(obs.quote)}</blockquote>`).join('')}<p>Context labels are investigator assessments.</p></details>`;
  }
- const visible=review.findings.filter(item=>filter==='all'||filter===categoryOf(item)||(filter==='questions'&&item.kind!=='edit'));
- $('#comments').innerHTML=visible.map(item=>{
-  const wording=decisions.items[item.id]||'proposed';
-  const annotation=pendingResponses.get(responseKey(item.id))||decisions.annotations?.[item.id]||{};
-  const issueStatus=annotation.issue_status||'open';
-  const source=item.placement==='anchored'?`<a href="#${esc(item.block_id)}">Go to passage</a>`:'Unplaced comment: source anchor needs review';
-  const actions=item.kind==='edit'?`<button data-action="accepted" ${wording!=='proposed'?'disabled':''}>Accept wording</button><button data-action="rejected" ${wording!=='proposed'?'disabled':''}>Decline wording</button>`:`<button data-action="noted" ${wording!=='proposed'?'disabled':''}>Mark for follow-up</button>`;
-  return `<article class="finding" id="note-${esc(item.id)}" data-id="${esc(item.id)}"><div class="card-top"><span class="category ${esc(categoryOf(item))}">${esc(categoryOf(item))} · ${esc(item.kind)} · ${esc(item.severity||'unspecified')}</span><span>${esc(wording)}</span></div><h3>${esc(item.title||'Review finding')}</h3><p class="comment-text">${esc(item.comment||item.text||'')}</p>${item.counterevidence?`<div class="cross-check"><p><strong>Counterevidence checked</strong><br>${esc(item.counterevidence)}</p></div>`:''}<div class="evidence">${source}<br>Evidence: ${(item.evidence_blocks||[]).map(id=>`<a href="#${esc(id)}">${esc(id)}</a>`).join(' ')}</div>${externalFinding(item)}<div class="actions">${actions}${wording!=='proposed'?'<button data-action="proposed">Undo wording decision</button>':''}</div><div class="author-response"><label>Author comment<textarea data-field="comment" maxlength="4000">${esc(annotation.author_comment||'')}</textarea></label><label>Issue status<select data-field="issue"><option value="open" ${issueStatus==='open'?'selected':''}>Open</option><option value="addressed" ${issueStatus==='addressed'?'selected':''}>Addressed by author</option></select></label><label>Rationale for status<textarea data-field="rationale" maxlength="2000">${esc(annotation.rationale||'')}</textarea></label><button data-save-response>Save author response</button><p class="muted">Addressed records the author's assessment. It does not verify the scientific issue.</p></div>${annotation.history?.length?`<details><summary>Author response history (${annotation.history.length})</summary><ol>${annotation.history.map(row=>`<li>${esc(row.at)} · ${esc(row.issue_status)} · ${esc(row.rationale||'No rationale')}</li>`).join('')}</ol></details>`:''}</article>`;
- }).join('')||'<div class="empty">No comments in this view.</div>';
+ const visible=review.findings.filter(item=>filter==='all'||filter===categoryOf(item)||(filter==='questions'&&item.kind!=='edit')||(filter==='escalated'&&item.escalate));
+ const body=visible.filter(item=>item.section!=='appendix'),appendix=visible.filter(item=>item.section==='appendix');
+ const appendixOpen=$('#appendix')?.open?' open':'';
+ $('#comments').innerHTML=(body.map(card).join('')||'<div class="empty">No comments in this view.</div>')
+  +(appendix.length?`<details class="appendix" id="appendix"${appendixOpen}><summary>Editor's appendix (${appendix.length}): duplicates and findings outside the report</summary>${appendix.map(card).join('')}</details>`:'');
  $('#comments').querySelectorAll('[data-action]').forEach(button=>button.addEventListener('click',()=>saveFinding(button.closest('article'),button.dataset.action)));
  $('#comments').querySelectorAll('[data-save-response]').forEach(button=>button.addEventListener('click',()=>saveFinding(button.closest('article'),decisions.items[button.closest('article').dataset.id]||'proposed')));
  $('#comments').querySelectorAll('[data-field]').forEach(input=>input.addEventListener('input',()=>{
@@ -189,9 +223,9 @@ async function start(){
    if(latest?.files.includes('paper.pdf'))$('#draft-pdf').hidden=true;
   }
   $('#original-pdf').hidden=!state.has_original_pdf;$('#source-download').hidden=!state.has_source;$('#source-download').href=withDraft('/source.zip');
-  const labels={plain:'Plain review',workspace:'Investigation',workspace_challenged:'Debate output',panel:'Final review and verification queue','panel-handoff-retest-v1':'Revised debate with source images'};
+  const labels={run:'PeerReviewAgents run'};
   const ids=await api(withDraft('/api/reviews'));$('#review-select').innerHTML=ids.map(id=>`<option value="${esc(id)}">${esc(labels[id]||id)}</option>`).join('');
-  const requested=new URLSearchParams(location.search).get('review');const preferred=ids.includes(requested)?requested:ids.includes('panel')?'panel':ids.find(id=>id.startsWith('panel-'))||(ids.includes('workspace_challenged')?'workspace_challenged':ids.includes('workspace')?'workspace':ids[0]);
+  const requested=new URLSearchParams(location.search).get('review');const preferred=ids.includes(requested)?requested:ids[0];
   if(preferred)$('#review-select').value=preferred;
   await loadReview(preferred);
   if(state.legacyServer)$('#save-status').textContent='Wording decisions save locally. Restart this viewer to enable author responses and draft history.';
@@ -200,6 +234,8 @@ async function start(){
 $('#draft-select').addEventListener('change',event=>setDraftLink(event.target.value));
 $('#review-select').addEventListener('change',event=>loadReview(event.target.value).catch(e=>error(e.message)));
 $('#search').addEventListener('input',applySearch);
+// A link into the collapsed appendix opens it, so the target card is visible.
+window.addEventListener('hashchange',()=>{const target=document.getElementById(decodeURIComponent(location.hash.slice(1)));const box=target?.closest('details');if(box)box.open=true;});
 document.querySelectorAll('[data-mode]').forEach(button=>button.addEventListener('click',()=>{mode=button.dataset.mode;document.querySelectorAll('[data-mode]').forEach(item=>item.setAttribute('aria-pressed',item===button));manuscript();}));
 document.querySelectorAll('[data-filter]').forEach(button=>button.addEventListener('click',()=>{filter=button.dataset.filter;document.querySelectorAll('[data-filter]').forEach(item=>item.setAttribute('aria-pressed',item===button));cards();}));
 $('#close-page').addEventListener('click',()=>$('#page-dialog').close());

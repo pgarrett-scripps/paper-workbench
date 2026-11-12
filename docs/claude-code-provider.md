@@ -1,5 +1,7 @@
 # Claude Code subscription provider
 
+Historical record. This describes the Claude Code transport of the 0.8 engine, frozen at the PeerReviewAgents `v0.8.0` release. Engine 0.9.0 replaced it with the `pra` plugin run by `peerreview review`, and the commands and options below no longer run in this app. See [the engine contract](shared-core.md) for the current review.
+
 Claude Code on a Claude subscription is the default transport for every model workflow. This covers the review modes (`ensemble`, `independent`, `plain`, `workspace`, `panel` and `self-revision`), `investigate` and `run_review`. No API key is used. Calls draw on the subscription's included usage, the same way Codex runs draw on a ChatGPT plan.
 
 Claude Code runs are a separate condition. They do not reproduce the Codex study results, and comparisons must label the provider and model.

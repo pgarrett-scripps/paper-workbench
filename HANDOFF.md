@@ -1,16 +1,18 @@
 # Paper Workbench team handoff
 
-Snapshot: 11 October 2026. Start here for the current framework. The companion [paper repository](https://github.com/pgarrett-scripps/paper-workbench-paper) holds the manuscript, study evidence, figures, recovery records and publication priorities.
+Snapshot: 12 November 2026. Start here for the current framework. The companion [paper repository](https://github.com/pgarrett-scripps/paper-workbench-paper) holds the manuscript, study evidence, figures, recovery records and publication priorities.
 
 ## Engine and app split
 
-Version 0.2.0 moves the review engine (ingest, reviewers, synthesis, tools, domain packs and the headless API) to PeerReviewAgents as `peerreviewagents.engine`. The app needs engine 0.8.0 or newer. This repository is now the workspace and revision app. Its engine module names, and all of `paper_workbench_core`, are aliases for the engine modules, so imports and test patches through those names reach the engine. Make engine changes in PeerReviewAgents, not here. See [the split map](docs/engine-split-map.md).
+PeerReviewAgents runs the review. Version 0.9.0 replaced its Python orchestration with the `pra` Claude Code plugin, run headless by `peerreview review`. The debate, the six review modes, the three policies, `ReviewRequest`, `run_review` and the Codex provider are gone, with no shim. The 0.8 engine is frozen at the PeerReviewAgents `v0.8.0` release.
 
-Engine 0.8.0 is not on PyPI yet. CI installs it from the PeerReviewAgents main branch.
+This repository is the workspace, viewer and revision app. It needs engine 0.9.0 or newer. It starts a review through `peerreviewagents.review` and reads the run folder the review writes. Make review changes in PeerReviewAgents, not here.
+
+Engine 0.9.0 is not on PyPI yet. CI installs from PyPI, so it stays red at the install step until 0.9.0 is published.
 
 ## Get started
 
-Accept collaborator access to the private repositories, then clone them into sibling directories. Install the engine before the app. Until 0.8.0 is on PyPI, install it from the PeerReviewAgents main branch, or with `python -m pip install -e ../PeerReviewAgents` from a checkout:
+Accept collaborator access to the private repositories, then clone them into sibling directories. Install the engine before the app. Until 0.9.0 is on PyPI, install it from the PeerReviewAgents main branch, or with `python -m pip install -e ../PeerReviewAgents` from a checkout:
 
 ```bash
 git clone https://github.com/pgarrett-scripps/paper-workbench.git
@@ -22,6 +24,7 @@ python -m pip install 'peerreviewagents @ git+https://github.com/pgarrett-scripp
 python -m pip install -e '.[documents,test]'
 paper-workbench --help
 python -m unittest discover -s tests -p 'test_*.py'
+node tests/test_review_evidence_ui.js
 ```
 
 Use Python 3.11 or newer. PDF import and page inspection also require Poppler. Optional document export needs the renderer for that export path. The paper repository has its own locked toolchain and setup guide. The framework's optional dependencies are not fully locked, so record installed versions when preparing a new experiment.
@@ -38,41 +41,33 @@ Replace the source filenames with your own files. Omit `--xml` for PDF-only inpu
 
 ## Current architecture
 
-The supported integration surface is `peerreviewagents.engine.api`, still importable as `paper_workbench_core`. Use `ReviewRequest` and `run_review` for configurable manuscript-only, independent workspace, or ensemble workflows. Ensemble defaults to two independent reviewers followed by synthesis. A request that names no policy runs agentic-v1, at high effort with no finding cap. `standard-v1` is the bounded study budget. The API supports debate and ordinary synthesis policies. See [the core contract](docs/shared-core.md) and, in PeerReviewAgents, `peerreviewagents/engine/config.py` and `peerreviewagents/engine/api.py` for the executable settings.
+`paper-workbench review manuscript.pdf RUN` runs one review, exactly as `peerreview review` does. It takes `--reviewers N` and `--arm NAME`, and the default arm is `full-two-track`. The run folder holds `RUN/manuscript`, the imported workspace, and `RUN/review`, with `protocol.json`, `progress.json`, `runtime.json`, `findings.jsonl`, `editor-package.json`, the `audit_<track>.md` specialist reports and `REVIEW.md`. `paper-workbench serve RUN` shows it. See [the engine contract](docs/shared-core.md) for the fields the viewer reads.
 
-The engine imports source blocks and references, provides bounded source and literature tools, preserves evidence receipts, validates quotes and issue accounting, and exports located comments and proposed edits. Author decisions and revision exports are distinct from scientific adjudication. Exact source linkage does not establish that a criticism is scientifically correct.
+The viewer shows the editor's body findings first and the duplicates and appendix findings after them. Each finding shows its track, its basis, any escalation and the editor's ruling on it. A run panel shows the verdict, the specialist reports, the reviewer slots and the run limitations. Author decisions on a run are saved in `RUN/manuscript/decisions/run.json`, so the review folder stays as the run wrote it.
 
-The legacy CLI `review --mode panel` and many files under `experiments/` describe earlier workflows. They are not interchangeable with the current core ensemble API. Frozen historical scripts must retain their original inputs and code. Read the paper handoff before interpreting study results.
+The engine anchors every finding to an exact source quotation and labels its basis. Author decisions and revision exports are distinct from scientific adjudication. Exact source linkage does not establish that a criticism is scientifically correct.
+
+Many files under `experiments/` describe earlier workflows. Study code that used the 0.8 engine runs only against PeerReviewAgents `v0.8.0`. Frozen historical scripts must retain their original inputs and code. Read the paper handoff before interpreting study results.
 
 ## Where to work
 
-Engine rows are paths in PeerReviewAgents under `peerreviewagents/engine/`. App rows are paths in this repository.
-
 | Area | Entry point |
 | --- | --- |
-| Public requests and integration (engine) | `api.py`, `config.py` |
-| Independent reviews and synthesis orchestration (engine) | `ensemble.py` |
-| Synthesis decisions and component contract (engine) | `ensemble_debate.py`, `debate_revision.py` |
-| Synthesis preflight and feedback (engine) | `synthesis_validation.py`, `ensemble_references.py` |
-| Tool access and model transport (engine) | `investigation.py`, `model_runtime.py` |
-| Model catalog and review policies (engine) | `models.py`, `review_policy.py` |
-| Viewer and revisions (app) | `paper_workspace/web/`, `paper_workspace/server.py`, `paper_workspace/revisions.py` |
-| Regression checks | `tests/` here, and `tests/engine/` in PeerReviewAgents |
+| Running a review (engine) | `peerreviewagents/plugin/` in PeerReviewAgents |
+| Reading a run folder (app) | `paper_workspace/run_view.py` |
+| Viewer (app) | `paper_workspace/web/`, `paper_workspace/server.py` |
+| Revisions and exports (app) | `paper_workspace/revisions.py`, `scaffold_*.py`, `word_review.py` |
+| Command line (app) | `paper_workspace/__main__.py` |
+| Regression checks | `tests/` here, and `tests/` in PeerReviewAgents |
 
-## Exact stopping point
+## Next step
 
-Core version 0.1.6 at commit `87975b61d68d85027585e09d5a2392a276bad879` added two bounded synthesis preflight checks and clearer validation feedback. It is committed source, not a published package release. The main study used an earlier frozen engine. Do not substitute the current code when reproducing its execution.
-
-The subsequent four-paper recovery completed three syntheses. Paper `0317140` still failed because the model supplied 14 issue decisions and five final comments but omitted all 38 required component records. This is a traceability failure, not proof that all scientific points were lost. The [recovery results](https://github.com/pgarrett-scripps/paper-workbench-paper/blob/master/study/synthesis-recovery-20261011-v1/RESULTS.md) preserve every attempt.
-
-Core 0.1.7 requires complete component structure in the synthesis response contract and names missing, duplicated, misassigned and unknown component identifiers in preflight and final validation records. Offline regression cases cover each failure and an offline replay of the saved 0317140 drafts. Final validation remains strict. See [the component ledger contract](docs/pra-configurable-ensemble.md#component-ledger-contract). The change has not been tested with a model. The next step is a separately recorded, bounded synthesis trial.
-
-Core 0.1.8 adds a Claude Code transport so collaborators can run every model workflow on a Claude subscription instead of a ChatGPT plan. Use `--provider claude-code` for the Sonnet 5.5 default, or select `claude-opus-5-5`, whose safeguards can refuse life-science manuscripts. Sonnet 5.5 has completed ensemble reviews of all 30 benchmark corpus manuscripts. The 30th, at 48,090 words, needed the review input limit raised from 35,000 to 50,000 extracted words. Three syntheses failed final validation on the first attempt and passed on a fresh run. Claude runs are a separate condition from the Codex study. See [the provider guide](docs/claude-code-provider.md).
+The app reads the run folder by file name, because the engine has no public run reader. A rename in `editor-package.json` breaks the viewer without an import error. The next engineering task is a versioned run-folder fixture shared by both repositories, so an engine change that breaks the viewer fails a test.
 
 ## Execution and collaboration
 
-Offline inspection and tests need no model login. New model runs require the operator's own authenticated subscription session. Do not copy account credentials. The engine supports the Claude Code transport, the default, and the Codex transport. Consult `capabilities()` for the accepted model IDs of each. The engine records usage in each run's `usage.jsonl` and does not gate on it, so how much a run may spend is the operator's own setting.
+Offline inspection and tests need no model login. Tests stub the engine review and never start one. New model runs require the operator's own signed-in Claude subscription session. Do not copy account credentials. The run records its token use in `runtime.json` and stops at its own token and wall-clock ceilings. How much a run may spend is the operator's own setting.
 
-Token limits are launch guards, not hard within-call caps. Unknown usage or interrupted execution must be reconciled before continuing. Use a new output directory for each new attempt. Do not overwrite frozen outputs or automatically rerun the full study as a setup check.
+Use a new run folder for each new attempt. Do not overwrite frozen outputs or automatically rerun the full study as a setup check.
 
-Develop on a branch and open a pull request. Pin the engine commit, dependencies, prompts, tool settings, model request and source inputs for new comparisons. The benchmark owns datasets, grading and statistics. Reuse the core API instead of duplicating the pipeline.
+Develop on a branch and open a pull request. Pin the engine commit, the arm, the literature cutoff and the source inputs for new comparisons. The run's `protocol.json` records what a run was allowed to do. The benchmark owns datasets, grading and statistics.

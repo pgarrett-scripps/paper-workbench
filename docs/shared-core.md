@@ -1,82 +1,48 @@
-# Shared core contract
+# Engine contract
 
-Keep the reusable engine inside Paper Workbench initially. A separate benchmark project installs a pinned commit of the `paper-workbench` distribution and imports `paper_workbench_core`. A separate core repository is unnecessary until it needs its own release cycle or independent maintainers.
+PeerReviewAgents 0.9.0 runs the review. Paper Workbench starts one and reads the run folder it writes. This page lists what the app depends on, so an engine change that breaks the app can be found before it ships.
 
 ## Ownership
 
-The core owns source integrity, manuscript block identities, evidence handles, review normalization, bounded tool access, review execution and provenance. The app owns manuscript presentation, author decisions, revision workflows and exports. The benchmark owns datasets, hidden answer keys, candidate selection, controlled conditions, anonymous judging, statistics and rankings.
+The engine owns ingest, source integrity, manuscript block identities, the review plugin and its agents, tool access, the finding ledger, the editor package and the run reports. The app owns manuscript presentation, author decisions, revision workflows and exports. The benchmark owns datasets, hidden answer keys, candidate selection, controlled conditions, anonymous judging, statistics and rankings.
 
-Neither answer keys nor human evaluation labels belong in `ReviewRequest`. The benchmark must prepare a manuscript-only workspace and keep grading inputs outside it. Core outputs are review artifacts, not scores.
+Neither answer keys nor human evaluation labels belong in a review. The benchmark must give the review a manuscript-only PDF and keep grading inputs outside the run folder. Engine outputs are review artifacts, not scores.
 
-## API version 3
+## What the app calls
 
-```python
-from pathlib import Path
-from paper_workbench_core import (
-    capabilities, load_manuscript, evidence_registry,
-    validate_review, ReviewRequest, run_review,
-)
+| Call | Used by | Model call |
+| --- | --- | --- |
+| `peerreviewagents.review(pdf, out, reviewers=, arm=, ...)` | `paper-workbench review` | Yes |
+| `peerreviewagents.import_paper(pdf, workspace, xml, ...)` | `paper-workbench import` | No |
+| `peerreviewagents.plugin.starter.build_parser()` and `exit_code(summary)` | `paper-workbench review` options and exit status | No |
+| `peerreviewagents.cli.main.report(argv)` | `paper-workbench report` | No |
+| `peerreviewagents.plugin.server.RUN_DIRECTORY` and `MANUSCRIPT_DIRECTORY` | `run_view.locate` | No |
+| `peerreviewagents.engine.annotations` and `storage` | the viewer, decisions, revisions and exports | No |
 
-paper = load_manuscript(Path("workspaces/example"))
-registry = evidence_registry(Path("workspaces/example"))
-supported = capabilities()
+`review` returns the run summary and exits 0 when the review completed, 2 when it never started and 1 otherwise. The default arm is `full-two-track`. Without `claude` on `PATH`, `review` returns a blocked summary at the `startup` stage and launches nothing.
 
-request = ReviewRequest(
-    workspace=Path("workspaces/example"),
-    output=Path("runs/example"),
-    literature_cutoff="2026-09-25",
-    workflow="ensemble",
-    reviewers=2,
-)
-# Explicit inference, only after the benchmark authorizes this run:
-# artifact = run_review(request)
-```
+`starter.build_parser`, `starter.exit_code`, `cli.main.report` and the two directory names are not part of the engine's public surface, which is only `review`, `import_paper` and `write_reports`. The app uses them so its `review` command takes exactly the options of `peerreview review`.
 
-`load_manuscript`, `evidence_registry`, `validate_review`, `capabilities` and request construction do not call a model or start the web server. `validate_review` normalizes source references and proposed edits. It does not determine whether a scientific concern is true.
+## What the app reads from a run
 
-`run_review` uses the existing engine. It rejects existing output directories, unsupported models and unsupported workflows. It returns a `paper-workbench-run-v1` artifact containing the editor package, requested model, workflow, manuscript identity, engine file hashes and observed usage. Unknown usage and execution failures remain errors with underlying run files preserved. Token budgets are launch guards, not hard within-session caps. A request that names no policy or preset runs agentic-v1, at high effort with no finding cap. Without `token_budget`, the ceiling is what that policy needs for each stage, so an ensemble gets room for every reviewer and the synthesis. Independent mode retains its existing per-session guard.
+`run_view.py` reads these files from `RUN/review`. It never writes to them and never follows a symlink.
 
-The supported workflows are `manuscript-only`, `independent` and `ensemble`. Manuscript-only mode receives extracted text and supplied source images with review tools disabled. Independent and ensemble modes have manuscript tools. The transport supports Claude Code subscription execution with Opus 5.5 and Sonnet 5.5, the default, and Codex subscription execution with Astra, Sol, Terra, Luna, and GPT-5.5. The review policy sets the reasoning effort. The model ID selects the provider. See [the Claude Code provider guide](claude-code-provider.md). Arbitrary models and provider APIs require a separately designed transport extension. Do not silently route unsupported candidates through a different pipeline.
+| File | Keys the viewer reads |
+| --- | --- |
+| `protocol.json` | `arm`, `reviewers`. Its presence marks a run folder |
+| `manifest.json` | `paper_id`, `source_sha256`, checked against the manuscript |
+| `progress.json` | `status`, `error`, `stages.missing`, `stages.none_found` |
+| `runtime.json` | `status`, `blocked_reason`, `tokens_total`, `wall_seconds` |
+| `editor-package.json` | `summary`, `findings`, `appendix`, `verdict`, `escalation_rulings`, `reviewer_provenance`, `findings_by_track`, `escalated_count`, `limitations`, `arm`, `reviewer_count`, `review_guard_status` |
+| `findings.jsonl` | every recorded finding, shown when there is no editor package |
+| `audit_<track>.md` | each specialist report, shown as plain text |
 
-The older PeerReviewAgents graph is a distinct benchmark backend. Its scores must retain a different workflow identifier. Pin the pipeline commit, model settings, source inputs and evidence access when comparing models.
+Each finding keeps the annotation keys the viewer already used (`kind`, `block_id`, `quote`, `start`, `end`, `placement`, `comment`, `replacement`, `evidence_blocks`) and adds `finding_uid`, `track`, `basis`, `basis_reason` and `escalate`. Body findings add `editor_reason`, `reviewers_raising` and `duplicate_uids`. Appendix findings add `editor_placement`, `duplicate_of` and `rebuttal_quote`.
 
-## Packaging boundary
+The viewer keys a finding by `finding_uid`, because the engine's finding `id` can repeat across reviewers. If the uids repeat or are malformed, it numbers the findings instead.
 
-The initial distribution bundles the engine and app resources, but importing the core does not import the web server or require document exporters. Document dependencies are optional. Keeping the existing `paper_workspace` modules avoids a risky physical move while the stable integration surface is established.
+## Versioning
 
-Before 1.0, consumers should pin a Git commit rather than follow the main branch. Changes to prompts, schemas, tool access or selection policy require a new benchmark condition, even when Python function signatures remain unchanged.
+Pin the engine commit, the arm and the literature cutoff for any comparison. The run's `protocol.json` records what the run was allowed to do, including the plugin and engine provenance hashes. A change to the plugin's agents, tools or editor rules is a new condition, even when no Python signature changes.
 
-## Subscription models and usage
-
-`capabilities()["models_by_provider"]` lists the exact request IDs for each
-transport: `claude-opus-5-5` and `claude-sonnet-5-5` through Claude Code, and
-Astra, Sol, Terra, Luna, and GPT-5.5 through Codex. `capabilities()["provider"]`
-names Claude Code as the default transport, and
-`capabilities()["default_models"]` names Sonnet 5.5 for Claude Code and Terra
-for Codex. Verify that the current account can select a model before a
-comparison. No unknown model is substituted.
-
-Codex events do not currently expose the resolved model ID, so requested-model
-pinning remains the available identity evidence. Claude Code reports the models
-it used, and any model other than the requested one rejects the call.
-
-Each run checks for the provider's subscription login and refuses API keys and
-cloud API providers. Observed usage is recorded in the run's `usage.jsonl` and
-is not gated, as `capabilities()["usage_policy"]` states. How much a run may
-spend is the operator's own setting. Unknown usage must not be interpreted as
-zero.
-
-## Versioned review presets
-
-`review_presets()` describes five presets. `review_request_from_preset()`
-constructs a validated request. Each completed run preserves its resolved
-configuration, configuration hash and both core and engine source hashes.
-The preset names are `manuscript-only-single-v1`, `workspace-independent-v1`,
-`workspace-ensemble-v1`, `workspace-ensemble-ordinary-v1` and
-`workspace-agentic-v1`. Current presets are bounded strategies, not an
-arbitrary workflow language or demonstrated multi-provider framework.
-
-Manuscript-only execution denies review tools and external access. Source
-images are checked, deduplicated by content and capped at ten without silent
-truncation. Missing visual content is recorded. Preparation must establish
-whether the delivered packet is scientifically sufficient for a comparison.
+The 0.8 engine, with `ReviewRequest`, `run_review`, presets, policies and the Codex transport, is frozen at the PeerReviewAgents `v0.8.0` release. Study code written against it runs only there.

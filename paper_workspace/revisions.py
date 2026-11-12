@@ -297,11 +297,11 @@ def checkout(root, revision_id, expected_head):
         return value
 
 
-def run_loop(root, run_id, *, max_rounds=2, max_edits=10, provider=None, build=True, scaffold_root=None):
+def run_loop(root, run_id, *, max_rounds=2, max_edits=10, provider=None, build=True):
     """A durable boundary for agents, with an offline provider by default.
 
     A provider accepts the current paper and returns a source-bound review.
-    External inference must use model_runtime for its own hard call budget.
+    A provider that calls a model owns that call's budget.
     This function never starts a model or executes manuscript analysis code.
     """
     valid_id(run_id)
@@ -328,9 +328,6 @@ def run_loop(root, run_id, *, max_rounds=2, max_edits=10, provider=None, build=T
             request = {'round': round_number, 'head': current_head, 'paper_id': paper['id'],
                        'source_sha256': paper['source_sha256'], 'remaining_edits': max_edits - used}
             write(path / f'{round_number}-request.json', request)
-            if scaffold_root:
-                from peerreviewagents.engine.scaffold_checks import build_report
-                write(path / f'{round_number}-checks-before.json', build_report(current_root, scaffold_root))
             response = (provider or copyedit_proposals)(copy.deepcopy(paper))
             if response.get('paper_id') != paper['id'] or response.get('source_sha256') != paper['source_sha256']:
                 raise ValueError('Agent review is not bound to the current draft')
@@ -349,9 +346,6 @@ def run_loop(root, run_id, *, max_rounds=2, max_edits=10, provider=None, build=T
             entry['revision'] = create_revision(root, review, decisions, revision_id, current_head, build=build)
             used += count
             write(path / 'run.json', state)
-            if scaffold_root:
-                updated_root, _ = snapshot(root, revision_id)
-                write(path / f'{round_number}-checks-after.json', build_report(updated_root, scaffold_root))
             if used >= max_edits:
                 state['status'] = 'edit_limit'
                 break
