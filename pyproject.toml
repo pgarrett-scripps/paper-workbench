@@ -11,7 +11,7 @@ requires-python = ">=3.11"
 license = {file = "LICENSE"}
 # The review engine (ingest, reviewers, synthesis, domain packs, rustypaper pin)
 # lives in peerreviewagents.engine. The app imports it directly.
-dependencies = ["peerreviewagents>=0.7.0"]
+dependencies = ["peerreviewagents>=0.8.0"]
 
 [project.optional-dependencies]
 documents = ["Pillow", "python-docx", "lxml", "pypdf"]

@@ -4,7 +4,7 @@ The review CLI now defaults to two independent whole-paper discovery sessions, f
 
 Each reviewer receives the same manuscript workspace and initial figure pages, with its own source cache and tool state. It does not receive another reviewer's findings. Sessions currently run sequentially to control subscription usage. Independence refers to separate contexts, not different models or scientifically independent evidence.
 
-Each discovery session can return up to ten candidates and use four manuscript or domain tool calls. The pool preserves every candidate and discarded hypothesis with reviewer provenance. Similar comments are not deleted automatically. The debate records an explicit scientific decision and a destination for every sentence component. Several source issues can map into one final comment.
+Under the default agentic-v1 policy, each discovery session runs at high effort with a thirty call tool allowance and no candidate cap. Under `--policy standard-v1`, each can return up to ten candidates and use four manuscript or domain tool calls. The pool preserves every candidate and discarded hypothesis with reviewer provenance. Similar comments are not deleted automatically. The debate records an explicit scientific decision and a destination for every sentence component. Several source issues can map into one final comment.
 
 The debate can introduce up to five new candidates, each with a uniquely located manuscript anchor and an explicit evidence-based decision. Supported secondary candidates remain in the editor package even when they do not fit the five-finding summary. Unresolved candidates remain marked as unresolved. Neither agreement nor retention establishes correctness.
 
@@ -16,7 +16,7 @@ Discovery, ordinary revision, and debate share guidance to retain consequential 
 
 When an otherwise valid component reference differs only in its first-letter capitalization or one trailing punctuation mark, a restricted repair can select the unique matching span from the same final comment. It records both versions and revalidates the entire result. It cannot rewrite a comment, change its scientific status, redirect a component, paraphrase a quotation, or repair a manuscript quotation.
 
-Debate is one fresh model session that weighs criticism and author defense. It is not a conversation among multiple independently running debaters. It receives the pooled ledger, full manuscript, source cards, and original images. It has two additional source tool calls. The existing source-handle validation, conservative edit guard, secondary inventory, and manuscript annotation export remain in use.
+Debate is one fresh model session that weighs criticism and author defense. It is not a conversation among multiple independently running debaters. It receives the pooled ledger, full manuscript, source cards, and original images. It has the policy's debate tool calls, two under standard-v1 and eight under agentic-v1. The existing source-handle validation, conservative edit guard, secondary inventory, and manuscript annotation export remain in use.
 
 ## Synthesis validation before submission
 
@@ -45,21 +45,18 @@ An offline replay of the three saved 0317140 drafts reported 38 of 38 components
 ## Run
 
 ```bash
-python -m paper_workspace review /path/to/workspace /path/to/new-run \
-  --billing-confirmation /path/to/billing-confirmation.json \
+python -m paper_workspace review /path/to/manuscript.pdf /path/to/new-run \
   --literature-cutoff 2026-09-25 \
-  --reviewers 2 \
-  --model gpt-5.6-terra \
-  --token-budget 750000
+  --reviewers 2
 ```
 
-Add `--scaffold-root /path/to/paper-scaffold` for its offline advisory checks. Add up to three `--source-image /path/to/original-page.png` arguments for common initial figure pages. `--source-packet` supports frozen external records. `--historical-snapshots` supports curated registration snapshots. These inputs are optional and their absence is not evidence that a manuscript failed a check.
+A PDF is imported, reviewed and reported in one command. An already imported workspace works in its place. Add up to three `--source-image /path/to/original-page.png` arguments for common initial figure pages. They are optional and their absence is not evidence that a manuscript failed a check. `--literature-cutoff` is optional and defaults to today.
 
-Terra at medium reasoning is the CLI default. Sol is also supported. Two reviewers require three generation calls, three reviewers require four. A blind evaluation is separate and is never automatically added by this runner.
+Without `--model`, the CLI runs Sonnet 5.5 through Claude Code. `--model gpt-5.6-terra` selects the Codex transport, and Sol is also supported. `--policy` names the review policy. The default, agentic-v1, runs every stage at high effort with no finding cap. `--policy standard-v1` keeps the bounded study budget of at most five findings at medium effort. Two reviewers require three generation calls, three reviewers require four. A blind evaluation is separate and is never automatically added by this runner.
 
-`--token-budget` is an observed-token threshold for launching another call. It is not a hard token cap on a call already running. Unknown usage or an incomplete call receipt stops the workflow. Failed calls do not trigger automatic retries. Each output directory is a single attempt and cannot be reused for an automatic restart.
+`--token-budget` is an observed-token threshold for launching another call. It is not a hard token cap on a call already running. Without it, the threshold is what the policy needs for every reviewer and the synthesis. A single 750,000 ceiling across three agentic stages refuses the debate before it starts. Unknown usage or an incomplete call receipt stops the workflow. A crashed call is retried once when the policy allows it, as agentic-v1 does. Other failed calls do not trigger automatic retries. Each output directory is a single attempt and cannot be reused for an automatic restart.
 
-For callers using Python, use `ensemble_review(...)` or `review(..., mode='ensemble', reviewers=2, model='gpt-5.6-terra')`. The older `review()` function retains its previous default mode for compatibility with existing experiments. Explicit `--mode panel` also retains the earlier one-investigator debate workflow.
+For callers using Python, use `ensemble_review(...)` or `review(..., mode='ensemble', reviewers=2)`. The older `review()` function retains its previous default mode for compatibility with existing experiments. Explicit `--mode panel` also retains the earlier one-investigator debate workflow.
 
 ## Evidence and remaining questions
 
