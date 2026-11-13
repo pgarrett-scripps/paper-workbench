@@ -334,14 +334,18 @@ class CitationLedgerTests(unittest.TestCase):
         self.assertEqual(read_run(self.review)['problems'], citations['problems'])
         self.assertEqual((run['problems'], run['publishable']), ([], True))
 
-    def test_the_references_are_listed_in_reading_order(self):
-        # The engine orders rows by row_id as text, which puts ref:r10 before ref:r2.
-        row = json.loads(self.ledger.read_text().splitlines()[15])
-        self.assertEqual(row['row_id'], 'ref:r2')
+    def test_the_rows_are_listed_in_reading_order(self):
+        # The engine's reader puts ref:r2 before ref:r10, and use:b2:5 before use:b2:10. The panel keeps that order.
+        lines = self.ledger.read_text().splitlines()
+        reference, use = json.loads(lines[15]), json.loads(lines[12])
+        self.assertEqual((reference['row_id'], use['row_id']), ('ref:r2', 'use:b3:2:r6'))
         with self.ledger.open('a') as stream:
-            stream.write(json.dumps({**row, 'row_id': 'ref:r10', 'reference_id': 'r10', 'label': '10'}) + '\n')
-        self.assertEqual([row['label'] for row in self.view()['citations']['references']],
-                         ['2', '3', '4', '5', '6', '10'])
+            stream.write(json.dumps({**reference, 'row_id': 'ref:r10', 'reference_id': 'r10', 'label': '10'}) + '\n')
+            stream.write(json.dumps({**use, 'row_id': 'use:b2:10:r6'}) + '\n')
+        citations = self.view()['citations']
+        self.assertEqual([row['label'] for row in citations['references']], ['2', '3', '4', '5', '6', '10'])
+        self.assertEqual([row['row_id'] for row in citations['uses'] if row['reference_id'] and not row['verdict']],
+                         ['use:b2:5:r4', 'use:b2:10:r6', 'use:b3:2:r6'])
 
     def test_a_planned_lane_without_a_ledger_says_there_are_no_counts(self):
         shutil.rmtree(self.review / 'citations')

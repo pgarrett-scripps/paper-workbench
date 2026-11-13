@@ -9,8 +9,9 @@ viewer, the decisions and ``export_draft`` read. Nothing here makes a model
 call or writes to the run.
 
 The citation ledger's rows come from the engine's ``read_citation_ledger``,
-which keeps the last row written for each ``row_id``. It is called without the
-fetched abstracts and full text, because the panel never shows them.
+which keeps the last row written for each ``row_id`` and gives them in reading
+order, ``ref:r2`` before ``ref:r10``. It is called without the fetched
+abstracts and full text, because the panel never shows them.
 """
 import re
 from collections import Counter
@@ -102,15 +103,6 @@ def audit_texts(paths):
             text += f'\n\n[The viewer shows the first {AUDIT_LIMIT:,} bytes of this report.]'
         texts[track] = text
     return texts
-
-
-def reading_order(row_id):
-    """A ledger row id as a sort key that puts ``ref:r2`` before ``ref:r10``.
-
-    The engine orders rows by ``row_id`` as text, which puts sentence 10 of a
-    block before sentence 2. The panel lists them in reading order.
-    """
-    return [int(part) if index % 2 else part for index, part in enumerate(re.split(r'([0-9]+)', row_id or ''))]
 
 
 def clip(value, limit=CITATION_TEXT):
@@ -228,11 +220,11 @@ def citation_view(citations, review):
         raise RunError(str(exc)) from None
     labels = {row.get('reference_id'): clip(row.get('label'), 40) for row in ledger['references']
               if isinstance(row.get('reference_id'), str)}
-    references = sorted((reference_entry(row) for row in ledger['references']),
-                        key=lambda entry: reading_order(entry['row_id']))
+    # The reader gives the rows in reading order, ref:r2 before ref:r10, and the
+    # sort is stable, so each verdict group keeps that order.
+    references = [reference_entry(row) for row in ledger['references']]
     uses = sorted((use_entry(row, labels) for row in ledger['uses']),
-                  key=lambda use: (USE_ORDER[use['verdict'] if use['reference_id'] else 'unmatched'],
-                                   reading_order(use['row_id'])))
+                  key=lambda use: USE_ORDER[use['verdict'] if use['reference_id'] else 'unmatched'])
     flagged = [entry for entry in references if needs_a_look(entry)]
     view['references'] = flagged[:CITATION_ROWS]
     view['references_not_shown'] = max(0, len(flagged) - CITATION_ROWS)
