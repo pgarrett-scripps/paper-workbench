@@ -379,6 +379,24 @@ class CitationLedgerTests(unittest.TestCase):
         self.assertEqual((citations['uses'][-1]['row_id'], citations['uses'][-1]['verdict']),
                          ('use:b2:1:r1', 'supports'))
 
+    def test_reading_the_run_writes_nothing_to_it(self):
+        # The viewer only reads a run. The engine's readers must not add a file to the review folder.
+        before = sorted(str(path.relative_to(self.review)) for path in self.review.rglob('*'))
+        self.view()
+        self.assertEqual(sorted(str(path.relative_to(self.review)) for path in self.review.rglob('*')), before)
+
+    @unittest.skipIf(os.name != 'posix' or os.geteuid() == 0, 'needs a user that file modes apply to')
+    def test_a_read_only_run_shows_its_citations(self):
+        # A run copied or archived without write access shows the same citation panel.
+        folders = [self.review, *(path for path in self.review.rglob('*') if path.is_dir())]
+        for folder in folders:
+            folder.chmod(0o555)
+        try:
+            self.assertEqual(self.view()['citations'], json.loads((CITATIONS / 'view.json').read_text()))
+        finally:
+            for folder in folders:
+                folder.chmod(0o755)
+
     @unittest.skipIf(os.name != 'posix' or os.geteuid() == 0, 'needs a user that file modes apply to')
     def test_an_unreadable_ledger_is_named_and_shows_no_counts(self):
         self.ledger.chmod(0)

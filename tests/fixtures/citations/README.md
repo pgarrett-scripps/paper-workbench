@@ -14,7 +14,7 @@ ledger for the run panel, and the viewer test renders it.
    `marker`, and a `verdict` once a worker judged it. A marker that matches no reference has a `reference_id` of
    `null` and a row id ending in `unmatched-<marker>`.
 4. `stages.json` holds one object per stage (`fill`, `resolve`, `judge`) with `done` and its counts. The engine reads
-   `complete` and `lookups` from it.
+   `complete` and `lookups` from it, and `remaining`, `retry_after` and `unchecked_reason` from the resolve stage.
 
 ## What the ledger holds
 
@@ -28,7 +28,8 @@ Six references and eight in-text uses, chosen so that every state the panel show
 3. The abstract for references 1 and 5 is in the resolution, and the one for reference 1 carries an `<img onerror>`
    tag and an instruction to the worker. The quoted passage and the worker note carry markup too. The viewer must
    show them escaped and must not show the abstract.
-4. The resolve and judge stages are not done, so the check is incomplete.
+4. The resolve and judge stages are not done, so the check is incomplete. The resolve stage stopped with 2 rows
+   still owed a lookup and no reason recorded, so the engine adds its line saying the run never took them up again.
 
 ## Changing it
 
