@@ -8,16 +8,15 @@ check that the run reviewed this version of it, and the review shape the
 viewer, the decisions and ``export_draft`` read. Nothing here makes a model
 call or writes to the run.
 
-The citation ledger is the one run file this module opens itself. ``read_run``
-gives its counts and its path, and the engine has no public reader for its
-rows, so :func:`ledger_rows` replays the file the way the engine does.
+The citation ledger's rows come from the engine's ``read_citation_ledger``,
+which keeps the last row written for each ``row_id``. It is called without the
+fetched abstracts and full text, because the panel never shows them.
 """
-import json
 import re
 from collections import Counter
 from pathlib import Path
 
-from peerreviewagents import MANUSCRIPT_DIRECTORY, read_run
+from peerreviewagents import MANUSCRIPT_DIRECTORY, read_citation_ledger, read_run
 from peerreviewagents import locate_run, NotARunFolder
 
 RUN_REVIEW_ID = 'run'
@@ -25,7 +24,6 @@ AUDIT_LIMIT = 400_000
 FINDING_UID = re.compile(r'[A-Za-z0-9_-]{1,64}')
 
 # The citation ledger, as the run panel shows it.
-LEDGER_LIMIT = 32_000_000
 CITATION_ROWS = 500
 CITATION_TEXT = 1_500
 REFERENCE_STATES = ('yes', 'no', 'not located', 'could not check')
@@ -106,32 +104,13 @@ def audit_texts(paths):
     return texts
 
 
-def ledger_rows(path, review):
-    """The citation ledger's rows, the last row for each ``row_id``, in first-seen order.
+def reading_order(row_id):
+    """A ledger row id as a sort key that puts ``ref:r2`` before ``ref:r10``.
 
-    It reads only the path ``read_run`` gave, inside the review folder and not
-    through a symlink, and at most ``LEDGER_LIMIT`` bytes. A line that is not a
-    JSON row is skipped, as the engine skips it and counts it. A ledger larger
-    than the limit gives ``None``, because replaying part of an append-only
-    file can show a row as it was before its last write.
+    The engine orders rows by ``row_id`` as text, which puts sentence 10 of a
+    block before sentence 2. The panel lists them in reading order.
     """
-    path, folder = Path(path), Path(review).resolve()
-    if path.is_symlink() or not path.resolve().is_relative_to(folder) or not path.is_file():
-        raise RunError(f'Refusing to read {path.name}: the citation ledger must be a file inside {folder}, '
-                       'not a symlink')
-    with path.open('rb') as stream:
-        data = stream.read(LEDGER_LIMIT + 1)
-    if len(data) > LEDGER_LIMIT:
-        return None
-    rows = {}
-    for raw in data.split(b'\n'):
-        try:
-            row = json.loads(raw.decode('utf-8')) if raw.strip() else None
-        except ValueError:
-            continue
-        if isinstance(row, dict) and isinstance(row.get('row_id'), str) and row['row_id']:
-            rows[row['row_id']] = row
-    return rows
+    return [int(part) if index % 2 else part for index, part in enumerate(re.split(r'([0-9]+)', row_id or ''))]
 
 
 def clip(value, limit=CITATION_TEXT):
@@ -179,7 +158,7 @@ def reference_entry(row):
         'candidate': bibliographic(candidate) if isinstance(candidate, dict) else None,
         'error': bool(found.get('error')),
         'lookups': [clip(one.get('status'), 40) for one in found.get('requests') or [] if isinstance(one, dict)][:12],
-        'has_source_text': bool(found.get('abstract') or found.get('full_text')),
+        'has_source_text': found.get('has_source_text') is True,
         'source_url': https_url(found.get('full_text_url') or found.get('abstract_url') or found.get('source_url')),
     }
 
@@ -216,11 +195,13 @@ def use_entry(row, labels):
 def citation_view(citations, review):
     """The citation ledger as the run panel shows it, or ``None`` for a run that planned no citations lane.
 
-    The counts are the engine's. The references are the ones that need a
-    second look, and the uses are listed with the ones a reader should check
-    first at the top, at most ``CITATION_ROWS`` of them. Text in a row came
-    from the manuscript, from an index on the internet or from a worker, and
-    the panel shows it escaped as quoted text.
+    The counts and problem lines are ``read_run``'s. The rows are
+    ``read_citation_ledger``'s, read only when ``read_run`` could count the
+    ledger. The references are the ones that need a second look, and the uses
+    are listed with the ones a reader should check first at the top, at most
+    ``CITATION_ROWS`` of them. Text in a row came from the manuscript, from an
+    index on the internet or from a worker, and the panel shows it escaped as
+    quoted text.
     """
     if not citations.get('enabled'):
         return None
@@ -230,7 +211,6 @@ def citation_view(citations, review):
         'problems': [line for line in citations.get('problems') or [] if isinstance(line, str)],
         'ledger': citations.get('ledger') is not None,
         'readable': bool(counts),
-        'too_large': False,
         'counts': {key: counts[key] for key in CITATION_COUNTS
                    if isinstance(counts.get(key), int) and not isinstance(counts.get(key), bool)},
         'references': [],
@@ -240,15 +220,19 @@ def citation_view(citations, review):
     }
     if not view['ledger'] or not view['readable']:
         return view
-    rows = ledger_rows(citations['ledger'], review)
-    if rows is None:
-        view['too_large'] = True
-        return view
-    references = [reference_entry(row) for row in rows.values() if row.get('kind') == 'reference']
-    labels = {row.get('reference_id'): clip(row.get('label'), 40) for row in rows.values()
-              if row.get('kind') == 'reference' and isinstance(row.get('reference_id'), str)}
-    uses = [use_entry(row, labels) for row in rows.values() if row.get('kind') == 'use']
-    uses.sort(key=lambda use: USE_ORDER[use['verdict'] if use['reference_id'] else 'unmatched'])
+    try:
+        # The fetched abstract and full text stay in the run folder. The panel shows
+        # only whether a worker had them, and the passage the worker quoted.
+        ledger = read_citation_ledger(review, source_text=False)
+    except ValueError as exc:
+        raise RunError(str(exc)) from None
+    labels = {row.get('reference_id'): clip(row.get('label'), 40) for row in ledger['references']
+              if isinstance(row.get('reference_id'), str)}
+    references = sorted((reference_entry(row) for row in ledger['references']),
+                        key=lambda entry: reading_order(entry['row_id']))
+    uses = sorted((use_entry(row, labels) for row in ledger['uses']),
+                  key=lambda use: (USE_ORDER[use['verdict'] if use['reference_id'] else 'unmatched'],
+                                   reading_order(use['row_id'])))
     flagged = [entry for entry in references if needs_a_look(entry)]
     view['references'] = flagged[:CITATION_ROWS]
     view['references_not_shown'] = max(0, len(flagged) - CITATION_ROWS)

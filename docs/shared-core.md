@@ -17,6 +17,7 @@ Every review, report and run-reading call goes through the engine's public surfa
 | `peerreviewagents.review_main(argv, prog='paper-workbench review')` | `paper-workbench review` | Yes |
 | `peerreviewagents.report_main(argv, prog='paper-workbench report')` | `paper-workbench report` | No |
 | `peerreviewagents.read_run(path)` | `run_view.run_review` | No |
+| `peerreviewagents.read_citation_ledger(review, source_text=False)` | `run_view.citation_view` | No |
 | `peerreviewagents.locate_run` and `NotARunFolder` | `run_view.locate` | No |
 | `peerreviewagents.MANUSCRIPT_DIRECTORY` | `run_view.locate` | No |
 | `peerreviewagents.import_paper(pdf, workspace, xml, ...)` | `paper-workbench import` | No |
@@ -40,7 +41,7 @@ No module under `paper_workspace/` or `tests/` imports `peerreviewagents.engine`
 
 ## What the app reads from a run
 
-`run_view.py` calls `read_run` and opens one run file itself, the citation ledger at the path `read_run` gives in `citations.ledger`. The section on the citation ledger below says how. Nothing in the app writes to `RUN/review`. `read_run` refuses a symlink anywhere under the review folder, and the app shows that refusal as a plain error. It names any file it could not read in full in `problems`, and the run panel shows each one.
+`run_view.py` calls `read_run`, and `read_citation_ledger` for the citation rows. It opens no run file itself. The section on the citation ledger below says how. Nothing in the app writes to `RUN/review`. `read_run` refuses a symlink anywhere under the review folder, and the app shows that refusal as a plain error. It names any file it could not read in full in `problems`, and the run panel shows each one.
 
 | `read_run` key | What the viewer does with it |
 | --- | --- |
@@ -58,8 +59,8 @@ No module under `paper_workspace/` or `tests/` imports `peerreviewagents.engine`
 | `reports.audits` | each specialist report, read as plain text up to 400,000 bytes |
 | `agents[].role` | a `citation-worker` line says the worker writes no findings |
 | `citations.enabled` | whether the run panel has a citation section. A run whose plan has no citations lane has none |
-| `citations.ledger` | the ledger path the panel reads rows from. `None` on a planned lane means no reference or use was checked, and the engine's problem line says so |
-| `citations.counts` | one line for the references and one for the uses. `resolved`, `not_found`, `not_located`, `could_not_check` and `unresolved` each keep their own count and are never added together. Empty `counts` means the ledger could not be read |
+| `citations.ledger` | whether the run has a ledger. `None` on a planned lane means the run wrote no ledger, so there are no ledger counts, and the engine's problem line says so |
+| `citations.counts` | one line for the references and one for the uses. `resolved`, `not_found`, `not_located`, `could_not_check` and `unresolved` each keep their own count and are never added together. Empty `counts` with a ledger means the ledger could not be read, and the panel shows no rows |
 | `citations.complete`, `citations.problems` | a line saying the check did not finish, and each problem line once, in the citation section. The engine puts those lines in `problems` as well, and the run panel leaves them out there |
 
 The engine writes `protocol.json` and `manifest.json` only when the run finishes or is marked blocked. A run the starter stopped early, from a token ceiling, a timeout, a rate limit or a session error, has neither. The viewer still opens it with its status, its cause and the findings in the ledger. Each finding's `block_sha256` then pins the manuscript version. Its arm and reviewer count are empty, because `read_run` takes them only from `protocol.json` or the plan. A run blocked at startup, or stopped before it imported the manuscript, has nothing to show, so `serve` prints its status and cause and exits 1.
@@ -72,15 +73,15 @@ The viewer keys a finding by `finding_uid`, because the engine's finding `id` ca
 
 ## The citation ledger
 
-Engine commit 576dbc5 plans six specialist lanes, `stats`, `figures-tables`, `methods-reporting`, `citations`, `numbers` and `field`. The lane that checks the manuscript's numbers against each other is `numbers`, with slot `spec-numbers`, report `audit_numbers.md` and finding track `numbers`. The app keeps no other name for it. The citations lane fills `review/citations/ledger.jsonl`, an append-only table of the reference list and every in-text use, with `citations/lookups/` and `citations/stages.json` beside it. Citation workers `cite-1` to `cite-N` judge each use against the source text the ledger fetched. They write no findings.
+Engine commit 3124a4b plans six specialist lanes, `stats`, `figures-tables`, `methods-reporting`, `citations`, `numbers` and `field`. The lane that checks the manuscript's numbers against each other is `numbers`, with slot `spec-numbers`, report `audit_numbers.md` and finding track `numbers`. The app keeps no other name for it. The citations lane fills `review/citations/ledger.jsonl`, an append-only table of the reference list and every in-text use, with `citations/lookups/` and `citations/stages.json` beside it. Citation workers `cite-1` to `cite-N` judge each use against the source text the ledger fetched. They write no findings.
 
-The engine has no public reader for the ledger rows, so `ledger_rows` replays the file with the engine's rule. The last row for each `row_id` wins, and a line that is not a JSON row is skipped, as the engine skips and counts it. It reads only a file inside the review folder, not through a symlink, and at most 32,000,000 bytes. A larger ledger shows its counts and no rows, because part of an append-only file can show a row as it was before its last write.
+The panel takes its counts and problem lines from `read_run` and its rows from `read_citation_ledger`, which gives the last row for each `row_id`. It asks for the rows only when `read_run` could count the ledger. It calls the reader with `source_text=False`, so the fetched abstract and full text stay in the run folder and each reference row says only whether a worker had them. The panel never showed that text, and the passage a worker quoted is on the use row. The reader orders rows by `row_id` as text, which puts `ref:r10` before `ref:r2`, so the panel sorts them again by the numbers in the id. Rows are at most 500 of each kind and each text at most 1,500 characters, so the page stays small whatever the ledger's size.
 
 The run panel lists the references that need a second look and every in-text use, the ones a reader should check first at the top, at most 500 of each. A reference is found in an index, has a DOI the DOI resolver does not hold, has a title neither Crossref nor Europe PMC lists, could not be checked because the lookups did not answer, or was never looked up. The panel never turns a title it could not locate, or a lookup that did not answer, into a claim that a work does not exist. A use shows its sentence, the worker's verdict (supports, partly supports, does not support or cannot tell), the source passage the worker quoted and its note. Passages and notes came from the internet or from a model, so the panel shows them escaped as quoted text, cuts each at 1,500 characters and links only `https` URLs. The abstract a worker read stays in the run folder.
 
-`read_run` reads an unreadable ledger as a damaged run file. Its line is in `problems`, the counts are empty and the run is not publishable. A torn last line is counted in `unreadable_rows` and the rows before it stand.
+A ledger that is present and cannot be read gives one citation problem line that names `review/citations/ledger.jsonl` and why. The counts are empty, the panel shows that line and no rows, and the run stays publishable. A torn last line is counted in `unreadable_rows` and the rows before it stand.
 
-`tests/fixtures/citations` holds a ledger the engine's own writer filled at commit 576dbc5, and its README says how to make it again.
+`tests/fixtures/citations` holds a ledger written by hand in the shape the engine documents in `docs/INTEGRATIONS.md`, and its README says what each row is for. No test imports the engine's private ledger module.
 
 ## Versioning
 

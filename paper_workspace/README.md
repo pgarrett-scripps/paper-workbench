@@ -30,7 +30,7 @@ This command performs model inference. It requires the `claude` CLI on `PATH`, s
 
 The run folder holds `manuscript`, the imported workspace, and `review`, the run. `python -m paper_workspace report run-output` renders `REVIEW.md` and `REVIEW.txt` from the saved run with no model call. It works on any run, finished, stopped or blocked at startup, and prints the status, the cause, the finding count, whether the review is publishable, any file it could not read and the report paths.
 
-`serve` on a run folder shows the run as the review named `run`. `run_view.py` shows what the engine's `read_run` returns, and opens only the citation ledger itself:
+`serve` on a run folder shows the run as the review named `run`. `run_view.py` shows what the engine's `read_run` returns, with the citation rows from the engine's `read_citation_ledger`:
 
 - The editor package's body findings come first, numbered in the manuscript. Duplicates and appendix findings follow in a collapsed appendix, each linked to the finding it duplicates and with any rebuttal quotation.
 - Each finding shows its track, its basis with the reason the engine gave, whether a specialist escalated it, the editor's reason and the escalation ruling.

@@ -168,7 +168,7 @@ function useVerdict(row){
 function useItem(row){
  const where=[row.section&&esc(row.section),row.block_id&&`<a href="#${esc(row.block_id)}">Go to passage</a>`,
   sourceLink(row.source_url,row.source_kind?`Source ${row.source_kind}`:'Source')].filter(Boolean).join(' · ');
- const blind=row.verdict==='cannot tell'&&(!row.source_kind||row.source_kind==='none')?'<p class="muted">The worker had no source text for this reference.</p>':'';
+ const blind=row.verdict==='cannot tell'&&!row.source_kind?'<p class="muted">The worker had no source text for this reference.</p>':'';
  return `<li data-verdict="${esc(row.verdict||'none')}"><strong>${row.label?`[${esc(row.label)}]`:''} ${esc(useVerdict(row))}</strong>${quoted('Sentence in the manuscript',row.sentence)}${quoted('Source passage the worker quoted, fetched from the internet',row.passage)}${quoted('Worker note',row.note)}${blind}${where?`<p class="muted">${where}</p>`:''}</li>`;
 }
 function citationCounts(counts){
@@ -184,8 +184,8 @@ function citationCounts(counts){
 function citationPanel(citations){
  if(!citations)return '';
  const counts=citations.counts||{},shown=citations.ledger&&citations.readable;
- const lines=[!citations.ledger?'':!citations.readable?'The citation ledger could not be read, so the panel shows no citation counts. The run problems above say why.'
-   :citations.too_large?'The citation ledger is larger than the viewer reads, so the panel shows its counts and no rows.':'',
+ // An unreadable ledger has its own engine line, which says why. This one is for a ledger that came with none.
+ const lines=[citations.ledger&&!citations.readable&&!citations.problems.length&&'The citation ledger could not be read, so the panel shows no citation counts.',
   shown&&!citations.complete&&'The citation check did not finish, so these counts do not cover the whole reference list.',
   ...citations.problems].filter(Boolean);
  const more=(count,noun)=>count?`<p class="muted">${esc(count)} more ${noun} not shown.</p>`:'';

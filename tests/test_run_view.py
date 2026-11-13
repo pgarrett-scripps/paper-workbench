@@ -9,13 +9,12 @@ import tempfile
 import threading
 import unittest
 from pathlib import Path
-from unittest.mock import patch
 
 from peerreviewagents import read_run
 from peerreviewagents.workspace import digest, write_json
 
 from paper_workspace.__main__ import main
-from paper_workspace.run_view import RunError, ledger_rows, locate, run_review
+from paper_workspace.run_view import RunError, locate, run_review
 from paper_workspace.server import make_server
 
 TEXT = 'Knockdown lowered VPS35 in 12 samples.'
@@ -23,10 +22,11 @@ CEILING = 'the run reached its per-run token ceiling'
 SONNET, HAIKU = 'claude-sonnet-5-5', 'claude-haiku-5-5'
 # The six specialist lanes of engine 0.9.0, in the order its plan lists them.
 LANES = ['stats', 'figures-tables', 'methods-reporting', 'citations', 'numbers', 'field']
-# A citation ledger the engine's own writer filled at 576dbc5. README.md there says how.
+# A citation ledger written by hand in the shape docs/INTEGRATIONS.md gives. README.md there says what it holds.
 CITATIONS = Path(__file__).resolve().parent / 'fixtures' / 'citations'
-NO_LEDGER = ('this run planned a citations lane and wrote no citation ledger, so not one '
-             'reference or in-text use was checked')
+NO_LEDGER = 'this run planned a citations lane and wrote no citation ledger, so there are no ledger counts'
+UNREADABLE = ('review/citations/ledger.jsonl is present and could not be read (Permission denied), '
+              'so this run has no citation counts')
 
 
 def finding(uid, quote, **extra):
@@ -327,15 +327,27 @@ class CitationLedgerTests(unittest.TestCase):
         text = json.dumps(citations)
         self.assertNotIn('Ignore the sentence', text)
         self.assertIn('slowed that retrieval by about half', text)
+        # The engine's reader says whether a worker had source text, and the panel keeps only that.
+        self.assertEqual([(row['label'], row['has_source_text']) for row in citations['references']],
+                         [('2', False), ('3', False), ('4', False), ('5', True), ('6', False)])
         # The engine puts the citation stage lines in the run's problems as well. The panel shows them once.
         self.assertEqual(read_run(self.review)['problems'], citations['problems'])
         self.assertEqual((run['problems'], run['publishable']), ([], True))
 
-    def test_a_planned_lane_without_a_ledger_says_nothing_was_checked(self):
+    def test_the_references_are_listed_in_reading_order(self):
+        # The engine orders rows by row_id as text, which puts ref:r10 before ref:r2.
+        row = json.loads(self.ledger.read_text().splitlines()[15])
+        self.assertEqual(row['row_id'], 'ref:r2')
+        with self.ledger.open('a') as stream:
+            stream.write(json.dumps({**row, 'row_id': 'ref:r10', 'reference_id': 'r10', 'label': '10'}) + '\n')
+        self.assertEqual([row['label'] for row in self.view()['citations']['references']],
+                         ['2', '3', '4', '5', '6', '10'])
+
+    def test_a_planned_lane_without_a_ledger_says_there_are_no_counts(self):
         shutil.rmtree(self.review / 'citations')
         run = self.view()
         self.assertEqual(run['citations'], {'complete': False, 'problems': [NO_LEDGER], 'ledger': False,
-                                            'readable': False, 'too_large': False, 'counts': {}, 'references': [],
+                                            'readable': False, 'counts': {}, 'references': [],
                                             'references_not_shown': 0, 'uses': [], 'uses_not_shown': 0})
         self.assertEqual((run['problems'], run['publishable']), ([], True))
 
@@ -373,27 +385,18 @@ class CitationLedgerTests(unittest.TestCase):
         citations = run['citations']
         self.assertEqual((citations['ledger'], citations['readable'], citations['counts'], citations['uses']),
                          (True, False, {}, []))
-        self.assertTrue(any(line.startswith('citations/ledger.jsonl is present but could not be read')
-                            for line in run['problems']), run['problems'])
-        # The engine reads an unreadable ledger as a damaged run file, so this run is not publishable.
-        self.assertFalse(run['publishable'])
+        # The line names the file in the run folder and is shown once, in the citation section.
+        self.assertIn(UNREADABLE, citations['problems'])
+        self.assertNotIn(UNREADABLE, run['problems'])
+        # A citation ledger the viewer cannot open does not hold the review back.
+        self.assertEqual((run['publishable'], run['not_publishable_reasons']), (True, []))
 
-    def test_a_symlinked_or_outside_ledger_is_refused(self):
+    def test_a_symlinked_ledger_is_refused(self):
         outside = self.root / 'outside.jsonl'
         self.ledger.rename(outside)
         self.ledger.symlink_to(outside)
-        with self.assertRaisesRegex(RunError, 'Refusing to read ledger.jsonl'):
+        with self.assertRaisesRegex(RunError, 'citations/ledger.jsonl'):
             run_review(self.review, self.paper)
-        # The panel's own reader refuses it as well, and refuses a ledger path outside the review folder.
-        for path in (self.ledger, outside):
-            with self.assertRaisesRegex(RunError, f'Refusing to read {path.name}'):
-                ledger_rows(path, self.review)
-
-    def test_a_ledger_larger_than_the_viewer_reads_shows_its_counts_and_no_rows(self):
-        with patch('paper_workspace.run_view.LEDGER_LIMIT', 1_000):
-            citations = self.view()['citations']
-        self.assertEqual((citations['too_large'], citations['references'], citations['uses']), (True, [], []))
-        self.assertEqual(citations['counts']['references'], 6)
 
     def test_long_ledger_text_is_shortened(self):
         row = json.loads(self.ledger.read_text().splitlines()[-1])

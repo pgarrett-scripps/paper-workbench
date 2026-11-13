@@ -92,7 +92,7 @@ assert.ok(!panel.includes('<script>'));
 // The model asked is never shown as the model that ran.
 assert.ok(!panel.includes('model ran claude-haiku-5-5'));
 
-// The run panel shows the citation ledger the engine's own writer filled at 576dbc5, as run_view.py hands it over.
+// The run panel shows the hand-written fixture ledger as run_view.py hands it over.
 context.ledgerView = JSON.parse(fs.readFileSync('tests/fixtures/citations/view.json', 'utf8'));
 vm.runInContext('review.run.citations = ledgerView; cards();', context);
 assert.ok(html('#run-panel').includes(
@@ -130,18 +130,23 @@ assert.equal(citations.split('The worker had no source text for this reference.'
 let prose = citations;
 for (const line of vm.runInContext('ledgerView.problems.map(esc)', context)) prose = prose.split(line).join('');
 assert.ok(!/not exist|fabricat|fake|made up|hallucinat/i.test(prose));
-// A planned lane with no ledger, an unreadable ledger and a ledger too large to read each say so and show no rows.
-const noLedger = vm.runInContext(`citationPanel({complete:false, ledger:false, readable:false, too_large:false, counts:{},
-  problems:['this run planned a citations lane and wrote no citation ledger, so not one reference or in-text use was checked'],
+// A planned lane with no ledger and an unreadable ledger each say so and show no rows.
+const noLedger = vm.runInContext(`citationPanel({complete:false, ledger:false, readable:false, counts:{},
+  problems:['this run planned a citations lane and wrote no citation ledger, so there are no ledger counts'],
   references:[], references_not_shown:0, uses:[], uses_not_shown:0})`, context);
 assert.ok(noLedger.startsWith('<details class="citations" open><summary>Citations</summary><p class="error">this run planned'));
 assert.ok(!noLedger.includes('class="count"'));
-const unreadable = vm.runInContext('citationPanel({...ledgerView, readable:false, counts:{}, problems:[], references:[], uses:[]})', context);
-assert.ok(unreadable.includes('The citation ledger could not be read, so the panel shows no citation counts.'));
+// The engine names an unreadable ledger in a problem line, and the panel shows that line alone.
+const unreadableLine = 'review/citations/ledger.jsonl is present and could not be read (Permission denied), so this run has no citation counts';
+context.unreadableLine = unreadableLine;
+const unreadable = vm.runInContext('citationPanel({...ledgerView, readable:false, counts:{}, problems:[unreadableLine], references:[], uses:[]})', context);
+assert.ok(unreadable.includes(`<p class="error">${unreadableLine}</p>`));
+assert.ok(!unreadable.includes('The citation ledger could not be read'));
 assert.ok(!unreadable.includes('class="count"'));
-const tooLarge = vm.runInContext('citationPanel({...ledgerView, too_large:true, references:[], uses:[]})', context);
-assert.ok(tooLarge.includes('larger than the viewer reads, so the panel shows its counts and no rows'));
-assert.ok(tooLarge.includes('6 references: 2 found in an index') && !tooLarge.includes('Worker verdicts'));
+// With no problem line to show, the panel still says the ledger could not be read.
+const unexplained = vm.runInContext('citationPanel({...ledgerView, readable:false, counts:{}, problems:[], references:[], uses:[]})', context);
+assert.ok(unexplained.includes('The citation ledger could not be read, so the panel shows no citation counts.'));
+assert.ok(!unexplained.includes('class="count"'));
 assert.ok(vm.runInContext('citationPanel({...ledgerView, complete:true, problems:[]})', context)
   .startsWith('<details class="citations"><summary>Citations: 6 references, 8 in-text uses</summary>'));
 assert.equal(vm.runInContext('citationPanel(null)', context), '');

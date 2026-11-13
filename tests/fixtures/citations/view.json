@@ -2,13 +2,12 @@
  "complete": false,
  "problems": [
   "1 of 6 references were never looked up, so the citations were not fully checked",
-  "1 reference(s) could not be checked because the lookups did not answer; this says nothing about whether they exist",
-  "1 reference(s) are listed in neither Crossref nor Europe PMC; much of the literature is in neither, so this is not evidence that they do not exist",
+  "1 reference(s) could not be checked because the lookups did not answer, which says nothing about whether they exist",
+  "1 reference(s) are listed in neither Crossref nor Europe PMC, and much of the literature is in neither, so this is weak evidence about the references themselves",
   "2 of 8 in-text citation uses were never judged against the source"
  ],
  "ledger": true,
  "readable": true,
- "too_large": false,
  "counts": {
   "references": 6,
   "resolved": 2,
@@ -204,7 +203,7 @@
    "judged_by": "cite-1",
    "claimed_by": null,
    "source_kind": "abstract",
-   "source_url": "https://www.ebi.ac.uk/europepmc/webservices/rest/search?query=DOI%3A%2210.5555%2Ffixture.one%22&format=json&resultType=core&pageSize=1"
+   "source_url": "https://www.ebi.ac.uk/europepmc/webservices/rest/search?query=DOI%3A%2210.5555%2Ffixture.one%22"
   },
   {
    "row_id": "use:b3:3:unmatched-[7]",
@@ -237,7 +236,7 @@
    "note": "The ledger holds no source text for this reference.",
    "judged_by": "cite-2",
    "claimed_by": null,
-   "source_kind": "none",
+   "source_kind": null,
    "source_url": null
   },
   {
@@ -254,7 +253,7 @@
    "note": "The ledger holds no source text for this reference.",
    "judged_by": "cite-2",
    "claimed_by": null,
-   "source_kind": "none",
+   "source_kind": null,
    "source_url": null
   },
   {
@@ -306,7 +305,7 @@
    "judged_by": "cite-1",
    "claimed_by": null,
    "source_kind": "abstract",
-   "source_url": "https://www.ebi.ac.uk/europepmc/webservices/rest/search?query=DOI%3A%2210.5555%2Ffixture.one%22&format=json&resultType=core&pageSize=1"
+   "source_url": "https://www.ebi.ac.uk/europepmc/webservices/rest/search?query=DOI%3A%2210.5555%2Ffixture.one%22"
   }
  ],
  "uses_not_shown": 0
