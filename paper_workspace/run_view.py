@@ -7,7 +7,12 @@ module adds only what the app owns: which manuscript a served path names, the
 check that the run reviewed this version of it, and the review shape the
 viewer, the decisions and ``export_draft`` read. Nothing here makes a model
 call or writes to the run.
+
+The citation ledger is the one run file this module opens itself. ``read_run``
+gives its counts and its path, and the engine has no public reader for its
+rows, so :func:`ledger_rows` replays the file the way the engine does.
 """
+import json
 import re
 from collections import Counter
 from pathlib import Path
@@ -18,6 +23,19 @@ from peerreviewagents import locate_run, NotARunFolder
 RUN_REVIEW_ID = 'run'
 AUDIT_LIMIT = 400_000
 FINDING_UID = re.compile(r'[A-Za-z0-9_-]{1,64}')
+
+# The citation ledger, as the run panel shows it.
+LEDGER_LIMIT = 32_000_000
+CITATION_ROWS = 500
+CITATION_TEXT = 1_500
+REFERENCE_STATES = ('yes', 'no', 'not located', 'could not check')
+VERDICTS = ('supports', 'partly supports', 'does not support', 'cannot tell')
+CITATION_COUNTS = ('references', 'resolved', 'not_found', 'not_located', 'could_not_check', 'unresolved',
+                   'mismatched', 'retracted', 'candidates', 'errors', 'uses', 'uses_unmatched', 'uses_judged',
+                   'supported', 'partly_supported', 'not_supported', 'cannot_tell', 'uses_unjudged',
+                   'unreadable_rows')
+# The order the panel lists in-text uses: the ones a reader has to look at first.
+USE_ORDER = {'does not support': 0, 'partly supports': 1, 'unmatched': 2, 'cannot tell': 3, None: 4, 'supports': 5}
 
 
 class RunError(ValueError):
@@ -88,6 +106,157 @@ def audit_texts(paths):
     return texts
 
 
+def ledger_rows(path, review):
+    """The citation ledger's rows, the last row for each ``row_id``, in first-seen order.
+
+    It reads only the path ``read_run`` gave, inside the review folder and not
+    through a symlink, and at most ``LEDGER_LIMIT`` bytes. A line that is not a
+    JSON row is skipped, as the engine skips it and counts it. A ledger larger
+    than the limit gives ``None``, because replaying part of an append-only
+    file can show a row as it was before its last write.
+    """
+    path, folder = Path(path), Path(review).resolve()
+    if path.is_symlink() or not path.resolve().is_relative_to(folder) or not path.is_file():
+        raise RunError(f'Refusing to read {path.name}: the citation ledger must be a file inside {folder}, '
+                       'not a symlink')
+    with path.open('rb') as stream:
+        data = stream.read(LEDGER_LIMIT + 1)
+    if len(data) > LEDGER_LIMIT:
+        return None
+    rows = {}
+    for raw in data.split(b'\n'):
+        try:
+            row = json.loads(raw.decode('utf-8')) if raw.strip() else None
+        except ValueError:
+            continue
+        if isinstance(row, dict) and isinstance(row.get('row_id'), str) and row['row_id']:
+            rows[row['row_id']] = row
+    return rows
+
+
+def clip(value, limit=CITATION_TEXT):
+    """A ledger value as text the panel can show, cut to ``limit`` characters, or ``None``."""
+    if isinstance(value, int) and not isinstance(value, bool):
+        value = str(value)
+    if not isinstance(value, str) or not value.strip():
+        return None
+    return value if len(value) <= limit else value[:limit] + ' [shortened by the viewer]'
+
+
+def https_url(value):
+    """A source address the panel may link to: https only."""
+    value = clip(value, 2_000)
+    return value if value and value.startswith('https://') else None
+
+
+def bibliographic(entry):
+    """The title, first author, year, venue and DOI of a printed or indexed work, as text."""
+    entry = entry if isinstance(entry, dict) else {}
+    return {key: clip(entry.get(key), 600) for key in ('title', 'first_author', 'year', 'venue', 'doi')}
+
+
+def reference_entry(row):
+    """One reference row as the panel shows it. The abstract and full text are left out."""
+    resolution = row.get('resolution') if isinstance(row.get('resolution'), dict) else None
+    found = resolution or {}
+    exists = found.get('exists')
+    if resolution is None:
+        state = 'never looked up'
+    else:
+        state = exists if exists in REFERENCE_STATES else 'not recorded'
+    record, candidate = found.get('record'), found.get('candidate')
+    return {
+        'row_id': clip(row.get('row_id'), 200),
+        'label': clip(row.get('label'), 40),
+        'printed': bibliographic(row.get('printed')),
+        'state': state,
+        'mismatched': [field for field in found.get('mismatched') or [] if isinstance(field, str)][:8],
+        'retracted': found.get('retracted') is True,
+        'retraction_notice': clip(found.get('retraction_notice'), 400),
+        'printed_doi_registered': found.get('printed_doi_registered'),
+        'printed_doi_source': clip(found.get('printed_doi_source'), 40),
+        'record': bibliographic(record) if isinstance(record, dict) else None,
+        'candidate': bibliographic(candidate) if isinstance(candidate, dict) else None,
+        'error': bool(found.get('error')),
+        'lookups': [clip(one.get('status'), 40) for one in found.get('requests') or [] if isinstance(one, dict)][:12],
+        'has_source_text': bool(found.get('abstract') or found.get('full_text')),
+        'source_url': https_url(found.get('full_text_url') or found.get('abstract_url') or found.get('source_url')),
+    }
+
+
+def needs_a_look(entry):
+    """Whether a reference is anything but found in an index with every printed field matching."""
+    return (entry['state'] != 'yes' or entry['mismatched'] or entry['retracted'] or entry['candidate']
+            or entry['error'] or entry['printed_doi_registered'] is False)
+
+
+def use_entry(row, labels):
+    """One in-text use and the verdict a citation worker left on it."""
+    reference = row.get('reference_id') if isinstance(row.get('reference_id'), str) else None
+    verdict = row.get('verdict') if row.get('verdict') in VERDICTS else None
+    return {
+        'row_id': clip(row.get('row_id'), 200),
+        'reference_id': reference,
+        'label': labels.get(reference),
+        'marker': clip(row.get('marker'), 120),
+        'section': clip(row.get('section'), 200),
+        'block_id': clip(row.get('block_id'), 200),
+        'sentence': clip(row.get('sentence')),
+        'ambiguous': row.get('derivation') == 'marker-author-year-ambiguous',
+        'verdict': verdict,
+        'passage': clip(row.get('passage')),
+        'note': clip(row.get('note')),
+        'judged_by': clip(row.get('judged_by'), 64) if verdict else None,
+        'claimed_by': None if verdict else clip(row.get('claimed_by'), 64),
+        'source_kind': clip(row.get('source_kind'), 40),
+        'source_url': https_url(row.get('source_url')),
+    }
+
+
+def citation_view(citations, review):
+    """The citation ledger as the run panel shows it, or ``None`` for a run that planned no citations lane.
+
+    The counts are the engine's. The references are the ones that need a
+    second look, and the uses are listed with the ones a reader should check
+    first at the top, at most ``CITATION_ROWS`` of them. Text in a row came
+    from the manuscript, from an index on the internet or from a worker, and
+    the panel shows it escaped as quoted text.
+    """
+    if not citations.get('enabled'):
+        return None
+    counts = citations.get('counts') or {}
+    view = {
+        'complete': citations.get('complete') is True,
+        'problems': [line for line in citations.get('problems') or [] if isinstance(line, str)],
+        'ledger': citations.get('ledger') is not None,
+        'readable': bool(counts),
+        'too_large': False,
+        'counts': {key: counts[key] for key in CITATION_COUNTS
+                   if isinstance(counts.get(key), int) and not isinstance(counts.get(key), bool)},
+        'references': [],
+        'references_not_shown': 0,
+        'uses': [],
+        'uses_not_shown': 0,
+    }
+    if not view['ledger'] or not view['readable']:
+        return view
+    rows = ledger_rows(citations['ledger'], review)
+    if rows is None:
+        view['too_large'] = True
+        return view
+    references = [reference_entry(row) for row in rows.values() if row.get('kind') == 'reference']
+    labels = {row.get('reference_id'): clip(row.get('label'), 40) for row in rows.values()
+              if row.get('kind') == 'reference' and isinstance(row.get('reference_id'), str)}
+    uses = [use_entry(row, labels) for row in rows.values() if row.get('kind') == 'use']
+    uses.sort(key=lambda use: USE_ORDER[use['verdict'] if use['reference_id'] else 'unmatched'])
+    flagged = [entry for entry in references if needs_a_look(entry)]
+    view['references'] = flagged[:CITATION_ROWS]
+    view['references_not_shown'] = max(0, len(flagged) - CITATION_ROWS)
+    view['uses'] = uses[:CITATION_ROWS]
+    view['uses_not_shown'] = max(0, len(uses) - CITATION_ROWS)
+    return view
+
+
 def run_review(review, paper):
     """The run as a review that the viewer, the decisions and ``export_draft`` read.
 
@@ -110,6 +279,9 @@ def run_review(review, paper):
     stages = run['stages'] or {}
     none_found = list(stages.get('none_found') or [])
     per_slot = Counter(row.get('slot') for row in findings)
+    citations = citation_view(run['citations'], run['review'])
+    # The citation stage lines are in `problems` too. The panel shows them once, with the ledger.
+    shown_with_citations = set(citations['problems']) if citations else set()
     view = {
         'arm': run['identity']['arm'],
         'reviewer_count': run['identity']['reviewers'],
@@ -117,7 +289,7 @@ def run_review(review, paper):
         'status': run['status'],
         'cause': run['cause'],
         'note': run['note'],
-        'problems': run['problems'],
+        'problems': [line for line in run['problems'] if line not in shown_with_citations],
         'publishable': run['publishable'],
         'not_publishable_reasons': run['not_publishable_reasons'],
         'edited': edited,
@@ -137,6 +309,7 @@ def run_review(review, paper):
         'escalation_rulings': run['escalation_rulings'],
         'limitations': run['limitations'],
         'audits': audit_texts(run['reports']['audits']),
+        'citations': citations,
         'tokens_total': run['runtime']['tokens_total'],
         'wall_seconds': run['runtime']['wall_seconds'],
     }

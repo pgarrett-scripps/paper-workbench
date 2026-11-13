@@ -92,6 +92,66 @@ assert.ok(!panel.includes('<script>'));
 // The model asked is never shown as the model that ran.
 assert.ok(!panel.includes('model ran claude-haiku-5-5'));
 
+// The run panel shows the citation ledger the engine's own writer filled at 576dbc5, as run_view.py hands it over.
+context.ledgerView = JSON.parse(fs.readFileSync('tests/fixtures/citations/view.json', 'utf8'));
+vm.runInContext('review.run.citations = ledgerView; cards();', context);
+assert.ok(html('#run-panel').includes(
+  '<details class="citations" open><summary>Citations: 6 references, 8 in-text uses, check incomplete</summary>'));
+const citations = vm.runInContext('citationPanel(ledgerView)', context);
+// Abstracts, passages and worker notes are shown escaped, as quoted text.
+assert.ok(!/<img|<script/i.test(citations));
+for (const text of ['&lt;img src=x onerror=alert(1)&gt;', '&lt;script&gt;alert(2)&lt;/script&gt;']) {
+  assert.ok(citations.includes(text), text);
+}
+// Each reference state keeps its own count, and no two are added together.
+for (const text of [
+  '<p class="count">6 references: 2 found in an index · 1 DOI not held by the DOI resolver · 1 title not located in Crossref or Europe PMC · 1 could not be checked · 1 never looked up</p>',
+  '<p class="count">8 in-text uses: 1 supports · 1 partly supports · 1 does not support · 2 cannot tell · 2 not yet judged · 1 marker matches no reference</p>',
+  '<p class="count">Also flagged: 1 with a printed field that differs from the index · 1 retracted</p>',
+  '<p class="error">The citation check did not finish, so these counts do not cover the whole reference list.</p>',
+  'References to check (5)', '<strong>[2] DOI not held by the DOI resolver</strong>',
+  '<strong>[3] title not located in Crossref or Europe PMC</strong>', '<strong>[4] could not be checked</strong>',
+  '<strong>[5] found in an index</strong>', '<strong>[6] never looked up</strong>',
+  'That is weak evidence, because much of the literature is in neither index.',
+  'The lookups did not answer, so this says nothing about whether the work is real.',
+  'The printed year differs from the indexed record.',
+  'The indexed record is marked retracted (retraction 10.5555/fixture.notice).',
+  'Worker verdicts on in-text uses (8)',
+  '<strong>[1] supports, judged by cite-1</strong>', '<strong>[1] partly supports, judged by cite-1</strong>',
+  '<strong>[5] does not support, judged by cite-1</strong>', '<strong>[3] cannot tell, judged by cite-2</strong>',
+  'Source passage the worker quoted, fetched from the internet</span><br>Retromer sorts transmembrane cargo',
+  'Source passage the worker quoted, fetched from the internet</span><br>In cultured neurons the loss of VPS35 slowed',
+  'Source passage the worker quoted, fetched from the internet</span><br>The D620N variant left retromer assembly intact',
+  'The marker [7] matches no entry in the reference list.', '<strong>[4] Not yet judged.</strong>']) {
+  assert.ok(citations.includes(text), text);
+}
+assert.equal(citations.split('The worker had no source text for this reference.').length - 1, 2);
+// Outside the engine's own problem lines, nothing says a work does not exist or was made up.
+let prose = citations;
+for (const line of vm.runInContext('ledgerView.problems.map(esc)', context)) prose = prose.split(line).join('');
+assert.ok(!/not exist|fabricat|fake|made up|hallucinat/i.test(prose));
+// A planned lane with no ledger, an unreadable ledger and a ledger too large to read each say so and show no rows.
+const noLedger = vm.runInContext(`citationPanel({complete:false, ledger:false, readable:false, too_large:false, counts:{},
+  problems:['this run planned a citations lane and wrote no citation ledger, so not one reference or in-text use was checked'],
+  references:[], references_not_shown:0, uses:[], uses_not_shown:0})`, context);
+assert.ok(noLedger.startsWith('<details class="citations" open><summary>Citations</summary><p class="error">this run planned'));
+assert.ok(!noLedger.includes('class="count"'));
+const unreadable = vm.runInContext('citationPanel({...ledgerView, readable:false, counts:{}, problems:[], references:[], uses:[]})', context);
+assert.ok(unreadable.includes('The citation ledger could not be read, so the panel shows no citation counts.'));
+assert.ok(!unreadable.includes('class="count"'));
+const tooLarge = vm.runInContext('citationPanel({...ledgerView, too_large:true, references:[], uses:[]})', context);
+assert.ok(tooLarge.includes('larger than the viewer reads, so the panel shows its counts and no rows'));
+assert.ok(tooLarge.includes('6 references: 2 found in an index') && !tooLarge.includes('Worker verdicts'));
+assert.ok(vm.runInContext('citationPanel({...ledgerView, complete:true, problems:[]})', context)
+  .startsWith('<details class="citations"><summary>Citations: 6 references, 8 in-text uses</summary>'));
+assert.equal(vm.runInContext('citationPanel(null)', context), '');
+// Only https links leave the page.
+assert.equal(vm.runInContext("sourceLink('javascript:alert(1)', 'Source') + sourceLink('http://example.org', 'Source')", context), '');
+// A citation worker writes no findings, and its line says so.
+assert.equal(vm.runInContext(`agentFacts({slot:'cite-1', role:'citation-worker', track:'citations', assigned_model:'claude-haiku-5-5',
+  model:'claude-haiku-5-5', tool_calls:6, findings:0})`, context),
+  'cite-1 · citations track · citation worker, writes no findings · model asked claude-haiku-5-5 · model ran claude-haiku-5-5 · 6 tool calls');
+
 // A run that records no plan says so, and a run with every model observed shows no unverified note.
 assert.equal(vm.runInContext("agentFacts({slot:'core-1', model:'claude-opus-5-5'})", context),
              'core-1 · model asked not recorded · model ran claude-opus-5-5');

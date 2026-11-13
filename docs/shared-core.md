@@ -24,7 +24,7 @@ Every review, report and run-reading call goes through the engine's public surfa
 
 The app's `ENGINE_COMMANDS` must equal `peerreviewagents.CLI_COMMANDS`, and a test checks it, so an engine command added or renamed fails the app's tests until the app passes it on.
 
-`paper-workbench review` hands its arguments to `review_main`, so a new engine option reaches the review and `paper-workbench review -h` names the program `paper-workbench review`. The per-slot model options `--reviewer-models`, `--specialist-model`, `--editor-model` and `--recorder-model` pass through this way, and a test checks that `review -h` lists them and that a blocked run's summary records them in `models_requested`. It prints the run summary and exits 0 when the review completed, 1 when it was blocked and 2 when it never started or an argument was bad. The default arm is `full-two-track`. Without `claude` on `PATH`, the starter writes `startup.json` and a blocked `runtime.json` and launches nothing.
+`paper-workbench review` hands its arguments to `review_main`, so a new engine option reaches the review and `paper-workbench review -h` names the program `paper-workbench review`. The per-slot model options `--reviewer-models`, `--specialist-model`, `--editor-model` and `--recorder-model` pass through this way, and a test checks that `review -h` lists them and that a blocked run's summary records them in `models_requested`. So do `--citation-workers N`, from 0 to 12 with a default of 4, and `--citation-worker-model`, which `PEERREVIEW_CITATION_WORKER_MODEL` also sets. A test checks that a blocked `full-two-track` run asks for the six specialist slots `spec-stats`, `spec-figures-tables`, `spec-methods-reporting`, `spec-citations`, `spec-numbers` and `spec-field` and one `cite-N` slot per worker, and that 13 workers is refused before the run folder is made. It prints the run summary and exits 0 when the review completed, 1 when it was blocked and 2 when it never started or an argument was bad. The default arm is `full-two-track`. Without `claude` on `PATH`, the starter writes `startup.json` and a blocked `runtime.json` and launches nothing.
 
 `paper-workbench report` hands its arguments to `report_main`, and `paper-workbench report -h` names the program `paper-workbench report`. It renders `REVIEW.md` and `REVIEW.txt` for any run, a stopped or startup-blocked one included, and exits 0. It prints JSON with `status`, `cause`, `findings`, `publishable`, `not_publishable_reasons`, `problems` and one key per report path. A path that is not a run, or a symlinked run file, is named on stderr with exit 1.
 
@@ -40,7 +40,7 @@ No module under `paper_workspace/` or `tests/` imports `peerreviewagents.engine`
 
 ## What the app reads from a run
 
-`run_view.py` calls `read_run` and never opens a run file itself. Nothing in the app writes to `RUN/review`. `read_run` refuses a symlink anywhere under the review folder, and the app shows that refusal as a plain error. It names any file it could not read in full in `problems`, and the run panel shows each one.
+`run_view.py` calls `read_run` and opens one run file itself, the citation ledger at the path `read_run` gives in `citations.ledger`. The section on the citation ledger below says how. Nothing in the app writes to `RUN/review`. `read_run` refuses a symlink anywhere under the review folder, and the app shows that refusal as a plain error. It names any file it could not read in full in `problems`, and the run panel shows each one.
 
 | `read_run` key | What the viewer does with it |
 | --- | --- |
@@ -56,14 +56,31 @@ No module under `paper_workspace/` or `tests/` imports `peerreviewagents.engine`
 | `agents[].assigned_model`, `agents[].model` | each agent line shows both, as "model asked" and "model ran". A `model` of `None` shows as "model ran not recorded" and is never filled from `assigned_model` |
 | `identity.models_unverified` | a run panel note naming the slots with a model asked and no model ran, when the list is not empty |
 | `reports.audits` | each specialist report, read as plain text up to 400,000 bytes |
+| `agents[].role` | a `citation-worker` line says the worker writes no findings |
+| `citations.enabled` | whether the run panel has a citation section. A run whose plan has no citations lane has none |
+| `citations.ledger` | the ledger path the panel reads rows from. `None` on a planned lane means no reference or use was checked, and the engine's problem line says so |
+| `citations.counts` | one line for the references and one for the uses. `resolved`, `not_found`, `not_located`, `could_not_check` and `unresolved` each keep their own count and are never added together. Empty `counts` means the ledger could not be read |
+| `citations.complete`, `citations.problems` | a line saying the check did not finish, and each problem line once, in the citation section. The engine puts those lines in `problems` as well, and the run panel leaves them out there |
 
 The engine writes `protocol.json` and `manifest.json` only when the run finishes or is marked blocked. A run the starter stopped early, from a token ceiling, a timeout, a rate limit or a session error, has neither. The viewer still opens it with its status, its cause and the findings in the ledger. Each finding's `block_sha256` then pins the manuscript version. Its arm and reviewer count are empty, because `read_run` takes them only from `protocol.json` or the plan. A run blocked at startup, or stopped before it imported the manuscript, has nothing to show, so `serve` prints its status and cause and exits 1.
 
-A run written before engine commit bfc8aae recorded no model asked per slot, so each of its agent lines shows "model asked not recorded" and its `models_unverified` is empty. A slot that ran a different model family than it was asked is in `problems` and `not_publishable_reasons`, and the run panel shows it there.
+A run written before engine commit bfc8aae recorded no model asked per slot, so each of its agent lines shows "model asked not recorded" and its `models_unverified` is empty. A slot that ran a different model family than it was asked is in `problems` and `not_publishable_reasons`, and the run panel shows it there. A `cite-N` citation worker holds no review, so its mismatch is a `problems` line only and the run stays publishable.
 
 Each finding keeps the annotation keys the viewer already used (`kind`, `block_id`, `quote`, `start`, `end`, `placement`, `comment`, `replacement`, `evidence_blocks`) and adds `finding_uid`, `slot`, `track`, `basis`, `basis_reason` and `escalate`. Body findings add `editor_reason`, `reviewers_raising` and `duplicate_uids`. Appendix findings add `editor_placement`, `duplicate_of` and `rebuttal_quote`.
 
 The viewer keys a finding by `finding_uid`, because the engine's finding `id` can repeat across reviewers. `read_run` keeps one row per uid. If a uid is missing or malformed, the viewer numbers the findings instead.
+
+## The citation ledger
+
+Engine commit 576dbc5 plans six specialist lanes, `stats`, `figures-tables`, `methods-reporting`, `citations`, `numbers` and `field`. The lane that checks the manuscript's numbers against each other is `numbers`, with slot `spec-numbers`, report `audit_numbers.md` and finding track `numbers`. The app keeps no other name for it. The citations lane fills `review/citations/ledger.jsonl`, an append-only table of the reference list and every in-text use, with `citations/lookups/` and `citations/stages.json` beside it. Citation workers `cite-1` to `cite-N` judge each use against the source text the ledger fetched. They write no findings.
+
+The engine has no public reader for the ledger rows, so `ledger_rows` replays the file with the engine's rule. The last row for each `row_id` wins, and a line that is not a JSON row is skipped, as the engine skips and counts it. It reads only a file inside the review folder, not through a symlink, and at most 32,000,000 bytes. A larger ledger shows its counts and no rows, because part of an append-only file can show a row as it was before its last write.
+
+The run panel lists the references that need a second look and every in-text use, the ones a reader should check first at the top, at most 500 of each. A reference is found in an index, has a DOI the DOI resolver does not hold, has a title neither Crossref nor Europe PMC lists, could not be checked because the lookups did not answer, or was never looked up. The panel never turns a title it could not locate, or a lookup that did not answer, into a claim that a work does not exist. A use shows its sentence, the worker's verdict (supports, partly supports, does not support or cannot tell), the source passage the worker quoted and its note. Passages and notes came from the internet or from a model, so the panel shows them escaped as quoted text, cuts each at 1,500 characters and links only `https` URLs. The abstract a worker read stays in the run folder.
+
+`read_run` reads an unreadable ledger as a damaged run file. Its line is in `problems`, the counts are empty and the run is not publishable. A torn last line is counted in `unreadable_rows` and the rows before it stand.
+
+`tests/fixtures/citations` holds a ledger the engine's own writer filled at commit 576dbc5, and its README says how to make it again.
 
 ## Versioning
 

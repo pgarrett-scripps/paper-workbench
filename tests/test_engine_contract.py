@@ -49,7 +49,8 @@ class AppCommandTest(unittest.TestCase):
         output = io.StringIO()
         with contextlib.redirect_stdout(output), self.assertRaises(SystemExit):
             main(['review', '-h'])
-        for flag in ('--reviewer-models', '--specialist-model', '--editor-model', '--recorder-model'):
+        for flag in ('--reviewer-models', '--specialist-model', '--editor-model', '--recorder-model',
+                     '--citation-workers', '--citation-worker-model'):
             self.assertIn(flag, output.getvalue())
 
 
@@ -89,6 +90,27 @@ class EngineCommandTest(unittest.TestCase):
         self.assertEqual((status, report['status']), (0, 'blocked'))
         self.assertIn('claude is not installed', report['cause'])
 
+    def test_review_plans_the_six_specialist_lanes_and_the_citation_workers(self):
+        empty = self.root / 'bin'
+        empty.mkdir()
+        with patch.dict(os.environ, {'PATH': str(empty)}):
+            status, summary = run_main(['review', str(self.pdf), str(self.root / 'run'), '--arm', 'full-two-track',
+                                        '--reviewers', '2', '--citation-workers', '2',
+                                        '--citation-worker-model', 'claude-opus-5-5'])
+        self.assertEqual((status, summary['status'], summary['stage']), (2, 'blocked', 'startup'))
+        requested = summary['models_requested']
+        self.assertLessEqual({f'spec-{lane}' for lane in ('stats', 'figures-tables', 'methods-reporting',
+                                                          'citations', 'numbers', 'field')}, set(requested))
+        self.assertEqual({slot: model for slot, model in requested.items() if slot.startswith('cite-')},
+                         {'cite-1': 'claude-opus-5-5', 'cite-2': 'claude-opus-5-5'})
+        self.assertNotIn('spec-consistency', requested)
+        # The engine accepts 0 to 12 workers and refuses more before it plans anything.
+        stderr = io.StringIO()
+        with contextlib.redirect_stderr(stderr), self.assertRaises(SystemExit):
+            main(['review', str(self.pdf), str(self.root / 'other'), '--citation-workers', '13'])
+        self.assertIn('--citation-workers', stderr.getvalue())
+        self.assertFalse((self.root / 'other').exists())
+
     def test_report_renders_a_finished_run_from_the_run_folder(self):
         from test_run_view import make_run
         make_run(self.root / 'run')
@@ -101,7 +123,10 @@ class EngineCommandTest(unittest.TestCase):
         self.assertTrue(paths)
         for path in paths.values():
             self.assertTrue(Path(path).is_file(), path)
-        self.assertIn('One central question.', (self.root / 'run' / 'review' / 'REVIEW.md').read_text())
+        text = (self.root / 'run' / 'review' / 'REVIEW.md').read_text()
+        self.assertIn('One central question.', text)
+        # The engine renders the citation ledger into REVIEW.md as its own section.
+        self.assertIn('\n## Citations\n', text)
 
 
 class EngineOutputContractTest(unittest.TestCase):

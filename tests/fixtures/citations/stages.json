@@ -1,0 +1,29 @@
+{
+  "fill": {
+    "done": true,
+    "references": 6,
+    "uses": 8,
+    "added": 14,
+    "at": "2026-11-13T07:39:27.955551+00:00"
+  },
+  "resolve": {
+    "done": false,
+    "resolved": 2,
+    "references": 6,
+    "remaining": 2,
+    "retry_after": 0,
+    "retry_wait": 300,
+    "lookups": 13,
+    "at": "2026-11-13T07:39:27.968538+00:00"
+  },
+  "judge": {
+    "done": false,
+    "verdicts": 5,
+    "uses": 7,
+    "workers": [
+      "cite-1",
+      "cite-2"
+    ],
+    "at": "2026-11-13T07:39:27.973751+00:00"
+  }
+}

@@ -122,7 +122,7 @@ function runStatus(run){
 function agentFacts(row){
  const tasks=(row.labels||[]).filter(label=>label!==row.slot);
  const raises=['core','specialist'].includes(row.role)||row.findings>0||row.none_found;
- return [row.slot,row.track&&`${row.track} track`,`model asked ${row.assigned_model||'not recorded'}`,
+ return [row.slot,row.track&&`${row.track} track`,row.role==='citation-worker'&&'citation worker, writes no findings',`model asked ${row.assigned_model||'not recorded'}`,
   `model ran ${row.model||'not recorded'}`,Number.isInteger(row.attempt)&&`attempt ${row.attempt}`,
   Number.isInteger(row.tool_calls)&&`${row.tool_calls} tool calls`,Number.isFinite(row.tokens)&&`${row.tokens} tokens`,row.state,
   tasks.length&&`tasks ${tasks.join(', ')}`,
@@ -132,6 +132,67 @@ function unverifiedNote(slots){
  if(!(slots||[]).length)return '';
  const one=slots.length===1;
  return `The model that ran was not recorded for ${slots.length} ${one?'slot':'slots'} (${slots.join(', ')}), so the model asked for ${one?'it':'them'} is unverified.`;
+}
+// The citation ledger. Each reference state keeps its own count, and none of them is read as a verdict on whether a work is real.
+const REFERENCE_STATES={'yes':'found in an index','no':'DOI not held by the DOI resolver','not located':'title not located in Crossref or Europe PMC',
+ 'could not check':'could not be checked','never looked up':'never looked up','not recorded':'state not recorded'};
+const PRINTED_FIELDS={title:'title',first_author:'first author',year:'year',venue:'venue'};
+const quoted=(label,text)=>text?`<blockquote class="untrusted"><span class="muted">${esc(label)}</span><br>${esc(text)}</blockquote>`:'';
+const sourceLink=(url,text)=>typeof url==='string'&&url.startsWith('https://')?`<a href="${esc(url)}" target="_blank" rel="noopener noreferrer">${esc(text)}</a>`:'';
+const workText=work=>[work.first_author,work.year,work.title,work.venue,work.doi&&`DOI ${work.doi}`].filter(Boolean).join('. ');
+function referenceNotes(row){
+ const state={'no':`The reference list gives DOI ${row.printed.doi||'(not recorded)'} and the DOI resolver has no record of it. Check it against the PDF.`,
+  'not located':'Neither Crossref nor Europe PMC lists this title. That is weak evidence, because much of the literature is in neither index.',
+  'could not check':'The lookups did not answer, so this says nothing about whether the work is real.',
+  'never looked up':'This reference was never looked up.',
+  'not recorded':'The ledger holds a lookup for this reference with a state the viewer does not know.'}[row.state];
+ const fields=row.mismatched.map(field=>PRINTED_FIELDS[field]||field);
+ return [state,fields.length&&`The printed ${fields.join(' and ')} ${fields.length===1?'differs':'differ'} from the indexed record.`,
+  row.retracted&&`The indexed record is marked retracted${row.retraction_notice?` (${row.retraction_notice})`:''}.`,
+  row.printed_doi_registered===false&&row.state!=='no'&&(row.printed_doi_source==='raw'
+   ?'The DOI read off the reference text is not registered with any agency. A DOI broken across a line looks the same, so check the PDF.'
+   :'The DOI the reference list gives is not registered with any agency.'),
+  row.candidate&&'A work with a similar title was found, and nothing confirms it is this one.',
+  row.error&&'Looking this reference up failed inside the ledger.'].filter(Boolean);
+}
+function referenceItem(row){
+ const lookups=row.lookups.length?`Lookup results: ${row.lookups.join(', ')}`:'';
+ const link=sourceLink(row.source_url,'Source record');
+ return `<li><strong>[${esc(row.label||'?')}] ${esc(REFERENCE_STATES[row.state]||row.state)}</strong>${quoted('Printed in the manuscript',workText(row.printed))}${referenceNotes(row).map(text=>`<p>${esc(text)}</p>`).join('')}${row.record?quoted('Indexed record, fetched from the internet',workText(row.record)):''}${row.candidate?quoted('Similar title, fetched from the internet',workText(row.candidate)):''}${lookups||link?`<p class="muted">${esc(lookups)}${lookups&&link?' · ':''}${link}</p>`:''}</li>`;
+}
+function useVerdict(row){
+ if(!row.reference_id)return `The marker ${row.marker||'(not recorded)'} matches ${row.ambiguous?'more than one entry':'no entry'} in the reference list.`;
+ if(!row.verdict)return row.claimed_by?`Not yet judged. ${row.claimed_by} claimed it and left no verdict.`:'Not yet judged.';
+ return `${row.verdict}, judged by ${row.judged_by||'a worker not recorded'}`;
+}
+function useItem(row){
+ const where=[row.section&&esc(row.section),row.block_id&&`<a href="#${esc(row.block_id)}">Go to passage</a>`,
+  sourceLink(row.source_url,row.source_kind?`Source ${row.source_kind}`:'Source')].filter(Boolean).join(' · ');
+ const blind=row.verdict==='cannot tell'&&(!row.source_kind||row.source_kind==='none')?'<p class="muted">The worker had no source text for this reference.</p>':'';
+ return `<li data-verdict="${esc(row.verdict||'none')}"><strong>${row.label?`[${esc(row.label)}]`:''} ${esc(useVerdict(row))}</strong>${quoted('Sentence in the manuscript',row.sentence)}${quoted('Source passage the worker quoted, fetched from the internet',row.passage)}${quoted('Worker note',row.note)}${blind}${where?`<p class="muted">${where}</p>`:''}</li>`;
+}
+function citationCounts(counts){
+ const line=(total,noun,pairs,always)=>`${total??0} ${noun}: ${pairs.filter(([key])=>always||counts[key]).map(([key,label])=>`${counts[key]??0} ${label}`).join(' · ')}`;
+ const lines=[line(counts.references,'references',[['resolved','found in an index'],['not_found','DOI not held by the DOI resolver'],
+   ['not_located','title not located in Crossref or Europe PMC'],['could_not_check','could not be checked'],['unresolved','never looked up']],true),
+  line(counts.uses,'in-text uses',[['supported','supports'],['partly_supported','partly supports'],['not_supported','does not support'],
+   ['cannot_tell','cannot tell'],['uses_unjudged','not yet judged'],['uses_unmatched','marker matches no reference']],true)];
+ const flagged=[['mismatched','with a printed field that differs from the index'],['retracted','retracted'],['candidates','with an unconfirmed similar title']].filter(([key])=>counts[key]);
+ if(flagged.length)lines.push(`Also flagged: ${flagged.map(([key,label])=>`${counts[key]} ${label}`).join(' · ')}`);
+ return lines;
+}
+function citationPanel(citations){
+ if(!citations)return '';
+ const counts=citations.counts||{},shown=citations.ledger&&citations.readable;
+ const lines=[!citations.ledger?'':!citations.readable?'The citation ledger could not be read, so the panel shows no citation counts. The run problems above say why.'
+   :citations.too_large?'The citation ledger is larger than the viewer reads, so the panel shows its counts and no rows.':'',
+  shown&&!citations.complete&&'The citation check did not finish, so these counts do not cover the whole reference list.',
+  ...citations.problems].filter(Boolean);
+ const more=(count,noun)=>count?`<p class="muted">${esc(count)} more ${noun} not shown.</p>`:'';
+ const references=citations.references.length?`<details><summary>References to check (${citations.references.length})</summary><ul>${citations.references.map(referenceItem).join('')}</ul>${more(citations.references_not_shown,'references')}</details>`:'';
+ const uses=citations.uses.length?`<details><summary>Worker verdicts on in-text uses (${citations.uses.length})</summary><ul>${citations.uses.map(useItem).join('')}</ul>${more(citations.uses_not_shown,'uses')}</details>`:'';
+ const title=shown?`Citations: ${counts.references??0} references, ${counts.uses??0} in-text uses${citations.complete?'':', check incomplete'}`:'Citations';
+ return `<details class="citations"${citations.complete&&!citations.problems.length?'':' open'}><summary>${esc(title)}</summary>${shown?citationCounts(counts).map(text=>`<p class="count">${esc(text)}</p>`).join(''):''}${lines.map(text=>`<p class="error">${esc(text)}</p>`).join('')}${references||uses?'<p class="muted">Indexed records and source passages were fetched from the internet, and the notes were written by a citation worker. The panel shows them as quoted text.</p>':''}${references}${uses}</details>`;
 }
 function runPanel(){
  const run=review.run;
@@ -155,7 +216,7 @@ function runPanel(){
  const auditHtml=audits.length?`<details><summary>Specialist reports (${audits.length})</summary>${audits.map(([track,text])=>`<details class="audit"><summary>${esc(track)}</summary><pre>${esc(text)}</pre></details>`).join('')}</details>`:'';
  const reviewers=run.agents||[],tracks=Object.entries(run.findings_by_track||{});
  const reviewerHtml=reviewers.length||tracks.length?`<details><summary>Agents (${reviewers.length})</summary><ul>${reviewers.map(row=>`<li>${agentFacts(row)}</li>`).join('')}</ul>${tracks.length?`<p class="muted">Findings by track: ${tracks.map(([track,count])=>`${esc(track)} ${esc(count)}`).join(' · ')}</p>`:''}</details>`:'';
- $('#run-panel').innerHTML=`<p class="count">${facts.map(esc).join(' · ')}</p>${warnings.map(text=>`<p class="error">${esc(text)}</p>`).join('')}${unverified?`<p class="unverified">${esc(unverified)}</p>`:''}${verdictHtml}${auditHtml}${reviewerHtml}${(run.limitations||[]).map(text=>`<p class="muted">${esc(text)}</p>`).join('')}`;
+ $('#run-panel').innerHTML=`<p class="count">${facts.map(esc).join(' · ')}</p>${warnings.map(text=>`<p class="error">${esc(text)}</p>`).join('')}${unverified?`<p class="unverified">${esc(unverified)}</p>`:''}${verdictHtml}${citationPanel(run.citations)}${auditHtml}${reviewerHtml}${(run.limitations||[]).map(text=>`<p class="muted">${esc(text)}</p>`).join('')}`;
 }
 function card(item){
  const wording=decisions.items[item.id]||'proposed';
