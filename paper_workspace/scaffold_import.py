@@ -9,8 +9,7 @@ import re
 import shutil
 import tempfile
 
-from peerreviewagents.engine.ingest import words
-from peerreviewagents.engine.storage import digest, write
+from peerreviewagents.workspace import digest, words, write_json
 
 from .source_edits import NATIVE_CITATION
 
@@ -409,13 +408,13 @@ def import_scaffold(source, output, title=None):
         paper = _paper(copied, title)
         if paper.get('port_provenance') and (copied/'source/original.pdf').is_file():
             shutil.copyfile(copied/'source/original.pdf', temporary/'original.pdf')
-        write(temporary / "paper.json", paper)
+        write_json(temporary / "paper.json", paper)
         files = {
             path.relative_to(temporary).as_posix(): digest(path.read_bytes())
             for path in sorted(temporary.rglob("*"))
             if path.is_file() and path != temporary / "manifest.json"
         }
-        write(temporary / "manifest.json", {"paper_id": paper["id"], "files": files})
+        write_json(temporary / "manifest.json", {"paper_id": paper["id"], "files": files})
         if output.exists():
             output.rmdir()
         os.replace(temporary, output)

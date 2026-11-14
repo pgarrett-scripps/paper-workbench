@@ -40,7 +40,7 @@ python3 /home/ty/Repos/insilico/experiments/peerreview_validation_v5/study.py pi
 
 The heartbeat `finish-peer-review-codex-pilot` was paused after completion, then
 repurposed for the separate three-paper retest described in
-`docs/pra-small-retest-status.md`. It must not restart this completed pilot. Any future run must
+`docs/pra-small-retest-status.md`, deleted and kept at commit 148ebf6. It must not restart this completed pilot. Any future run must
 inspect existing processes before starting anything. Sandboxed process listings
 may not show the host process, so an empty sandbox list does not prove it stopped.
 Read runtime `status.json`, `generation/`, `evaluation/`, and `report.json` for

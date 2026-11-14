@@ -4,11 +4,11 @@ import tempfile
 import unittest
 from unittest.mock import patch
 
-from paper_workspace.annotations import normalize_review
+from peerreviewagents.workspace import digest, normalize_review, write_json
+
 from paper_workspace.revisions import create_revision, head, snapshot
 from paper_workspace.scaffold_import import import_scaffold
 from paper_workspace.scaffold_port import port_workspace
-from paper_workspace.storage import digest, write
 
 
 class CitationEdits(unittest.TestCase):
@@ -25,9 +25,9 @@ class CitationEdits(unittest.TestCase):
         blocks = [{'id': bid, 'section': section, 'kind': 'paragraph', 'text': text,
                    'sha256': digest(text), 'page': 1, 'citations': ['r1', 'r2']}
                   for bid, section, text in texts]
-        write(source / 'paper.json', {'id': 'input', 'title': 'Fixture', 'source_sha256': 'input',
+        write_json(source / 'paper.json', {'id': 'input', 'title': 'Fixture', 'source_sha256': 'input',
             'blocks': blocks, 'references': [], 'statistics': {'pdf_pages': 1}})
-        write(source / 'manifest.json', {'files': {'paper.json': digest((source / 'paper.json').read_bytes())}})
+        write_json(source / 'manifest.json', {'files': {'paper.json': digest((source / 'paper.json').read_bytes())}})
         output = self.root / 'workspace'
         paper = port_workspace(source, output)
         return output, paper

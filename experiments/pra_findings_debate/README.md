@@ -5,7 +5,7 @@ auditors, and two advocate-skeptic rounds. Stable findings pass through debate a
 editorial selection without being rewritten. Every finding receives a disposition.
 Definitive synthesis outcomes without valid manuscript locations become unresolved.
 
-The plan is in `docs/pra-small-retest-plan.md`. The fixed protocol selects three
+The plan was `docs/pra-small-retest-plan.md`, deleted and kept at commit 148ebf6. The fixed protocol selects three
 previously exposed development papers. It compares revised generation with saved
 original PRA and single-agent reviews, applying the same new source-paragraph
 extractor and two scoring passes to all three conditions.

@@ -3,9 +3,10 @@ from pathlib import Path
 import tempfile
 import unittest
 
-from paper_workspace.annotations import verify_workspace
+from peerreviewagents import verify_workspace
+from peerreviewagents.workspace import digest, write_json
+
 from paper_workspace.scaffold_port import port_workspace
-from paper_workspace.storage import digest, write
 
 
 class ScaffoldPort(unittest.TestCase):
@@ -26,9 +27,9 @@ class ScaffoldPort(unittest.TestCase):
             paper={'id':'original','title':'Real source test','source_sha256':'source',
                    'blocks':blocks,'references':[{'id':'ref1','raw':'Reference text'}],
                    'statistics':{'pdf_pages':1},'source_url':'https://example.org/paper'}
-            write(source/'paper.json',paper)
+            write_json(source/'paper.json',paper)
             (source/'original.pdf').write_bytes(b'Original PDF fixture bytes')
-            write(source/'manifest.json',{'files':{p.name:digest(p.read_bytes()) for p in source.iterdir()}})
+            write_json(source/'manifest.json',{'files':{p.name:digest(p.read_bytes()) for p in source.iterdir()}})
             output=root/'ported'
             ported=port_workspace(source,output)
             verify_workspace(output)

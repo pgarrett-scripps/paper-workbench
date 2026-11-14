@@ -1,5 +1,7 @@
 # Engine and app split map
 
+Historical record. This inventory planned the 0.8 split. Engine 0.9.0 later removed the Python review orchestration, and this app no longer carries `paper_workbench_core` or the aliases for the removed modules. See [the engine contract](shared-core.md) for the current boundary.
+
 Snapshot: 9 November 2026, `main` at `c88cbba` (core 0.1.8). This is an inventory. No code has moved.
 
 The review engine moves to PeerReviewAgents (package `peerreviewagents`, new breaking release). Paper Workbench keeps the app: the `serve` viewer, the revision workflow, proposed edits and exports. `paper_workbench_core` stays here as a thin shim that re-exports the engine API.

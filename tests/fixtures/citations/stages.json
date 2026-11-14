@@ -1,0 +1,5 @@
+{
+  "fill": {"done": true, "references": 6, "uses": 8},
+  "resolve": {"done": false, "references": 6, "resolved": 2, "remaining": 2, "lookups": 13},
+  "judge": {"done": false, "uses": 7, "verdicts": 5, "workers": ["cite-1", "cite-2"]}
+}

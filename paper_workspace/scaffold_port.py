@@ -5,8 +5,8 @@ import shutil
 import tempfile
 from pathlib import Path
 
-from peerreviewagents.engine.annotations import verify_workspace
-from peerreviewagents.engine.storage import digest, read, write
+from peerreviewagents import verify_workspace
+from peerreviewagents.workspace import digest, read_json, write_json
 
 from .scaffold_import import import_scaffold
 from .source_edits import TEXT_LITERAL, literal_value
@@ -66,10 +66,10 @@ def port_workspace(source, output):
                 'document':block.get('document','main'), 'table':block.get('table')})
         lines.append('// <<< BODY END')
         (project / 'paper.typ').write_text('\n\n'.join(lines) + '\n')
-        write(project / 'pra-port.json', provenance)
+        write_json(project / 'pra-port.json', provenance)
         originals = project / 'source'
         originals.mkdir()
-        for name, sha in read(source / 'manifest.json')['files'].items():
+        for name, sha in read_json(source / 'manifest.json')['files'].items():
             if name not in ('original.pdf', 'original.xml') and not name.startswith('supplements/'):
                 continue
             target = originals / name
@@ -86,7 +86,7 @@ def port_context(root, blocks):
     path = root / 'pra-port.json'
     if not path.is_file():
         return None
-    port = read(path)
+    port = read_json(path)
     records = {row['file']: row for row in port['blocks'] if row['role'] != 'abstract'}
     result = []
     for block in blocks:

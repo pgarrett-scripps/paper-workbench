@@ -1,12 +1,12 @@
 # Paper Workbench publication roadmap
 
-Status: proposed plan, 6 October 2026. No new inference or study launch is authorized by this document. Dataset size and execution budget remain provisional until calibration. Preserve historical results and freeze the main study before running it.
+Status: proposed plan, 6 October 2026. Updated 12 November 2026 for the PeerReviewAgents 0.9.0 engine, whose study arms replace the 0.8 workflows and the debate. No new inference or study launch is authorized by this document. Dataset size and execution budget remain provisional until calibration. Preserve historical results and freeze the main study before running it.
 
 ## Position and intended contribution
 
 Working title: **Paper Workbench: an evidence-linked framework for manuscript review and revision**.
 
-The research question is whether structured manuscript access, targeted evidence gathering and auditable review synthesis improve useful scientific feedback and its translation into manuscript revisions. Debate is one configurable strategy whose value must be measured. It is not a result we assume in advance.
+The research question is whether structured manuscript access, targeted evidence gathering and auditable review synthesis improve useful scientific feedback and its translation into manuscript revisions. The specialist tracks and the editor are one configurable strategy whose value must be measured. It is not a result we assume in advance.
 
 Build a full research article with Introduction, Results, Methods and Discussion, approximately 4,000 to 6,000 main-text words if the findings justify that length. Preserve the existing Nature Methods correspondence as a historical manuscript. Reuse appropriate Paper Scaffold authoring infrastructure, not its old specialist-panel narrative.
 
@@ -15,13 +15,13 @@ Scope includes scientific critique, reporting gaps, citation verification, prose
 ## Verified starting point
 
 - The private Paper Workbench repository exists at https://github.com/pgarrett-scripps/paper-workbench. The original In Silico repository and historical runs remain intact.
-- The shared core is housed in this repository. It exposes manuscript loading, evidence access, review validation and review execution. The benchmark consumes the core rather than copying the engine.
+- The review engine is PeerReviewAgents 0.9.0, a separate repository. It owns manuscript loading, evidence access, review validation and review execution. The benchmark consumes the engine rather than copying it.
 - The application provides manuscript presentation, located review findings, author decisions, revision workflows and exports. These capabilities need empirical validation as part of the contribution.
-- Current public review workflows are `independent` and `ensemble`. Both have tools. Independent mode is not a manuscript-only baseline.
-- Workflow structure is still substantially encoded in implementation. Configurable reviewer count is useful but does not yet establish a composable framework.
-- Local model and structured-call extensions are uncommitted as of this inspection. The current transport supports five specified models through one subscription provider. A provider-neutral interface is a design goal, not demonstrated portability.
+- The engine's study arms are `full-two-track`, `reviewers-only`, `single`, `single-revision` and `manuscript-only`. `manuscript-only` is one reviewer with the manuscript text only, no pages and no lookups. The 0.8 workflows, `independent`, `ensemble` and the debate, are frozen at the PeerReviewAgents `v0.8.0` release.
+- An arm is a setting of one workflow, recorded in `protocol.json` beside the workflow hash. The reviewer count and the arm are configurable, but that does not yet establish a composable framework.
+- A review runs in headless Claude Code on a Claude subscription, with the model pinned per agent. The 0.8 Codex transport is gone. A provider-neutral interface is a design goal, not demonstrated portability.
 - The completed subscription benchmark v2 attempted 10 review workflows across five models. Nine produced valid outputs and 18 grades were valid. It used 48 model sessions and 1,972,015 observed tokens. This was live inference on one fictional manuscript and its corrected counterpart, not a real-paper validation cohort. All four fully completed model pairs detected the planted targets without target false alarms. There are no expert-adjudicated grades. This is an engineering pilot with a ceiling effect, not evidence for model rankings.
-- The focused debate development comparison did not establish improvement. Both reviews received 8/10 and contained the same five valid issue groups. The judge narrowly preferred the saved review. Structural preservation of issues did not preserve every useful qualification. See `docs/pra-focused-debate-results.md`.
+- The focused debate development comparison, on the 0.8 engine, did not establish improvement. Both reviews received 8/10 and contained the same five valid issue groups. The judge narrowly preferred the saved review. Structural preservation of issues did not preserve every useful qualification. See `docs/pra-focused-debate-results.md`.
 - Initial extraction passed local tests and package smoke checks. Hosted CI was blocked by an account billing or spending-limit issue. Local changes need fresh validation before a release is frozen.
 
 Local benchmark evidence: `/home/ty/Repos/insilico/runs/subscription-benchmark-v2/completion.json` and `/home/ty/Repos/insilico/runs/subscription-benchmark-v2/report/results.json`.
@@ -42,7 +42,7 @@ The expert-assessment literature also supports evaluating correctness, significa
 1. Consolidate the current shared-core and benchmark integration changes with their owner. Run relevant tests, resolve the hosted CI blocker when account access permits, and tag an immutable study release.
 2. Introduce a versioned configuration covering workflow recipe, reviewer count, prompts, model, evidence profile, synthesis policy, revision policy and budget. Persist the resolved configuration and code hashes with every run.
 3. Define stable stage inputs and outputs for manuscript access, candidate findings, evidence checks, synthesis decisions and proposed patches. Preserve provenance and unresolved findings across stages.
-4. Provide three tested presets: manuscript-only single reviewer, workspace-assisted single reviewer, and workspace-assisted multi-reviewer with debate. Enforce tool restrictions in execution, not only in prompts. The manuscript-only baseline must still receive a fair, complete rendering of the manuscript and permitted figures.
+4. Use three engine arms: `manuscript-only`, one reviewer with no evidence tools, `single`, one reviewer with the workspace and evidence tools, and `full-two-track`, core reviewers and six specialist tracks with the editor. Enforce tool restrictions in execution, not only in prompts. The manuscript-only baseline must still receive a fair, complete rendering of the manuscript and permitted figures. The engine's `manuscript-only` arm gives text only, with no pages, so baseline figure access must be decided before the study is frozen.
 5. Expose a model transport interface without claiming arbitrary-provider support. A second working adapter is required before claiming demonstrated cross-provider portability. It is not necessary to implement many providers for the first paper.
 6. Restrict follow-up synthesis to findings affected by new evidence. Preserve unrelated recommendations and uncertainty language. Test semantic information retention in addition to identifier coverage.
 7. Preserve anchored edits, original text, version history and reversibility. Bounded automated revision must leave missing data or author decisions unresolved rather than manufacture answers.
@@ -73,15 +73,15 @@ Run one fixed model, provisionally Terra, across three conditions on every paper
 
 | Condition | Manuscript and evidence access | Review strategy |
 | --- | --- | --- |
-| A | Complete manuscript, no external review tools | One reviewer, one pass |
-| B | Structured workspace and allowed evidence tools | One reviewer, one pass |
-| C | Same workspace and allowed evidence tools | Two independent reviewers and debate synthesis |
+| A, `manuscript-only` | Complete manuscript, no external review tools | One reviewer, one pass |
+| B, `single` | Structured workspace and allowed evidence tools | One reviewer, one pass |
+| C, `full-two-track` | Same workspace and allowed evidence tools | Core reviewers and six specialist tracks, then the editor |
 
-This produces 72 review outputs, not 72 model calls. C consumes additional review and synthesis sessions. A versus B estimates the workspace-plus-tools bundle. B versus C compares deployable workflows with different effort, so it cannot by itself isolate debate or prove efficiency.
+This produces 72 review outputs, not 72 model calls. C consumes additional reviewer, specialist and editor sessions. A versus B estimates the workspace-plus-tools bundle. B versus C compares deployable workflows with different effort, so it cannot by itself isolate the specialist tracks or the editor, or prove efficiency.
 
 Prespecify C versus B as the primary usefulness comparison. Report B versus A and C versus A as secondary comparisons with appropriate uncertainty and multiplicity handling. A null result is a valid finding. Do not change the primary comparison after seeing results.
 
-On eight prespecified papers, compare debate with an ordinary synthesis using the identical saved reviewer drafts, evidence and a matched synthesis budget. This is the focused debate ablation. Preserve full drafts so an evaluator can identify useful findings gained, lost, weakened or appropriately rejected.
+On eight prespecified papers, compare `full-two-track` with `reviewers-only`, which keeps the core reviewers and the editor and drops the specialist tracks. This is the specialist-track ablation. Preserve the full finding ledgers and editor packages so an evaluator can identify useful findings gained, lost, weakened or appropriately rejected. A debate ablation needs the frozen PeerReviewAgents `v0.8.0` engine and is not part of this study.
 
 After the main comparison is technically sound, an optional second-model replication on eight prespecified papers tests whether conclusions depend on Terra. Avoid multiplying all models by all domains and workflows in the first study.
 
@@ -121,7 +121,7 @@ Use manual checks for scientific meaning on this subset. Demonstrating patch int
 
 1. Framework architecture and one end-to-end example from source passage to evidence, criticism and revision.
 2. Main three-condition comparison with paper-level paired outcomes and uncertainty.
-3. Debate ablation, showing useful concerns and qualifications gained, retained, lost or rejected.
+3. Specialist-track ablation, showing useful concerns and qualifications gained, retained, lost or rejected.
 4. Quality, token use and completion tradeoffs, with limited second-model replication if completed.
 5. Revision validation, combining aggregate error measurements with a concrete manuscript example.
 
@@ -136,12 +136,12 @@ arXiv is the likely first venue for a framework and AI evaluation article. Categ
 
 Before submission, require a frozen release, reproducible benchmark protocol, completed primary comparisons, transparent failure accounting, appropriately scoped claims and validated revision examples. Plan an archival code release and shareable evaluation artifacts, respecting manuscript licenses. The repository remains private until public release is separately authorized.
 
-The defensible paper can show which configurations help, where they fail and how traceable revision works. It does not need to claim that debate always wins. If the full workflow does not improve usefulness or deliver another measured practical benefit, revise the product defaults and paper claims accordingly.
+The defensible paper can show which configurations help, where they fail and how traceable revision works. It does not need to claim that the full workflow always wins. If the full workflow does not improve usefulness or deliver another measured practical benefit, revise the product defaults and paper claims accordingly.
 
 ## Immediate implementation order
 
 1. Consolidate current code and write the study protocol and related-work comparison.
-2. Complete configurable presets, true baseline, finding preservation and judge evidence parity.
+2. Confirm the three arms, the true baseline, finding preservation and judge evidence parity.
 3. Run offline validation and then the separately authorized two-paper calibration.
 4. Freeze release, corpus and analysis plan, and obtain the larger execution budget before launch.
 5. Execute the real-paper comparison, targeted ablation and revision assessment, then write results from preserved artifacts.

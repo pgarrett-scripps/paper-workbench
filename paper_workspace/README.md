@@ -4,70 +4,48 @@ A local research prototype for scientific peer review in context. It imports a P
 
 ## Use
 
-Install Paper Workbench as described in the repository README. The review engine, including ingest, reviewers, investigation tools, schemas and domain packs, now lives in PeerReviewAgents as `peerreviewagents.engine`. The engine module names in this package, such as `paper_workspace.reviewer`, are aliases for those modules. The app code here is the viewer server, revisions, Paper Scaffold import and export, and Word review copies. PDF import requires Poppler, and the engine pins `rustypaper`. The `paper_workbench_core` package is an alias for the engine's headless integration API.
+Install Paper Workbench as described in the repository README. The review runs in PeerReviewAgents 0.9.0 or newer, as the `pra` plugin in a headless Claude Code session. The app code here is the viewer server, the run-folder reader, revisions, Paper Scaffold import and export, and Word review copies. PDF import requires Poppler, and the engine pins `rustypaper`.
 
 ```bash
 python -m paper_workspace import manuscript.pdf workspace --xml manuscript.xml --supplements supplement-directory
-python -m paper_workspace serve workspace --port 38744
 python -m paper_workspace verify workspace
+python -m paper_workspace serve workspace --port 38744
 ```
 
-Open `http://127.0.0.1:38744`. Sources stay local unless you explicitly run a model review. The pilot sends manuscript text and selected source images to the authenticated Codex or Claude Code subscription for the selected model and sends focused literature queries to Crossref or Europe PMC.
+Open `http://127.0.0.1:38744`. Sources stay local unless you explicitly run a review.
 
 The viewer supports original text, marked suggestions, and an accepted-draft preview. Accept, decline, follow-up, and undo decisions persist on disk. JSON export contains the original source blocks, proposed blocks, findings, and decisions. Accepting wording does not resolve a scientific concern.
 
-Import structured findings with `add-review workspace response.json --id review-name`. Findings contain a block ID, exact quote, kind, comment, evidence block IDs, and optional replacement. The schemas in `paper_workspace/review_schema.py` are the current reference. Ambiguous anchors remain unplaced comments. Replacements introducing numerical literals are withheld. Overlapping accepted edits and stale source hashes are rejected.
-
-## Investigation tools
-
-`investigation.py` exposes a bounded MCP server for source reads and searches, PDF page and supplementary figure inspection, saved evidence notes, arithmetic, DOI metadata checks, and focused literature searches. Tool logs and retrieved metadata retain provenance. Search defaults to a publication cutoff configured per paper. Abstracts and DOI metadata are not treated as full-text support.
-
-The CLI defaults to Sonnet 5.5 through Claude Code, also runs the Codex models, and runs an ensemble by default, an independent review, or a panel with a debate pass. The study modes plain, workspace and self-revision still run. The review policy sets the reasoning effort and limits. The default, agentic-v1, runs every stage at high effort with no finding cap, and `--policy standard-v1` keeps the bounded study budget. No API key, fallback model, shell tool, or author-code execution is used, and a crashed call is retried only when the policy allows one bounded retry. Inputs and code are fingerprinted before inference. Cache identity includes tool configuration, the manuscript manifest, and attached image paths and hashes. Completed calls can be recovered without another inference. Unknown usage and unresolved interrupted calls block further inference in that attempt directory. The policy's observed-token stop is checked before each call. It is not a hard within-call cap.
+## Review
 
 ```bash
 python -m paper_workspace review manuscript.pdf run-output
-python -m paper_workspace review workspace run-output --mode panel --literature-cutoff 2026-01-05
+python -m paper_workspace review manuscript.pdf run-output --reviewers 5 --literature-cutoff 2026-01-05
+python -m paper_workspace serve run-output
 ```
 
-This command performs model inference. It requires an active Claude Code subscription login, the default provider, or a ChatGPT subscription login with `--provider codex`. API keys and cloud API providers are refused. Usage is recorded in the run's `usage.jsonl` for reporting, and how much a run may spend is the operator's own setting. `--literature-cutoff` is optional and defaults to today.
+`review` hands its arguments to the engine's `peerreview review` entry, so it takes exactly the same options. The default arm, `full-two-track`, runs three core reviewers and six specialist tracks in isolation, then an editor who rules on every finding. `--arm NAME` selects a study arm, and `--reviewer-models`, `--specialist-model`, `--editor-model` and `--recorder-model` set the model each slot is asked to run. `--citation-workers N`, from 0 to 12 and 4 by default, sets how many citation workers judge the in-text citations, and `--citation-worker-model` sets their model. The command prints the run summary and exits 0 when the review completed, 2 when it never started and 1 otherwise.
 
-A PDF review imports the manuscript into `run-output/manuscript`, reviews it in `run-output/review` and writes `REVIEW.md` and `REVIEW.txt` to the run folder. After a workspace review, `python -m paper_workspace report run-output` writes the same two files. Both contain the run details, the final review and, for ensemble runs, each independent reviewer. The command reads the saved JSON and makes no model calls. It also works on a blocked or stopped run and reports what was saved.
+This command performs model inference. It requires the `claude` CLI on `PATH`, signed in to a Claude subscription. API keys are never used. The run records its token use in `review/runtime.json` and stops at its own token and wall-clock ceilings. Without `claude`, the run is blocked at startup, records why in `review/startup.json` and launches nothing.
 
-The first reviewer receives the full extracted text and the policy's tool allowance, four calls in panel mode under standard-v1 and thirty under agentic-v1. Workspace and panel modes ask it to consider claims, comparators, measurement, interventions, replication, and internal consistency before selecting up to three uncertainties for investigation. The final response includes a short coverage record with exact source quotations. Areas can remain unresolved or be inapplicable. The record replaces the mandatory note-saving tool call. It is model-reported coverage, not proof of a complete review. No extra model session is added.
+The run folder holds `manuscript`, the imported workspace, and `review`, the run. `python -m paper_workspace report run-output` renders `REVIEW.md` and `REVIEW.txt` from the saved run with no model call. It works on any run, finished, stopped or blocked at startup, and prints the status, the cause, the finding count, whether the review is publishable, any file it could not read and the report paths.
 
-Coverage validation checks that every area appears once and that supplied quotations match the manuscript. Invalid entries remain unresolved. The validated record is saved to the run directory and included in workspace and panel JSON exports. Raw responses are retained separately. The existing viewer is unchanged and does not yet display a dedicated coverage panel.
+`serve` on a run folder shows the run as the review named `run`. `run_view.py` shows what the engine's `read_run` returns, with the citation rows from the engine's `read_citation_ledger`:
 
-The debate receives guarded review suggestions, the coverage record, cited source blocks, and up to three source images inspected by the first reviewer. It has the policy's debate tool calls, two under standard-v1 and eight under agentic-v1. Withheld numerical replacements are passed as author questions. Debate output receives the same guards before entering the editor package. Every input finding has a stable ID. The debate must explicitly retain, merge, reject with reasons, or request verification for each one. Missing, duplicate, or invalid dispositions remain in an unendorsed verification queue. A shared source passage does not establish that two concerns are equivalent. Original suggestions and raw responses remain available, with guarded findings, dispositions, and validation records preserved in the editor package. The viewer exposes finding history beside the comments.
+- The editor package's body findings come first, numbered in the manuscript. Duplicates and appendix findings follow in a collapsed appendix, each linked to the finding it duplicates and with any rebuttal quotation.
+- Each finding shows its track, its basis with the reason the engine gave, whether a specialist escalated it, the editor's reason and the escalation ruling.
+- A run panel shows the arm, status, verdict, specialist audit reports, one line per agent with its model asked, model ran, tokens and tasks, a note naming any slot whose model ran was not recorded, findings by track and run limitations. A `complete-without-findings` status says whether the reviewers raised nothing or the guard quarantined all they raised. It also shows why a run stopped, a limit that fired after the review was written, and every file the engine could not read in full. An Escalated filter keeps only escalated findings.
+- A citation section shows the engine's citation ledger. References found in an index, DOIs the DOI resolver does not hold, titles neither Crossref nor Europe PMC lists, references that could not be checked and references never looked up each keep their own count. It lists the references to check and every in-text use with the worker's verdict, the source passage it quoted and its note, escaped as quoted text. It says when the check did not finish. A reference it could not locate or could not check is never shown as a work that does not exist.
+- A run without an editor package shows the findings recorded in `findings.jsonl`, keeping the latest row for each finding, and says that the editor did not finish.
+- A run the starter stopped early, from a token ceiling, a timeout, a rate limit or a session error, has no `protocol.json` or `manifest.json`. It still opens, with its status, its cause and its recorded findings. Each finding's block hash pins the manuscript version. The panel shows no arm or reviewer count for it, because `read_run` takes those only from `protocol.json`.
+- A run blocked at startup, or stopped before it imported the manuscript, has nothing to show. `serve` prints its status and cause and exits 1, and `report` still writes a report that says why.
+- A run on a different manuscript version is refused. A symlinked run file is refused with an error, and files outside the review folder are never read.
 
-## Paper Scaffold checks
-
-The optional adapter genuinely reuses `readability.metrics` and `prose_check.check` from an explicitly selected Paper Scaffold checkout. It reports prose word counts, readability, and source-linked advisory findings. It records the checkout revision, tool hashes, and optional dependency versions. The imported manuscript stays unchanged.
-
-```bash
-python -m paper_workspace checks workspace --scaffold-root /path/to/paper-scaffold --output scaffold-report.json
-```
-
-The checks operate on extracted plain text and skip headings, references, and tables. They include captions and supplementary prose. Their word convention differs from the importer totals. Readability and prose warnings are editorial cues, not evidence of scientific defects. Scaffold's Typst authoring rules and journal limits are not imposed on imported manuscripts.
-
-Scaffold's bibliography checker requires BibTeX entries and citation keys, so it is not currently reused for extracted references. The adapter checks conservative citation-ID linkage for XML imports. PDF-only linkage is explicitly unavailable. The investigation tools still support focused Crossref identity checks, which cannot establish whether a citation supports a scientific claim.
-
-The approved two-paper pilot uses these checks before inference and compares an investigator with its subsequent debate. Its protocol and leakage controls are documented in `docs/pra-workspace-two-paper-plan.md`.
-
-That pilot is complete and found no measured overlap improvement from debate. The later four-paper panel also found no overlap improvement and no reviewer-requested tool calls. See `docs/pra-workspace-two-paper-results.md` and `docs/pra-workspace-four-paper-results.md` for the frozen results. Historical experiment prompts and result files have not been rewritten to use subsequent workflow changes.
+Author decisions on a run are saved in `manuscript/decisions/run.json`. The review folder stays as the run wrote it.
 
 ## Retired experiment runners
 
-Engine 0.8 removed the study-only modules behind the staged evidence workflow, the revised debate, the two-paper and four-paper pilots, the handoff retests, the ensemble and reliability trials, and the transfer and domain studies. Their runners are deleted from `experiments/`. Their protocols and frozen results remain in `docs/`, for example `docs/pra-evidence-workflow-protocol.md`, `docs/pra-evidence-workflow-status.md`, `docs/pra-debate-revision-protocol.md` and `docs/pra-debate-revision-results.md`.
-
-The first development pilot completed three valid review outputs across five attempts. Two infrastructure failures are preserved. Planned model grading was dropped to conserve the attempt allowance. See `docs/pra-workspace-pilot-results.md` for evidence, usage, limitations, and the post-pilot image-handoff correction.
-
-## Codex tool approval
-
-Only this invocation's eight manuscript tools receive explicit per-tool approval. They read the selected source, save local evidence notes and receipts, perform bounded arithmetic, or query the two public literature services. Global Codex settings are untouched. The configuration follows the [official OpenAI MCP documentation](https://learn.chatgpt.com/docs/extend/mcp?surface=cli).
-
-## Revised debate schema
-
-`debate_revision.py` provides a versioned component-preserving debate schema, prompt, validator, and editor package. Every original component receives a treatment, and scientific status is separate from editorial priority. Exact quotations and complete accounting are checked without asserting scientific correctness. The viewer and export support its decision ledger. The generic panel command above retains its earlier behavior.
+Engine 0.8 removed the study-only modules behind the staged evidence workflow, the revised debate, the two-paper and four-paper pilots, the handoff retests, the ensemble and reliability trials, and the transfer and domain studies. Engine 0.9 removed the remaining Python review orchestration. Every experiment runner is deleted, and git history keeps them. `experiments/` keeps the study protocols and result files, and [its README](../experiments/README.md) says how to recover a runner. The study records in `docs/` that described only the deleted system were deleted too, and git history keeps them. Study code that used the 0.8 engine runs only against PeerReviewAgents `v0.8.0`.
 
 ## Boundaries
 
@@ -75,24 +53,23 @@ Only this invocation's eight manuscript tools receive explicit per-tool approval
 - Publisher XML is preferred when available. PDF-only references remain provisional.
 - The prototype preserves text and references rather than reconstructing a complete editable Typst paper. Paper Scaffold supplied the interaction concept, but this package does not depend on that sibling checkout.
 - JSON export is implemented. Native Word comments, tracked changes, and PDF annotation writeback are not implemented.
-- Literature search is focused and bounded. It does not establish exhaustive novelty or citation coverage.
 - Model output remains provisional. Source anchoring prevents misplaced edits, but it cannot prove a scientific allegation correct.
-- The pilot is a development demonstration on a published final paper, not a held-out benchmark or a claim of superiority over single agents.
 
 ## Verification
 
 ```bash
 python -m unittest discover -s tests -p 'test_*.py' -v
+node tests/test_review_evidence_ui.js
 node --check paper_workspace/web/app.js
 ```
 
-Tests cover Unicode anchors, ambiguous quotes, source tampering, overlap rejection, numerical guards, retained unplaced comments, table extraction, tool limits, restricted arithmetic, distinct concerns on shared passages, malformed debate dispositions, source-image provenance, export history, cache identity, interrupted-call recovery, and usage accounting.
+Tests cover the run-folder reader, finished, stopped and startup-blocked runs in the viewer, the review and report commands against the installed engine with `claude` off `PATH`, Unicode anchors, source tampering, overlap rejection, revisions, Scaffold import and export, and Word review copies. No test starts a review.
 
 ## Native Scaffold revisions
 
-The real manuscript continuation now supports citation-aware source edits, all prose paragraphs in the tested port, preserved source figures and structured tables, and version-bound Word and PDF downloads. See [the completed fixes and validation](../docs/pra-real-revision-improvements.md). This is workflow validation with no new review inference or superiority claim.
+The real manuscript continuation supports citation-aware source edits, all prose paragraphs in the tested port, preserved source figures and structured tables, and version-bound Word and PDF downloads. See [the completed fixes and validation](../docs/pra-real-revision-improvements.md). This is workflow validation with no new review inference or superiority claim.
 
-Native Scaffold projects now support immutable source snapshots, exact prose anchors, separate revised drafts, PDF build gates, rollback, and a bounded unattended copyediting loop. Scientific concerns remain distinct from wording decisions. See [the revision workflow](../docs/pra-revision-loop.md) for commands, the agent handoff contract, validation, and current limits.
+Native Scaffold projects support immutable source snapshots, exact prose anchors, separate revised drafts, PDF build gates, rollback, and a bounded unattended copyediting loop. Scientific concerns remain distinct from wording decisions. See [the revision workflow](../docs/pra-revision-loop.md) for commands, the agent handoff contract, validation, and current limits.
 
 ```bash
 python -m paper_workspace import-scaffold /path/to/manuscript /path/to/workspace
@@ -100,7 +77,7 @@ python -m paper_workspace revision-loop /path/to/workspace --id language-pass --
 python -m paper_workspace revision-request /path/to/workspace
 ```
 
-The built-in loop is offline and deliberately narrow. It makes no model calls. Existing investigation and debate outputs can be handed to the revision path, and a provider callback can supply fresh version-bound proposals. Model inference retains the separate subscription runtime's budget controls. Native Word export creates a clean manuscript, with review history retained in the workspace rather than embedded as Word tracked changes.
+The built-in loop is offline and deliberately narrow. It makes no model calls. A provider callback can supply fresh version-bound proposals. Native Word export creates a clean manuscript, with review history retained in the workspace rather than embedded as Word tracked changes.
 
 ### Word review copies
 

@@ -9,7 +9,8 @@ try:
 except ImportError:
     Document = None
 
-from paper_workspace.storage import digest
+from peerreviewagents.workspace import digest
+
 from paper_workspace.word_review import patch_document, visible, tag, NS
 
 

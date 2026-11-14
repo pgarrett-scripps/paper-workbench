@@ -9,9 +9,9 @@ description = "The manuscript workspace and revision app, built on the PeerRevie
 readme = "README.md"
 requires-python = ">=3.11"
 license = {file = "LICENSE"}
-# The review engine (ingest, reviewers, synthesis, domain packs, rustypaper pin)
-# lives in peerreviewagents.engine. The app imports it directly.
-dependencies = ["peerreviewagents>=0.8.0"]
+# PeerReviewAgents runs the review (the pra plugin in a headless Claude Code
+# session) and owns ingest and the domain packs. The app imports it directly.
+dependencies = ["peerreviewagents>=0.9.0"]
 
 [project.optional-dependencies]
 documents = ["Pillow", "python-docx", "lxml", "pypdf"]
@@ -26,7 +26,7 @@ include-package-data = false
 
 [tool.setuptools.packages.find]
 where = ["."]
-include = ["paper_workspace*", "paper_workbench_core*"]
+include = ["paper_workspace*"]
 namespaces = false
 
 [tool.setuptools.package-data]

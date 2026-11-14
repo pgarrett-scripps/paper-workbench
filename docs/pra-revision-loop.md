@@ -1,5 +1,7 @@
 # Manuscript revision and automation
 
+This page describes the system up to PeerReviewAgents `v0.8.0`. The revision, revision loop and export commands it names still exist in the app, but the debate and the Sol review it mentions do not.
+
 The next product milestone is a dependable round trip from a manuscript to located review findings, a revised source draft, and publishable document files. This milestone does not establish that PRA produces better scientific reviews than the matched single reviewer. Earlier experimental results remain unchanged.
 
 ## Implemented order
