@@ -122,7 +122,7 @@ for (const text of [
   'Source passage the worker quoted, fetched from the internet</span><br>Retromer sorts transmembrane cargo',
   'Source passage the worker quoted, fetched from the internet</span><br>In cultured neurons the loss of VPS35 slowed',
   'Source passage the worker quoted, fetched from the internet</span><br>The D620N variant left retromer assembly intact',
-  'The marker [7] matches no entry in the reference list.', '<strong>[4] Not yet judged.</strong>']) {
+  'The marker 7 matches no entry in the reference list.', '<strong>[4] Not yet judged.</strong>']) {
   assert.ok(citations.includes(text), text);
 }
 assert.equal(citations.split('The worker had no source text for this reference.').length - 1, 2);
