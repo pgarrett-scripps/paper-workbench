@@ -10,7 +10,7 @@ import unittest
 from pathlib import Path
 from unittest.mock import patch
 
-from peerreviewagents.engine.storage import digest, write
+from peerreviewagents.workspace import digest, write_json
 
 from paper_workspace import server as server_module
 from paper_workspace.server import make_server
@@ -21,10 +21,10 @@ class ServerHttpTests(unittest.TestCase):
         self.temporary = tempfile.TemporaryDirectory()
         self.root = Path(self.temporary.name)
         text = 'A claim with 12 samples.'
-        write(self.root / 'paper.json', {'id': 'qa', 'title': 'QA', 'source_sha256': 'qa',
+        write_json(self.root / 'paper.json', {'id': 'qa', 'title': 'QA', 'source_sha256': 'qa',
             'blocks': [{'id': 'b1', 'text': text, 'sha256': digest(text)}],
             'statistics': {'pdf_pages': 2}})
-        write(self.root / 'manifest.json', {'files': {
+        write_json(self.root / 'manifest.json', {'files': {
             'paper.json': digest((self.root / 'paper.json').read_bytes())}})
         self.server = make_server(self.root, 0)
         self.port = self.server.server_port

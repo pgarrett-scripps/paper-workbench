@@ -8,7 +8,7 @@ import tempfile
 import zipfile
 import xml.etree.ElementTree as ET
 
-from peerreviewagents.engine.storage import digest, write
+from peerreviewagents.workspace import digest, write_json
 
 from .export_evidence import append_supplements, preserve_source_evidence
 from .revisions import snapshot
@@ -143,6 +143,6 @@ def export_revision(root, revision_id, output, scaffold_root, python=None):
                                   'Ported reading copies do not reconstruct publisher layout.',
                                   'For ported manuscripts, source-build.pdf is the text-only Typst build and paper.pdf renders the rich Word document.'],
                   'visual_qa': 'Not performed by the exporter. Inspect rendered outputs before publication.'}
-        write(artifacts / 'export.json', record)
+        write_json(artifacts / 'export.json', record)
         artifacts.rename(output)
     return record

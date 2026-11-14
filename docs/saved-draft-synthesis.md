@@ -1,5 +1,7 @@
 # Saved draft ordinary synthesis
 
+Historical record. This API belongs to the 0.8 engine, frozen at the PeerReviewAgents `v0.8.0` release. Engine 0.9.0 removed it.
+
 `SavedDraftSynthesisRequest` runs one ordinary synthesis stage over the exact independent drafts saved by a completed ensemble debate run. It does not launch reviewer discovery again.
 
 The request requires the original ensemble output, the same manuscript workspace, the original frozen source packet, and the complete original image set. The public API verifies the manuscript manifest, model, debate origin, input review hashes, evidence packet hashes, source cache stability, image hashes, synthesis token budget, and two-tool synthesis allowance before accepting the result.

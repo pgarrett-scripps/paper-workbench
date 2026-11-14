@@ -7,6 +7,12 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+      # The viewer checks need only Node, so they run before the engine install.
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - run: node --check paper_workspace/web/app.js
+      - run: node tests/test_review_evidence_ui.js
       - uses: actions/setup-python@v5
         with:
           python-version: '3.11'

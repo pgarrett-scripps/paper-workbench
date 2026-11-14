@@ -1,6 +1,6 @@
 # Matched strong-reviewer experiment
 
-The fixed protocol is documented in `docs/pra-matched-reviewer-plan.md`.
+The fixed protocol was documented in `docs/pra-matched-reviewer-plan.md`, deleted and kept at commit 148ebf6.
 Reviewer 1 reuses the saved strong tool-using review. New reviewers 2 and 3 use
 its exact prompt, output schema, model, effort, and manuscript tools. Both editor
 branches receive the same review ledger. Only one receives the focused discussion.

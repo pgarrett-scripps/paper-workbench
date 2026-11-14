@@ -1,6 +1,6 @@
 # Three general reviewers
 
-Read `docs/pra-three-reviewer-plan.md` for the fixed experiment and decision rule.
+The fixed experiment and decision rule were in `docs/pra-three-reviewer-plan.md`, deleted and kept at commit 148ebf6.
 The prototype makes three independent general reviews, three simultaneous
 discussion responses, a moderator report, and an editor decision per manuscript.
 The model and effort are pinned in `protocol.json`.

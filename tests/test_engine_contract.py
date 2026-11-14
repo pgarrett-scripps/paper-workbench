@@ -1,50 +1,132 @@
 """The engine surface the app depends on. PeerReviewAgents tests the engine itself.
 
 These checks stay small on purpose, so they pass on every engine release that
-keeps the aliases, the CLI pass-through and the review keys the app and
-web/app.js read.
+keeps the review and report commands and the review keys the app and
+web/app.js read. No test starts a model session, and none patches the engine.
 """
-import importlib
+import ast
+import contextlib
+import io
+import json
+import os
 import re
 import tempfile
 import unittest
 from pathlib import Path
+from unittest.mock import patch
 
-from peerreviewagents.engine.annotations import export_draft, save_review, verify_workspace
-from peerreviewagents.engine.storage import digest, write
+from peerreviewagents import CLI_COMMANDS, export_draft, verify_workspace
+from peerreviewagents.workspace import digest, save_review, write_json
 
-REPOSITORY = Path(__file__).resolve().parents[1]
-# Runnable aliases import the engine module inside an else branch, so allow indentation.
-ALIAS = re.compile(r'^\s*from peerreviewagents\.engine import (\w+) as _engine$', re.M)
+from paper_workspace.__main__ import ENGINE_COMMANDS, build_parser, main
 
 
-class EngineAliasSmokeTest(unittest.TestCase):
-    def test_alias_modules_and_cli_pass_through_resolve(self):
-        aliases, replaced = {}, set()
-        for package in ('paper_workspace', 'paper_workbench_core'):
-            for path in sorted((REPOSITORY / package).glob('*.py')):
-                text = path.read_text()
-                if 'sys.modules[__name__]' in text:
-                    replaced.add(f'{package}.{path.stem}')
-                match = ALIAS.search(text)
-                if match:
-                    aliases[f'{package}.{path.stem}'] = f'peerreviewagents.engine.{match.group(1)}'
-        # Every module that replaces itself must be an alias this test checks, and the
-        # count changes only when an alias is added or removed on purpose.
-        self.assertEqual(replaced, set(aliases))
-        self.assertEqual(len(aliases), 34)
-        self.assertIn('paper_workbench_core.api', aliases)
-        self.assertIn('paper_workspace.annotations', aliases)
-        for name, target in aliases.items():
-            with self.subTest(name=name):
-                self.assertIs(importlib.import_module(name), importlib.import_module(target))
-        core = importlib.import_module('paper_workbench_core')
-        for name in core.__all__:
-            self.assertTrue(hasattr(core, name), name)
-        from paper_workspace.__main__ import build_parser
+def run_main(argv):
+    """Call the app command line and return its exit status and printed JSON."""
+    output = io.StringIO()
+    with contextlib.redirect_stdout(output):
+        status = main(argv)
+    return status, json.loads(output.getvalue())
+
+
+class AppCommandTest(unittest.TestCase):
+    def test_parser_knows_the_app_and_engine_commands(self):
         parser = build_parser()
-        self.assertEqual(parser.parse_args(['serve', 'ws']).command, 'serve')
-        self.assertEqual(parser.parse_args(['verify', 'ws']).command, 'verify')
+        self.assertEqual(ENGINE_COMMANDS, ('review', 'report'))
+        self.assertEqual(ENGINE_COMMANDS, CLI_COMMANDS)
+        for argv in (['serve', 'run'], ['verify', 'ws'], ['import', 'paper.pdf', 'ws', '--xml', 'paper.xml']):
+            self.assertEqual(parser.parse_args(argv).command, argv[0])
+
+    def test_engine_command_help_names_the_app(self):
+        for command in ENGINE_COMMANDS:
+            output = io.StringIO()
+            with contextlib.redirect_stdout(output), self.assertRaises(SystemExit) as stop:
+                main([command, '-h'])
+            self.assertEqual(stop.exception.code, 0)
+            self.assertTrue(output.getvalue().startswith(f'usage: paper-workbench {command}'), output.getvalue())
+
+    def test_review_help_lists_the_per_slot_model_options(self):
+        output = io.StringIO()
+        with contextlib.redirect_stdout(output), self.assertRaises(SystemExit):
+            main(['review', '-h'])
+        for flag in ('--reviewer-models', '--specialist-model', '--editor-model', '--recorder-model',
+                     '--citation-workers', '--citation-worker-model'):
+            self.assertIn(flag, output.getvalue())
+
+
+class EngineCommandTest(unittest.TestCase):
+    def setUp(self):
+        self.temporary = tempfile.TemporaryDirectory()
+        self.root = Path(self.temporary.name).resolve()
+        self.pdf = self.root / 'paper.pdf'
+        self.pdf.write_bytes(b'%PDF-1.4\n')
+
+    def tearDown(self):
+        self.temporary.cleanup()
+
+    def test_review_without_claude_is_blocked_at_startup_and_launches_nothing(self):
+        out = self.root / 'run'
+        empty = self.root / 'bin'
+        empty.mkdir()
+        # With no claude on PATH the engine cannot launch a session, so nothing is patched.
+        with patch.dict(os.environ, {'PATH': str(empty)}):
+            status, summary = run_main(['review', str(self.pdf), str(out), '--arm', 'reviewers-only',
+                                        '--reviewers', '2', '--reviewer-models', 'claude-haiku-5-5,claude-opus-5-5',
+                                        '--editor-model', 'claude-opus-5-5', '--recorder-model', 'claude-sonnet-5-5'])
+        self.assertEqual((status, summary['status'], summary['stage']), (2, 'blocked', 'startup'))
+        self.assertIn('claude is not installed', summary['blocked_reason'])
+        # The options reach the engine, which records them in its summary.
+        self.assertEqual((summary['arm'], summary['reviewers']), ('reviewers-only', 2))
+        self.assertEqual(summary['models_requested'], {'core-1': 'claude-haiku-5-5', 'core-2': 'claude-opus-5-5',
+                                                       'editor': 'claude-opus-5-5', 'recorder': 'claude-sonnet-5-5'})
+        self.assertTrue((out / 'review' / 'startup.json').is_file())
+        # The run never imported the manuscript, so serve says why in plain words.
+        stderr = io.StringIO()
+        with contextlib.redirect_stderr(stderr):
+            self.assertEqual(main(['serve', str(out)]), 1)
+        self.assertIn('claude is not installed', stderr.getvalue())
+        # report renders any run, and its report says why this one stopped.
+        status, report = run_main(['report', str(out)])
+        self.assertEqual((status, report['status']), (0, 'blocked'))
+        self.assertIn('claude is not installed', report['cause'])
+
+    def test_review_plans_the_six_specialist_lanes_and_the_citation_workers(self):
+        empty = self.root / 'bin'
+        empty.mkdir()
+        with patch.dict(os.environ, {'PATH': str(empty)}):
+            status, summary = run_main(['review', str(self.pdf), str(self.root / 'run'), '--arm', 'full-two-track',
+                                        '--reviewers', '2', '--citation-workers', '2',
+                                        '--citation-worker-model', 'claude-opus-5-5'])
+        self.assertEqual((status, summary['status'], summary['stage']), (2, 'blocked', 'startup'))
+        requested = summary['models_requested']
+        self.assertLessEqual({f'spec-{lane}' for lane in ('stats', 'figures-tables', 'methods-reporting',
+                                                          'citations', 'numbers', 'field')}, set(requested))
+        self.assertEqual({slot: model for slot, model in requested.items() if slot.startswith('cite-')},
+                         {'cite-1': 'claude-opus-5-5', 'cite-2': 'claude-opus-5-5'})
+        self.assertNotIn('spec-consistency', requested)
+        # The engine accepts 0 to 12 workers and refuses more before it plans anything.
+        stderr = io.StringIO()
+        with contextlib.redirect_stderr(stderr), self.assertRaises(SystemExit):
+            main(['review', str(self.pdf), str(self.root / 'other'), '--citation-workers', '13'])
+        self.assertIn('--citation-workers', stderr.getvalue())
+        self.assertFalse((self.root / 'other').exists())
+
+    def test_report_renders_a_finished_run_from_the_run_folder(self):
+        from test_run_view import make_run
+        make_run(self.root / 'run')
+        status, report = run_main(['report', str(self.root / 'run')])
+        self.assertEqual((status, report['status'], report['findings']), (0, 'complete', 2))
+        self.assertEqual((report['publishable'], report['not_publishable_reasons']), (True, []))
+        # The summary keys come first, then one key per report path.
+        paths = {key: value for key, value in report.items()
+                 if key not in ('status', 'cause', 'findings', 'publishable', 'not_publishable_reasons', 'problems')}
+        self.assertTrue(paths)
+        for path in paths.values():
+            self.assertTrue(Path(path).is_file(), path)
+        text = (self.root / 'run' / 'review' / 'REVIEW.md').read_text()
+        self.assertIn('One central question.', text)
+        # The engine renders the citation ledger into REVIEW.md as its own section.
+        self.assertIn('\n## Citations\n', text)
 
 
 class EngineOutputContractTest(unittest.TestCase):
@@ -52,10 +134,10 @@ class EngineOutputContractTest(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
             text = 'A claim with 12 samples.'
-            write(root / 'paper.json', {'id': 'qa', 'title': 'QA', 'source_sha256': 'qa',
+            write_json(root / 'paper.json', {'id': 'qa', 'title': 'QA', 'source_sha256': 'qa',
                 'blocks': [{'id': 'b1', 'text': text, 'sha256': digest(text)}],
                 'statistics': {'pdf_pages': 1}})
-            write(root / 'manifest.json', {'files': {'paper.json': digest((root / 'paper.json').read_bytes())}})
+            write_json(root / 'manifest.json', {'files': {'paper.json': digest((root / 'paper.json').read_bytes())}})
             review = save_review(root, {'summary': 'One edit and one question.', 'findings': [
                 {'kind': 'edit', 'block_id': 'b1', 'quote': '12 samples', 'replacement': '12 donors',
                  'evidence_blocks': ['b1']},
@@ -79,6 +161,26 @@ class EngineOutputContractTest(unittest.TestCase):
                          [('b1', 'A claim with 12 donors.')])
         self.assertEqual([b['text'] for b in exported['original_blocks']], [text])
         self.assertEqual([f['issue_status'] for f in exported['findings']], ['open', 'open'])
+
+
+class PublicSurfaceTest(unittest.TestCase):
+    PRIVATE = ('engine', 'plugin', 'cli', 'runs')
+
+    def test_the_app_and_its_tests_use_only_public_engine_names(self):
+        # A dotted name catches an import, a lazy import or a patch target. The AST catches
+        # `from peerreviewagents import runs`. The pattern is built here so this file does not match it.
+        dotted = re.compile(r'peerreviewagents\.(%s)\b' % '|'.join(self.PRIVATE))
+        root = Path(__file__).resolve().parents[1]
+        found = []
+        for folder in ('paper_workspace', 'tests'):
+            for path in sorted((root / folder).rglob('*.py')):
+                source, name = path.read_text(), path.relative_to(root)
+                found += [f'{name}: {match.group(0)}' for match in dotted.finditer(source)]
+                for node in ast.walk(ast.parse(source)):
+                    if isinstance(node, ast.ImportFrom) and node.module == 'peerreviewagents':
+                        found += [f'{name}: from peerreviewagents import {alias.name}'
+                                  for alias in node.names if alias.name in self.PRIVATE]
+        self.assertEqual(found, [])
 
 
 if __name__ == '__main__':

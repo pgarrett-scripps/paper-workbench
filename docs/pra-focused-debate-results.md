@@ -1,5 +1,7 @@
 # Focused evidence and debate comparison
 
+This record describes the system up to PeerReviewAgents `v0.8.0`.
+
 ## Prespecified development comparison
 
 The same owl paper and the same two saved independent reviewer drafts are reused. The saved ensemble review is compared with a new debate supplied with one validated focused evidence memo and the inspected original supplement pages. The question concerns what supports the interpretation of treatment effects after adjustment for parental departure.
