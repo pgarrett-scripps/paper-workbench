@@ -91,6 +91,25 @@ class Revisions(unittest.TestCase):
         ledger = read_json(self.root / 'revisions/mixed/issue-ledger.json')
         self.assertEqual(ledger[-1]['scientific_status'], 'open')
         self.assertEqual(ledger[-1]['anchor_status'], 'historical')
+        self.assertNotIn('issue_id', ledger[-1])
+
+    def test_run_issue_cards_keep_their_issue_id_in_the_ledger(self):
+        # Shaped as run_view hands them over: one card per issue, keyed by the issue id.
+        review, decisions = self.proposals()
+        edit = review['findings'][0]
+        review['findings'][0] = {**edit, 'id': 'i01', 'source_id': 'i01', 'group': 'suggestion',
+                                 'category': 'presentation', 'status': 'persisting'}
+        review['findings'][1] = {'id': 'i02', 'source_id': 'i02', 'group': 'closed', 'category': 'reproducibility',
+                                 'status': 'resolved', 'kind': 'issue', 'title': 'Old issue', 'members': []}
+        review['findings'].append({'id': 'run-3', 'source_id': 'i02', 'group': 'required', 'status': 'new',
+                                   'category': 'claims-and-conclusions', 'kind': 'issue', 'title': 'Repeat'})
+        decisions['items'] = {'i01': 'accepted'}
+        create_revision(self.root, review, decisions, 'issues', head(self.root), build=False)
+        rows = read_json(self.root / 'revisions/issues/issue-ledger.json')[-3:]
+        self.assertEqual([(row['issue_id'], row['issue_round_status'], row['scientific_status'], row['wording_decision'])
+                          for row in rows],
+                         [('i01', 'persisting', 'open', 'accepted'), ('i02', 'resolved', 'resolved', 'proposed'),
+                          (None, 'new', 'open', 'proposed')])
 
     def test_stale_agent_response_stops_before_changes(self):
         response = copyedit_proposals(self.paper)

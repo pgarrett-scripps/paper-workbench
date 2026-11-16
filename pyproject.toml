@@ -11,7 +11,7 @@ requires-python = ">=3.11"
 license = {file = "LICENSE"}
 # PeerReviewAgents runs the review (the pra plugin in a headless Claude Code
 # session) and owns ingest and the domain packs. The app imports it directly.
-dependencies = ["peerreviewagents>=0.9.0"]
+dependencies = ["peerreviewagents==0.10.0"]
 
 [project.optional-dependencies]
 documents = ["Pillow", "python-docx", "lxml", "pypdf"]

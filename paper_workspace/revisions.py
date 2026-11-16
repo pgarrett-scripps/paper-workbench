@@ -23,6 +23,35 @@ PROTECTED = re.compile(r'\b(?:not|no|never|may|might|could|can|cannot|must|shoul
                        r'associat(?:e[ds]?|ing|ions?)|causal|causes|'
                        r'significant|nonsignificant)\b', re.I)
 SYNTAX = re.compile(r'[#@$`\[\]{}<>_=*\\]|//|/\*|\*/')
+# The run_view groups whose cards each stand for one PeerReviewAgents issue.
+ISSUE_GROUPS = ('required', 'suggestion', 'closed')
+
+
+def ledger_row(finding, decisions, origin, paper_id):
+    """One card of the review as a row of the issue ledger the next draft carries.
+
+    A card from a PeerReviewAgents run is one issue. Its row keeps the issue id,
+    which the engine carries from round to round, and the issue's status in the
+    round that raised it. ``issue_id`` is None when the run's ids were unusable
+    and its cards were numbered instead. An issue the round found resolved is
+    not an open scientific concern.
+    """
+    run_issue = finding.get('group') in ISSUE_GROUPS
+    if finding.get('category') == 'copyedit':
+        scientific = 'not_applicable'
+    elif run_issue and finding.get('status') == 'resolved':
+        scientific = 'resolved'
+    else:
+        scientific = 'open'
+    row = {'origin_revision': origin, 'paper_id': paper_id, 'finding': finding,
+           'wording_decision': decisions['items'].get(finding['id'], 'proposed'),
+           'author_feedback': decisions.get('annotations', {}).get(finding['id'], {}),
+           'scientific_status': scientific, 'anchor_status': 'historical',
+           'note': 'Anchor refers to the originating draft. Reassess against current text.'}
+    if run_issue:
+        row['issue_id'] = finding['id'] if finding['id'] == finding.get('source_id') else None
+        row['issue_round_status'] = finding.get('status')
+    return row
 
 
 def valid_id(value):
@@ -260,12 +289,8 @@ def create_revision(root, review, decisions, revision_id, expected_head, *, buil
                 build_result = {'pdf': 'built', 'compiler': subprocess.run(['typst', '--version'],
                     capture_output=True, text=True, check=True).stdout.strip(), 'warnings': result.stderr}
             ledger = read_json(parent / 'issue-ledger.json') if (parent / 'issue-ledger.json').exists() else []
-            for finding in review['findings']:
-                ledger.append({'origin_revision': expected_head['revision_id'], 'paper_id': paper['id'],
-                    'finding': finding, 'wording_decision': decisions['items'].get(finding['id'], 'proposed'),
-                    'author_feedback': decisions.get('annotations', {}).get(finding['id'], {}),
-                    'scientific_status': 'open' if finding.get('category') != 'copyedit' else 'not_applicable',
-                    'anchor_status': 'historical', 'note': 'Anchor refers to the originating draft. Reassess against current text.'})
+            ledger.extend(ledger_row(finding, decisions, expected_head['revision_id'], paper['id'])
+                          for finding in review['findings'])
             write_json(output / 'review-package.json', package)
             write_json(output / 'issue-ledger.json', ledger)
             (output / 'changes.patch').write_text(''.join(patches))

@@ -1,18 +1,18 @@
 # Paper Workbench team handoff
 
-Snapshot: 12 November 2026. Start here for the current framework. The companion [paper repository](https://github.com/pgarrett-scripps/paper-workbench-paper) holds the manuscript, study evidence, figures, recovery records and publication priorities.
+Snapshot: 15 November 2026. Start here for the current framework. The companion [paper repository](https://github.com/pgarrett-scripps/paper-workbench-paper) holds the manuscript, study evidence, figures, recovery records and publication priorities.
 
 ## Engine and app split
 
-PeerReviewAgents runs the review. Version 0.9.0 replaced its Python orchestration with the `pra` Claude Code plugin, run headless by `peerreview review`. The debate, the six review modes, the three policies, `ReviewRequest`, `run_review` and the Codex provider are gone, with no shim. The 0.8 engine is frozen at the PeerReviewAgents `v0.8.0` release.
+PeerReviewAgents runs the review. Version 0.9.0 replaced its Python orchestration with the `pra` Claude Code plugin, run headless by `peerreview review`. The debate, the six review modes, the three policies, `ReviewRequest`, `run_review` and the Codex provider are gone, with no shim. The 0.8 engine is frozen at the PeerReviewAgents `v0.8.0` release. Version 0.10.0 replaced per-finding placement with issues. The editor groups the findings into issues with ids that carry across rounds, and `review/issues.json` is the review that `REVIEW.md` renders from.
 
-This repository is the workspace, viewer and revision app. It needs engine 0.9.0 or newer. It starts a review through the engine's public `review_main`, the entry `peerreview review` uses, and reads the run folder with the engine's `read_run`. Make review changes in PeerReviewAgents, not here.
+This repository is the workspace, viewer and revision app. It pins engine 0.10.0. It starts a review through the engine's public `review_main`, the entry `peerreview review` uses, and reads the run folder with the engine's `read_run`. Make review changes in PeerReviewAgents, not here.
 
-Engine 0.9.0 is not on PyPI yet. CI installs from PyPI, so it stays red at the install step until 0.9.0 is published.
+Engine 0.10.0 is not on PyPI yet. CI installs from PyPI, so it stays red at the install step until 0.10.0 is published.
 
 ## Get started
 
-Accept collaborator access to the private repositories, then clone them into sibling directories. Install the engine before the app. Until 0.9.0 is on PyPI, install it from the PeerReviewAgents main branch, or with `python -m pip install -e ../PeerReviewAgents` from a checkout:
+Accept collaborator access to the private repositories, then clone them into sibling directories. Install the engine before the app. Until 0.10.0 is on PyPI, install it from the PeerReviewAgents main branch, or with `python -m pip install -e ../PeerReviewAgents` from a checkout:
 
 ```bash
 git clone https://github.com/pgarrett-scripps/paper-workbench.git
@@ -41,9 +41,9 @@ Replace the source filenames with your own files. Omit `--xml` for PDF-only inpu
 
 ## Current architecture
 
-`paper-workbench review manuscript.pdf RUN` runs one review, exactly as `peerreview review` does. It takes `--reviewers N`, `--arm NAME` and the per-slot model options `--reviewer-models`, `--specialist-model`, `--editor-model` and `--recorder-model`, with `--citation-workers N` and `--citation-worker-model` for the citation workers, and the default arm is `full-two-track`. The run folder holds `RUN/manuscript`, the imported workspace, and `RUN/review`, with `protocol.json`, `progress.json`, `runtime.json`, `findings.jsonl`, `editor-package.json`, the `audit_<track>.md` specialist reports, the citation ledger in `citations/ledger.jsonl` and `REVIEW.md`. `paper-workbench serve RUN` shows it. A run the starter stopped early, from a token ceiling, a timeout, a rate limit or a session error, has no `protocol.json` or `editor-package.json`. The viewer still opens it and shows its status, its cause and the findings it recorded. See [the engine contract](docs/shared-core.md) for the fields the viewer reads.
+`paper-workbench review manuscript.pdf RUN` runs one review, exactly as `peerreview review` does. It takes `--reviewers N`, `--arm NAME` and the per-slot model options `--reviewer-models`, `--specialist-model`, `--editor-model` and `--recorder-model`, with `--citation-workers N` and `--citation-worker-model` for the citation workers, and the default arm is `full-two-track`. `--prior-issues PATH` takes the previous round's `RUN/review/issues.json`, so a later round keeps the issue ids and rules on each prior issue. The viewer has no way to start a review, so a later round starts here. The run folder holds `RUN/manuscript`, the imported workspace, and `RUN/review`, with `protocol.json`, `progress.json`, `runtime.json`, `findings.jsonl`, `issues.json`, the `audit_<track>.md` specialist reports, the citation ledger in `citations/ledger.jsonl` and `REVIEW.md`. `paper-workbench serve RUN` shows it. A run the starter stopped early, from a token ceiling, a timeout, a rate limit or a session error, has no `protocol.json` or `issues.json`. The viewer still opens it and shows its status, its cause and the findings it recorded. See [the engine contract](docs/shared-core.md) for the fields the viewer reads.
 
-The viewer shows the editor's body findings first and the duplicates and appendix findings after them. Each finding shows its track, its basis, any escalation and the editor's ruling on it. A run panel shows the verdict, the specialist reports, one line per agent with the model asked and the model ran, the citation ledger and the run limitations. Author decisions on a run are saved in `RUN/manuscript/decisions/run.json`, so the review folder stays as the run wrote it.
+The viewer shows one card and one author decision per issue. The required changes, major and moderate, come first in rank order, then the minor suggestions under their categories. Each card shows how many reviewers raised it, its status against a prior round and its member findings as evidence, each with its track, its basis, any escalation and the editor's ruling on it. Every member is marked on the manuscript text. A run that is not publishable says why above its comments. A run panel shows the verdict, the specialist reports, one line per agent with the model asked and the model ran, the citation ledger and the run limitations. Author decisions on a run are saved in `RUN/manuscript/decisions/run.json`, so the review folder stays as the run wrote it.
 
 The engine anchors every finding to an exact source quotation and labels its basis. Author decisions and revision exports are distinct from scientific adjudication. Exact source linkage does not establish that a criticism is scientifically correct.
 

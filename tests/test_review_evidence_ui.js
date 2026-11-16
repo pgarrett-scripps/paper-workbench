@@ -33,22 +33,41 @@ assert.ok(html('#handoff-ledger').includes('href="#b2"'));
 assert.ok(html('#handoff-ledger').includes('&lt;script&gt;value&lt;/script&gt;'));
 assert.ok(!html('#handoff-ledger').includes('<script>'));
 
-// A PeerReviewAgents run shows tracks, basis, escalation, the specialist reports and the appendix.
+// A PeerReviewAgents run shows one card per issue, as run_view.py hands it over: the required
+// changes, the suggestions under their categories, then the prior round's closed issues.
 vm.runInContext(`
 paper = {id: 'p', blocks: [{id:'b1', text:'alpha beta gamma', kind:'paragraph', section:'Results'}]};
-const finding = (uid, number, extra) => ({id:uid, finding_uid:uid, number, kind:'question', category:'scientific',
-  severity:'major', title:'Finding '+uid, comment:'Comment', block_id:'b1', placement:'anchored', evidence_blocks:[], ...extra});
+const member = (uid, extra) => ({finding_uid:uid, slot:'core-1', track:'core', severity:'major', kind:'issue',
+  basis:'judgement', escalate:false, title:'Finding '+uid, block_id:'b1', quote:'alpha', evidence_blocks:['b1'],
+  comment:'Comment '+uid, start:0, end:5, placement:'anchored', ...extra});
+const issue = (id, rank, group, extra) => ({id, source_id:id, number:rank, rank, group, name:'Issue '+id,
+  title:'Issue '+id, statement:'Statement '+id, comment:'Statement '+id, severity:'major',
+  category:'statistics-and-inference', status:'new', status_reason:null, prior_id:null, prior_rank:null, raised_by:1,
+  members:[], audits:[], surviving_quotes:[], rebuttal_quote:null, rebuttal_block_id:null, text_unchanged_reason:null,
+  kind:'issue', escalate:false, evidence_blocks:['b1'], block_id:'b1', quote:'alpha', start:0, end:5,
+  placement:'anchored', replacement:null, ...extra});
 review = {id:'run', summary:'Editor summary', raw_response:undefined, findings:[
-  finding('u1', 1, {start:0, end:5, quote:'alpha', track:'field', basis:'judgement', basis_reason:'No arithmetic receipt.',
-    escalate:true, editor_reason:'Core <b>issue</b>', reviewers_raising:2, duplicate_uids:['u2'], section:'body',
-    source_urls:['https://example.org/a', 'javascript:alert(1)']}),
-  finding('u2', 2, {start:6, end:10, quote:'beta', track:'core', basis:'two-quotes', escalate:false,
-    editor_reason:'Same objection', editor_placement:'duplicate', duplicate_of:'u1', section:'appendix'}),
+  issue('i01', 1, 'required', {raised_by:2, escalate:true, status:'persisting', status_reason:'Still <b>wrong</b>',
+    prior_id:'i01', prior_rank:2, audits:['audit_stats.md'], members:[
+      member('u1', {track:'field', basis_reason:'No arithmetic receipt.', escalate:true,
+                    source_urls:['https://example.org/a', 'javascript:alert(1)']}),
+      member('u2', {slot:'core-2', basis:'two-quotes', quote:'alpha beta', end:10, counterevidence:'Checked the methods.'})]}),
+  issue('i02', 2, 'suggestion', {severity:'minor', category:'presentation', kind:'edit', quote:'gamma', start:11,
+    end:16, replacement:'delta', members:[member('u3', {kind:'edit', severity:'minor', quote:'gamma', start:11, end:16,
+                                                        replacement:'delta'})]}),
+  issue('i03', 3, 'suggestion', {severity:'minor', category:'reproducibility', placement:'unplaced', start:null,
+    end:null, members:[member('u4', {severity:'minor', placement:'unplaced', start:null, end:null})]}),
+  issue('i04', null, 'closed', {status:'unverified', status_reason:'No editor ruled on it.', prior_id:'i04',
+    prior_rank:4, raised_by:0, block_id:null, quote:null, start:null, end:null, placement:'unplaced',
+    evidence_blocks:[], surviving_quotes:[{finding_uid:'old', block_id:'b1', quote:'beta gamma'}]}),
 ], run:{arm:'full-two-track', reviewer_count:3, status:'complete', escalated_count:1, review_guard_status:'clean',
   cause:null, note:'the review was written and the run was marked blocked afterwards: rate limit',
   problems:['runtime.json is not valid JSON <x>'], publishable:false,
   not_publishable_reasons:['1 file(s) could not be read in full, and they are named in problems'],
-  edited:true, missing_stages:[], none_found:[], limitations:['Advisory only.'],
+  findings_source:'issues', issues_source:'editor',
+  prior_round:{file:'issues.json', digest:'0123456789abcdef', issues:2,
+               tally:{new:2, persisting:1, regressed:0, resolved:0, unverified:1}},
+  missing_stages:[], none_found:[], limitations:['Advisory only.'],
   verdict:{significance:'High if true', strength_of_evidence:'Weak', reasoning:'Correlation only', basis:'judgement', limitation:'Not a score.'},
   escalation_rulings:[{finding_uid:'u1', ruling:'Accepted as central.'}],
   audits:{stats:'# Stats audit <script>x</script>'},
@@ -63,20 +82,55 @@ cards();
 const comments = html('#comments');
 const panel = html('#run-panel');
 assert.equal(elements.get('#run-panel').hidden, false);
-assert.equal(elements.get('#filter-escalated').hidden, false);
-assert.equal(elements.get('#finding-count').textContent, '1 in the report · 1 in the appendix');
-for (const text of ['field track', 'Basis: judgement', 'title="No arithmetic receipt."', 'Escalated', 'Raised by 2',
-                    'Escalation ruling', 'Accepted as central.', 'Core &lt;b&gt;issue&lt;/b&gt;', 'Duplicate</span>',
-                    'Duplicate of finding <a href="#note-u1">1</a>', 'Merged duplicates: <a href="#note-u2">2</a>',
-                    'href="https://example.org/a"']) {
+for (const name of ['required', 'suggestions', 'escalated']) assert.equal(elements.get('#filter-' + name).hidden, false, name);
+for (const name of ['scientific', 'copyedit', 'questions']) assert.equal(elements.get('#filter-' + name).hidden, true, name);
+assert.equal(elements.get('#finding-count').textContent, '1 required · 2 suggestions · 1 from the prior round');
+// A run that is not publishable says so above its comments, with every reason, and only there.
+assert.ok(comments.startsWith('<div class="not-publishable error" role="note"><p><strong>This run is not publishable.</strong>'));
+assert.ok(comments.includes('<li>1 file(s) could not be read in full, and they are named in problems</li>'));
+assert.ok(!html('#run-panel').includes('could not be read in full'));
+// Required changes come first in rank order, then the suggestions under their categories, then the closed issues.
+const order = ['Required changes (1)', 'id="note-i01"', 'Suggestions (2)', '<h4 class="issue-category">Presentation</h4>',
+               'id="note-i02"', '<h4 class="issue-category">Reproducibility</h4>', 'id="note-i03"', 'id="closed-issues"',
+               'Prior round: resolved and unverified (1)', 'id="note-i04"'];
+order.forEach((text, index) => {
   assert.ok(comments.includes(text), text);
+  if (index) assert.ok(comments.indexOf(text) > comments.indexOf(order[index - 1]), text);
+});
+const cardOf = id => comments.slice(comments.indexOf(`id="note-${id}"`)).split('</article>')[0];
+// Each card shows the issue, its status against the prior round, how many reviewers raised it and its members as evidence.
+for (const text of ['Major · Statistics and inference', 'Issue i01</span>', 'title="Persisting from the prior round">persisting</span>',
+                    'Raised by 2 reviewers', 'Escalated', '<h3>1. Issue i01</h3>', 'Statement i01',
+                    'Still &lt;b&gt;wrong&lt;/b&gt;', 'Rank in the prior round: 2', 'Specialist reports: audit_stats.md',
+                    'Evidence: 2 findings', 'core-1 · field track · issue · major', 'core-2 · core track · issue · major',
+                    'Basis: judgement', 'title="No arithmetic receipt."', 'Basis: two-quotes', 'Comment u1', 'Comment u2',
+                    '<blockquote>alpha beta</blockquote>', 'Counterevidence checked', 'Escalation ruling',
+                    'Accepted as central.', 'href="https://example.org/a"', 'href="#anchor-i01-1">Go to passage',
+                    'href="#anchor-i01-2">Go to passage', 'Mark for follow-up']) {
+  assert.ok(cardOf('i01').includes(text), text);
 }
+assert.ok(!cardOf('i01').includes('Accept wording'));
+// The ruling belongs to the member it was made on.
+assert.equal(comments.split('Accepted as central.').length - 1, 1);
 assert.ok(!comments.includes('javascript:'));
 assert.ok(!comments.includes('<b>'));
-const appendixAt = comments.indexOf('id="appendix"');
-assert.ok(appendixAt > comments.indexOf('id="note-u1"'));
-assert.ok(comments.indexOf('id="note-u2"') > appendixAt);
-for (const text of ['Arm full-two-track', '3 reviewers', 'Status complete', '1 escalated', 'Guard clean', '10 min',
+// An issue whose one member is an anchored edit takes the wording decision.
+for (const text of ['Minor · Presentation', 'Accept wording', 'Decline wording', 'Suggested wording</p><blockquote>delta</blockquote>']) {
+  assert.ok(cardOf('i02').includes(text), text);
+}
+assert.ok(cardOf('i03').includes('Unplaced: the quote is not found once in its passage'));
+assert.ok(cardOf('i03').includes('No finding behind this issue is placed on the manuscript text'));
+// A closed issue has no members and no rank, and shows the evidence that still stands.
+for (const text of ['title="Unverified: not raised again and not shown fixed">unverified</span>', '<h3>Issue i04</h3>',
+                    'No editor ruled on it.', 'Rank in the prior round: 4', "The prior round's evidence still in the manuscript",
+                    '<blockquote>beta gamma</blockquote>']) {
+  assert.ok(cardOf('i04').includes(text), text);
+}
+assert.ok(!cardOf('i04').includes('Raised by'));
+assert.ok(!cardOf('i04').includes('Evidence:'));
+for (const text of ['Arm full-two-track', '3 reviewers', 'Status complete', 'Issues grouped by the editor',
+                    'Prior round issues.json: 2 issues carried, this round 2 new · 1 persisting · 0 regressed · 0 resolved · 1 unverified',
+                    '1 escalated', 'Guard clean', '10 min',
                     "Editor's verdict", 'High if true', 'Basis: judgement. Not a score.', 'Specialist reports (1)',
                     '# Stats audit &lt;script&gt;x&lt;/script&gt;',
                     'spec-stats · stats track · model asked claude-sonnet-5-5 · model ran claude-sonnet-5-5 · attempt 1 · 4 tool calls · 5000 tokens · done · 1 findings</li>',
@@ -84,7 +138,6 @@ for (const text of ['Arm full-two-track', '3 reviewers', 'Status complete', '1 e
                     'recorder · ingest track · model asked claude-haiku-5-5 · model ran not recorded · attempt 1 · 4 tool calls · 42000 tokens · completed · tasks ingest, write review</li>',
                     '<p class="unverified">The model that ran was not recorded for 1 slot (recorder), so the model asked for it is unverified.</p>',
                     'marked blocked afterwards: rate limit', 'runtime.json is not valid JSON &lt;x&gt;',
-                    'Not publishable: 1 file(s) could not be read in full',
                     'Findings by track: field 1 · core 1', 'Advisory only.']) {
   assert.ok(panel.includes(text), text);
 }
@@ -170,16 +223,52 @@ assert.equal(vm.runInContext("runStatus({status:'complete-without-findings', qua
 assert.equal(vm.runInContext("runStatus({status:'complete-without-findings', quarantined_findings_count:2})", context),
              'Status complete-without-findings: the guard quarantined all 2');
 
-// The manuscript marks only the report's findings, numbered as in the comment column.
-const markup = vm.runInContext("quoteMarkup(paper.blocks[0])", context);
-assert.ok(markup.includes('href="#note-u1" aria-label="Comment 1">1</a>'));
-assert.ok(!markup.includes('note-u2'));
+// Every anchored member marks the manuscript, overlapping quotes included, each pinned with its issue's number.
+// The issue that is one edit shows its wording, and the unplaced member marks nothing.
+assert.equal(vm.runInContext('quoteMarkup(paper.blocks[0])', context),
+  '<span class="anchor" id="anchor-i01-2"></span><mark class="question-mark anchor" id="anchor-i01-1">alpha</mark>'
+  + '<a class="pin" href="#note-i01" aria-label="Comment 1">1</a><mark class="question-mark"> beta</mark>'
+  + '<a class="pin" href="#note-i01" aria-label="Comment 1">1</a> <span class="before anchor" id="anchor-i02-1">gamma</span>'
+  + ' <span class="after">delta</span><a class="pin" href="#note-i02" aria-label="Comment 2">2</a>');
+// Accepting the edit issue applies its one member's wording.
+assert.equal(vm.runInContext("decisions = {items:{i02:'accepted'}}; acceptedText(paper.blocks[0])", context), 'alpha beta delta');
+vm.runInContext('decisions = {items:{}};', context);
 
-// The escalated filter keeps only escalated findings, and a review without a run resets it.
-vm.runInContext("filter = 'escalated'; cards();", context);
-assert.ok(html('#comments').includes('id="note-u1"'));
-assert.ok(!html('#comments').includes('id="appendix"'));
-vm.runInContext("review = {id:'workspace', findings:[]}; cards();", context);
+// Each run filter keeps its own cards.
+const shown = name => vm.runInContext(`filter = '${name}'; cards(); review.findings.map(item => item.id)
+  .filter(id => document.querySelector('#comments').innerHTML.includes('id="note-' + id + '"')).join(' ')`, context);
+assert.equal(shown('required'), 'i01');
+assert.equal(shown('suggestions'), 'i02 i03');
+assert.equal(shown('escalated'), 'i01');
+assert.equal(shown('all'), 'i01 i02 i03 i04');
+// A workspace filter does not survive onto a run, and a run filter does not survive onto a workspace review.
+assert.equal(shown('questions'), 'i01 i02 i03 i04');
+assert.equal(vm.runInContext('filter', context), 'all');
+vm.runInContext("filter = 'escalated'; review = {id:'workspace', findings:[]}; cards();", context);
 assert.equal(vm.runInContext('filter', context), 'all');
 assert.equal(elements.get('#run-panel').hidden, true);
+for (const name of ['required', 'suggestions', 'escalated']) assert.equal(elements.get('#filter-' + name).hidden, true, name);
+for (const name of ['scientific', 'copyedit', 'questions']) assert.equal(elements.get('#filter-' + name).hidden, false, name);
+
+// A run that is not publishable and has nothing to show says why, not that the review is empty.
+vm.runInContext(`review = {id:'run', summary:'', findings:[], run:{status:'complete', problems:[], publishable:false,
+  not_publishable_reasons:['the run folder has no readable issues.json'], findings_source:'none', issues_source:null,
+  prior_round:null, missing_stages:[], agents:[], limitations:[]}}; cards();`, context);
+assert.equal(html('#comments'), '<div class="not-publishable error" role="note"><p><strong>This run is not publishable.</strong> '
+  + 'It has no review to show.</p><ul><li>the run folder has no readable issues.json</li></ul></div>');
+assert.equal(elements.get('#finding-count').textContent, 'No findings');
+
+// A run with no issues shows its recorded findings under their own heading.
+vm.runInContext(`review.run.findings_source = 'ledger';
+review.findings = [{id:'aa11', source_id:'aa11', number:1, group:'ledger', title:'Recorded finding', comment:'Comment',
+  severity:'major', category:null, status:null, raised_by:1, kind:'issue', block_id:'b1', quote:'beta', start:6, end:10,
+  placement:'anchored', evidence_blocks:[], audits:[], surviving_quotes:[],
+  members:[{finding_uid:'aa11', slot:'core-1', title:'Recorded finding', comment:'Comment', quote:'beta', block_id:'b1',
+            start:6, end:10, placement:'anchored', evidence_blocks:[]}]}];
+cards();`, context);
+assert.ok(html('#comments').includes('<h3 class="issue-group">Findings recorded before any issues were written (1)</h3>'));
+assert.ok(html('#comments').includes('It has no review to show.') === false);
+assert.equal(elements.get('#finding-count').textContent, '1 finding, not grouped into issues');
+// The member repeats neither the card's title nor its comment.
+assert.equal(html('#comments').split('Recorded finding').length - 1, 1);
 console.log('Review rendering checks passed');

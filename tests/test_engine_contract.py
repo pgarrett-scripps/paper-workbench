@@ -53,6 +53,13 @@ class AppCommandTest(unittest.TestCase):
                      '--citation-workers', '--citation-worker-model'):
             self.assertIn(flag, output.getvalue())
 
+    def test_review_help_lists_the_prior_issues_option(self):
+        # A second round passes the first round's issues.json, so its issue ids carry over.
+        output = io.StringIO()
+        with contextlib.redirect_stdout(output), self.assertRaises(SystemExit):
+            main(['review', '-h'])
+        self.assertIn('--prior-issues PATH', output.getvalue())
+
 
 class EngineCommandTest(unittest.TestCase):
     def setUp(self):
@@ -115,16 +122,21 @@ class EngineCommandTest(unittest.TestCase):
         from test_run_view import make_run
         make_run(self.root / 'run')
         status, report = run_main(['report', str(self.root / 'run')])
-        self.assertEqual((status, report['status'], report['findings']), (0, 'complete', 2))
+        self.assertEqual((status, report['status'], report['findings'], report['issues'], report['required'],
+                          report['suggestions']), (0, 'complete', 3, 2, 1, 1))
         self.assertEqual((report['publishable'], report['not_publishable_reasons']), (True, []))
         # The summary keys come first, then one key per report path.
         paths = {key: value for key, value in report.items()
-                 if key not in ('status', 'cause', 'findings', 'publishable', 'not_publishable_reasons', 'problems')}
+                 if key not in ('status', 'cause', 'findings', 'issues', 'required', 'suggestions', 'publishable',
+                                'not_publishable_reasons', 'problems')}
         self.assertTrue(paths)
         for path in paths.values():
             self.assertTrue(Path(path).is_file(), path)
         text = (self.root / 'run' / 'review' / 'REVIEW.md').read_text()
         self.assertIn('One central question.', text)
+        # REVIEW.md renders from issues.json: the required changes, then the suggestions by category.
+        self.assertLess(text.index('## Required changes'), text.index('### 1. The knockdown control is not named'))
+        self.assertLess(text.index('## Suggestions'), text.index('### 2. The opening sentence needs an article'))
         # The engine renders the citation ledger into REVIEW.md as its own section.
         self.assertIn('\n## Citations\n', text)
 

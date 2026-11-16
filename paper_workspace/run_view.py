@@ -5,8 +5,8 @@
 reads the run, finished or stopped, and names any file it could not read. This
 module adds only what the app owns: which manuscript a served path names, the
 check that the run reviewed this version of it, and the review shape the
-viewer, the decisions and ``export_draft`` read. Nothing here makes a model
-call or writes to the run.
+viewer, the decisions and ``export_draft`` read, one card per issue in
+``issues.json``. Nothing here makes a model call or writes to the run.
 
 The citation ledger's rows come from the engine's ``read_citation_ledger``,
 which keeps the last row written for each ``row_id`` and gives them in reading
@@ -19,10 +19,18 @@ from pathlib import Path
 
 from peerreviewagents import MANUSCRIPT_DIRECTORY, read_citation_ledger, read_run
 from peerreviewagents import locate_run, NotARunFolder
+from peerreviewagents.issues import (ISSUE_FIELDS, by_category, closed_issues, is_issue_id, required_issues,
+                                     suggestion_issues)
 
 RUN_REVIEW_ID = 'run'
 AUDIT_LIMIT = 400_000
 FINDING_UID = re.compile(r'[A-Za-z0-9_-]{1,64}')
+# An issue's members carry the quote and the blocks. Their ledger rows, joined
+# by finding_uid, carry the comment, the span and the suggested wording.
+FROM_LEDGER = ('comment', 'start', 'end', 'block_sha256', 'placement', 'replacement', 'basis_reason',
+               'counterevidence', 'source_urls')
+# What a card copies from the member it is anchored to.
+ANCHOR = ('block_id', 'quote', 'start', 'end', 'block_sha256')
 
 # The citation ledger, as the run panel shows it.
 CITATION_ROWS = 500
@@ -233,28 +241,103 @@ def citation_view(citations, review):
     return view
 
 
+def placed(row, blocks):
+    """A finding with its anchor checked against this manuscript's text.
+
+    A recorded span counts only while it still holds the quote. A member read
+    from ``issues.json`` alone has no span, so its quote is anchored where it
+    occurs exactly once in its block. Anything else is ``unplaced``.
+    """
+    row = dict(row)
+    block = blocks.get(row.get('block_id'))
+    text, quote = (block or {}).get('text', ''), row.get('quote')
+    start, end = row.get('start'), row.get('end')
+    if not (block and isinstance(quote, str) and quote):
+        row.update(start=None, end=None, placement='unplaced')
+        return row
+    if not (type(start) is int and type(end) is int and 0 <= start <= end <= len(text) and text[start:end] == quote):
+        start = text.find(quote)
+        if start < 0 or text.find(quote, start + 1) >= 0:
+            row.update(start=None, end=None, placement='unplaced')
+            return row
+        end = start + len(quote)
+    row.update(start=start, end=end, placement='anchored')
+    if row.get('block_sha256') is None:
+        row['block_sha256'] = block.get('sha256')
+    return row
+
+
+def issue_card(issue, group, ledger, blocks):
+    """One issue as one card and one author decision.
+
+    Each member is joined to its ledger row by ``finding_uid`` for the comment,
+    the span and the suggested wording, then placed on the manuscript. The card
+    is an edit only when its one member is an anchored edit with wording, so
+    accepting it applies exactly that wording. Any other issue takes a note.
+    """
+    members = []
+    for member in issue.get('members') or []:
+        if isinstance(member, dict):
+            uid = member.get('finding_uid')
+            row = ledger.get(uid, {}) if isinstance(uid, str) else {}
+            members.append(placed({**member, **{key: row[key] for key in FROM_LEDGER if key in row}}, blocks))
+    edit = (len(members) == 1 and members[0].get('kind') == 'edit' and members[0]['placement'] == 'anchored'
+            and isinstance(members[0].get('replacement'), str))
+    anchor = next((m for m in members if m['placement'] == 'anchored'), None) or next(
+        (m for m in members if m.get('block_id')), {})
+    evidence = dict.fromkeys(block for m in members for block in m.get('evidence_blocks') or [] if isinstance(block, str))
+    return {**issue, 'group': group, 'source_id': issue.get('id'), 'number': issue.get('rank'),
+            'title': issue.get('name'), 'comment': issue.get('statement'), 'members': members,
+            'kind': 'edit' if edit else 'issue', 'escalate': any(m.get('escalate') is True for m in members),
+            'evidence_blocks': list(evidence), **{key: anchor.get(key) for key in ANCHOR},
+            'placement': anchor.get('placement', 'unplaced'), 'replacement': anchor.get('replacement') if edit else None}
+
+
+def finding_card(row, ledger, blocks):
+    """A ledger finding no issue holds, as a card of its own with itself as the one member."""
+    issue = {**dict.fromkeys(ISSUE_FIELDS), 'id': row.get('finding_uid'), 'name': row.get('title'),
+             'severity': row.get('severity'), 'statement': row.get('comment'), 'members': [row], 'raised_by': 1,
+             'surviving_quotes': [], 'audits': []}
+    return issue_card(issue, 'ledger', ledger, blocks)
+
+
 def run_review(review, paper):
     """The run as a review that the viewer, the decisions and ``export_draft`` read.
 
-    Body findings come first, then the editor's appendix, each marked with its
-    ``section``. A run with no editor package shows its recorded findings. A
-    finding's ``id`` is its ``finding_uid``, because the engine's own ``id``
-    repeats across reviewers.
+    The unit is the editor's issue. Required changes come first in rank order,
+    then the suggestions grouped by category, then the prior round's resolved
+    and unverified issues. A finding that no issue holds, which is every
+    finding of a run that stopped before the editor wrote ``issues.json``, is a
+    card of its own after them. A card's ``id`` is its issue id, or the
+    finding's ``finding_uid`` for a finding no issue holds, and the cards are
+    numbered instead when one is missing, malformed or repeated.
     """
     run = recorded(review)
     check_version(run, paper)
-    findings = ([{**row, 'section': 'body'} for row in run['body']]
-                + [{**row, 'section': 'appendix'} for row in run['appendix']])
-    uids = [row.get('finding_uid') for row in findings]
-    unique = len(set(uids)) == len(uids) and all(isinstance(uid, str) and FINDING_UID.fullmatch(uid) for uid in uids)
-    for number, row in enumerate(findings, 1):
-        row['source_id'] = row.get('id')
-        row['id'] = row['finding_uid'] if unique else f'{RUN_REVIEW_ID}-{number}'
-        row['number'] = number
-    edited = run['findings_source'] == 'editor-package'
+    blocks = {block['id']: block for block in paper['blocks']}
+    ledger = {row['finding_uid']: row for row in run['findings'] if isinstance(row.get('finding_uid'), str)}
+    issues = run['issues']
+    held = {member.get('finding_uid') for issue in issues for member in issue.get('members') or []
+            if isinstance(member, dict) and isinstance(member.get('finding_uid'), str)}
+    findings = ([issue_card(issue, 'required', ledger, blocks) for issue in required_issues(issues)]
+                + [issue_card(issue, 'suggestion', ledger, blocks)
+                   for _, rows in by_category(suggestion_issues(issues)) for issue in rows]
+                + [issue_card(issue, 'closed', ledger, blocks) for issue in closed_issues(issues)])
+    top = max((card['number'] for card in findings if type(card['number']) is int), default=0)
+    loose = [finding_card(row, ledger, blocks) for row in run['findings']
+             if not (isinstance(row.get('finding_uid'), str) and row['finding_uid'] in held)]
+    for number, card in enumerate(loose, top + 1):
+        card['number'] = number
+    findings += loose
+    ids = [card['source_id'] for card in findings]
+    unique = len(set(ids)) == len(ids) and all(
+        isinstance(value, str) and (FINDING_UID.fullmatch(value) if card['group'] == 'ledger' else is_issue_id(value))
+        for card, value in zip(findings, ids))
+    for number, card in enumerate(findings, 1):
+        card['id'] = card['source_id'] if unique else f'{RUN_REVIEW_ID}-{number}'
     stages = run['stages'] or {}
     none_found = list(stages.get('none_found') or [])
-    per_slot = Counter(row.get('slot') for row in findings)
+    per_slot = Counter(row.get('slot') for row in run['findings'])
     citations = citation_view(run['citations'], run['review'])
     # The citation stage lines are in `problems` too. The panel shows them once, with the ledger.
     shown_with_citations = set(citations['problems']) if citations else set()
@@ -268,7 +351,10 @@ def run_review(review, paper):
         'problems': [line for line in run['problems'] if line not in shown_with_citations],
         'publishable': run['publishable'],
         'not_publishable_reasons': run['not_publishable_reasons'],
-        'edited': edited,
+        'findings_source': run['findings_source'],
+        'issues_source': run['issues_source'],
+        'prior_round': run['prior_round'],
+        'counts': run['counts'],
         'escalated_count': len(run['escalations']),
         'review_guard_status': run['guard_status'],
         'quarantined_findings_count': run['counts']['quarantined'],
@@ -280,7 +366,7 @@ def run_review(review, paper):
         'agents': [{**row, 'findings': per_slot.get(row.get('slot'), 0), 'none_found': row.get('slot') in none_found}
                    for row in run['agents']],
         'models_unverified': list(run['identity'].get('models_unverified') or []),
-        'findings_by_track': dict(Counter(row['track'] for row in findings if row.get('track'))),
+        'findings_by_track': dict(Counter(row['track'] for row in run['findings'] if row.get('track'))),
         'verdict': run['verdict'],
         'escalation_rulings': run['escalation_rulings'],
         'limitations': run['limitations'],
@@ -289,13 +375,15 @@ def run_review(review, paper):
         'tokens_total': run['runtime']['tokens_total'],
         'wall_seconds': run['runtime']['wall_seconds'],
     }
-    if edited:
+    if run['findings_source'] == 'issues':
         summary = run['summary'] or 'The editor wrote no summary.'
     elif run['cause']:
-        summary = f'The run stopped before the editor wrote its package: {run["cause"]}'
-    elif run['complete']:
-        summary = 'The run finished without an editor package.'
+        summary = f'The run stopped before the editor wrote its issues: {run["cause"]}'
+    elif run['findings_source'] == 'ledger' and run['complete']:
+        summary = 'The run finished without a readable issues.json, so its findings are not grouped into issues.'
+    elif run['findings_source'] == 'ledger':
+        summary = f'The run has not written its issues. Its last recorded status is {run["status"]}.'
     else:
-        summary = f'The run has not written an editor package. Its last recorded status is {run["status"]}.'
+        summary = run['summary'] or f'The run recorded no findings. Its last recorded status is {run["status"]}.'
     return {'id': RUN_REVIEW_ID, 'paper_id': paper['id'], 'source_sha256': paper['source_sha256'],
             'summary': summary, 'findings': findings, 'run': view}
