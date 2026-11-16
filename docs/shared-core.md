@@ -37,7 +37,7 @@ The smaller helpers come from the public `peerreviewagents.workspace`:
 | `save_review`, `normalize_review` | revisions, `revise` and tests |
 | `words`, `text_of` | Paper Scaffold import and table structure |
 
-No module under `paper_workspace/` or `tests/` imports `peerreviewagents.engine`, `.plugin`, `.cli` or `.runs`, or imports one of those modules from `peerreviewagents`. `PublicSurfaceTest` in `tests/test_engine_contract.py` fails if one comes back.
+No module under `paper_workspace/` or `tests/` imports `peerreviewagents.engine`, `.plugin`, `.cli` or `.runs`, or imports one of those modules from `peerreviewagents`. The one exception is `tests/test_engine_rounds.py`, which imports the engine's plugin server to build two review rounds without a model, as the engine's own tests do, because the engine has no public way to. `PublicSurfaceTest` in `tests/test_engine_contract.py` fails if any other import comes back.
 
 ## What the app reads from a run
 
@@ -73,7 +73,13 @@ A run written before engine commit bfc8aae recorded no model asked per slot, so 
 
 Each issue keeps every `ISSUE_FIELDS` key: `id`, `name`, `severity`, `category`, `rank`, `statement`, `status`, `status_reason`, `prior_id`, `prior_rank`, `raised_by`, `members`, `audits`, `surviving_quotes`, `rebuttal_quote`, `rebuttal_block_id` and `text_unchanged_reason`. A member carries its quote and block ids only. `run_view.issue_card` joins it to its ledger row by `finding_uid` for `comment`, `start`, `end`, `block_sha256`, `replacement`, `basis_reason`, `counterevidence` and `source_urls`, then checks the span against this manuscript's text. A span that no longer holds the quote is placed where the quote occurs exactly once in its block, and is unplaced otherwise. The card takes the annotation keys the viewer and `export_draft` use (`kind`, `block_id`, `quote`, `start`, `end`, `placement`, `comment`, `replacement`, `evidence_blocks`) from its first anchored member. It is an edit only when its one member is an anchored edit with wording, so accepting it applies exactly that wording.
 
-The viewer keys a card by its issue id, which the engine carries from round to round, so a decision stays on its issue. A finding no issue holds is keyed by its `finding_uid`. If an id is missing, malformed or repeated, the viewer numbers the cards `run-1`, `run-2` and on instead. A revision's issue ledger keeps the issue id and the issue's status in the round that raised it.
+The viewer keys a card by its issue id. A finding no issue holds is keyed by its `finding_uid`. A card whose id is missing, malformed, repeated or shaped like a place number is numbered `run-N` by its place and takes no decision, because a decision keyed on a place could land on another card once the order changed. The card says so and asks for a re-run. A decision already saved under such a number is kept in the file and not applied to an export or a revision. A revision's issue ledger keeps the issue id and the issue's status in the round that raised it.
+
+The engine carries an issue id from round to round, but decisions do not follow it. They are saved in each run folder's `manuscript/decisions/run.json`, so a later round's run folder opens with none. The viewer cannot show the prior round's decision beside an issue, because the engine records the prior round only as `prior_round.file`, a file name relative to the prior run (`issues.json`), with its digest, issue count and tally, and nothing that locates the prior run folder. Showing it needs the engine to record that folder.
+
+Saved decisions that no longer match a card, such as keys from the per-finding shape before 0.10 or an issue this round does not hold, are counted once above the cards. The decisions file is left as it is.
+
+The app reads only the `issues.json` that engine 0.10.0 writes. A review folder with `editor-package.json` and no `issues.json` is from an older engine, and the viewer refuses it with "This review was made by an older engine, re-run it." A 0.10 run whose editor failed has neither file and opens with its findings as not publishable. `run_view.check_issues` checks the type of every value the viewer reads from an issue and its members, and a run with a wrong one is refused in one message that names the issue and the field.
 
 ## The citation ledger
 

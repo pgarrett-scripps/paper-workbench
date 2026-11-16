@@ -13,6 +13,7 @@ which keeps the last row written for each ``row_id`` and gives them in reading
 order, ``ref:r2`` before ``ref:r10``. It is called without the fetched
 abstracts and full text, because the panel never shows them.
 """
+import os
 import re
 from collections import Counter
 from pathlib import Path
@@ -21,10 +22,26 @@ from peerreviewagents import MANUSCRIPT_DIRECTORY, read_citation_ledger, read_ru
 from peerreviewagents import locate_run, NotARunFolder
 from peerreviewagents.issues import (ISSUE_FIELDS, by_category, closed_issues, is_issue_id, required_issues,
                                      suggestion_issues)
+from peerreviewagents.workspace import read_json
 
 RUN_REVIEW_ID = 'run'
 AUDIT_LIMIT = 400_000
 FINDING_UID = re.compile(r'[A-Za-z0-9_-]{1,64}')
+# A card with no engine id of its own is numbered run-1, run-2 and on, and takes
+# no decision. A uid of that form would share an id with such a card, so it is
+# not taken as an engine id. The engine's own uids are 16 hex digits.
+POSITIONAL_ID = re.compile(rf'{RUN_REVIEW_ID}-\d+')
+NO_ENGINE_ID = ('This card has no engine id, so a decision on it could land on another card. '
+                'Re-run the review to decide on it.')
+OLDER_ENGINE = ('This review was made by an older engine, re-run it. Its review folder holds editor-package.json '
+                'and no issues.json, and this viewer reads only the issues.json that engine 0.10.0 writes.')
+# The types the viewer reads from each issue in issues.json. A value of another
+# type is a malformed file, and the run is refused with each such value named.
+ISSUE_TEXT = ('id', 'name', 'statement', 'severity', 'category', 'status', 'status_reason',
+              'text_unchanged_reason', 'rebuttal_quote', 'rebuttal_block_id', 'prior_id')
+ISSUE_NUMBERS = ('rank', 'prior_rank', 'raised_by')
+MEMBER_TEXT = ('finding_uid', 'slot', 'track', 'severity', 'kind', 'basis', 'title', 'quote', 'block_id')
+TYPE_PROBLEMS_SHOWN = 8
 # An issue's members carry the quote and the blocks. Their ledger rows, joined
 # by finding_uid, carry the comment, the span and the suggested wording.
 FROM_LEDGER = ('comment', 'start', 'end', 'block_sha256', 'placement', 'replacement', 'basis_reason',
@@ -50,11 +67,103 @@ class RunError(ValueError):
 
 
 def recorded(review):
-    """The engine's reading of a run. A symlinked run file is refused in plain words."""
+    """The engine's reading of a run. A symlinked run file is refused in plain words.
+
+    The engine's reader trusts the shape of each issue's member list, and one
+    that is not a list of objects stops it with an AttributeError. That run is
+    refused in plain words too, with the values named from issues.json itself.
+    """
     try:
         return read_run(review)
     except ValueError as exc:
         raise RunError(str(exc)) from None
+    except (AttributeError, TypeError):
+        raise RunError(malformed(review)) from None
+
+
+def is_text(value):
+    return value is None or isinstance(value, str)
+
+
+def is_text_list(value):
+    return value is None or (isinstance(value, list) and all(isinstance(item, str) for item in value))
+
+
+def issue_problems(rows):
+    """Each value in the issues that is not of the type the viewer reads, as a line of prose."""
+    problems = []
+    for number, row in enumerate(rows, 1):
+        if not isinstance(row, dict):
+            problems.append(f'issue {number} is not an object')
+            continue
+        name = f'issue {number}' + (f' ({row["id"]})' if isinstance(row.get('id'), str) else '')
+        problems += [f'in {name}, {key} is not text' for key in ISSUE_TEXT if not is_text(row.get(key))]
+        problems += [f'in {name}, {key} is not a whole number' for key in ISSUE_NUMBERS
+                     if not (row.get(key) is None or type(row.get(key)) is int)]
+        if not is_text_list(row.get('audits')):
+            problems.append(f'in {name}, audits is not a list of file names')
+        quotes = row.get('surviving_quotes')
+        if not (quotes is None or (isinstance(quotes, list) and all(
+                isinstance(quote, dict) and is_text(quote.get('quote')) and is_text(quote.get('block_id'))
+                for quote in quotes))):
+            problems.append(f'in {name}, surviving_quotes is not a list of quotes')
+        members = row.get('members')
+        if not (members is None or isinstance(members, list)):
+            problems.append(f'in {name}, members is not a list')
+            continue
+        for index, member in enumerate(members or [], 1):
+            where = f'{name} member {index}'
+            if not isinstance(member, dict):
+                problems.append(f'{where} is not an object')
+                continue
+            problems += [f'in {where}, {key} is not text' for key in MEMBER_TEXT if not is_text(member.get(key))]
+            if not (member.get('escalate') is None or isinstance(member.get('escalate'), bool)):
+                problems.append(f'in {where}, escalate is not true or false')
+            if not is_text_list(member.get('evidence_blocks')):
+                problems.append(f'in {where}, evidence_blocks is not a list of block ids')
+    return problems
+
+
+def wrong_types(problems):
+    """One message for every value of the wrong type, the first few of them named."""
+    lines = [line[0].upper() + line[1:] for line in problems[:TYPE_PROBLEMS_SHOWN]]
+    if len(problems) > TYPE_PROBLEMS_SHOWN:
+        lines.append(f'{len(problems) - TYPE_PROBLEMS_SHOWN} more are not listed')
+    return ("This run's review/issues.json holds values of the wrong type, so the viewer cannot show it. "
+            + '. '.join(lines) + '. Re-run the review.')
+
+
+def malformed(review):
+    """Why the engine's reader stopped on a run, read from issues.json where the cause is there."""
+    path = Path(review) / 'issues.json'
+    document = None
+    if path.is_file() and not path.is_symlink():
+        try:
+            document = read_json(path)
+        except (ValueError, OSError):
+            document = None
+    rows = document.get('issues') if isinstance(document, dict) else None
+    problems = issue_problems(rows) if isinstance(rows, list) else []
+    if problems:
+        return wrong_types(problems)
+    return 'The engine could not read this run folder, because a run file holds a value of the wrong type. Re-run the review.'
+
+
+def check_issues(rows):
+    """Refuse a run whose issues hold a value the viewer would misread, naming each one."""
+    problems = issue_problems(rows)
+    if problems:
+        raise RunError(wrong_types(problems))
+
+
+def check_engine(review):
+    """Refuse a review folder an engine before 0.10 wrote: editor-package.json and no issues.json.
+
+    A 0.10 run whose editor failed has neither file, and it opens with what it recorded.
+    """
+    review = Path(review)
+    if not os.path.lexists(review / 'issues.json') and os.path.lexists(review / 'editor-package.json'):
+        raise RunError(OLDER_ENGINE)
 
 
 def locate(path):
@@ -309,10 +418,15 @@ def run_review(review, paper):
     and unverified issues. A finding that no issue holds, which is every
     finding of a run that stopped before the editor wrote ``issues.json``, is a
     card of its own after them. A card's ``id`` is its issue id, or the
-    finding's ``finding_uid`` for a finding no issue holds, and the cards are
-    numbered instead when one is missing, malformed or repeated.
+    finding's ``finding_uid`` for a finding no issue holds. A card whose id is
+    missing, malformed or repeated is numbered by its place instead and is not
+    ``decidable``, because a decision keyed on its place would land on another
+    card once the order changed.
     """
+    check_engine(review)
     run = recorded(review)
+    # With an empty ledger the engine rebuilds the findings from the members, so they are checked first.
+    check_issues(run['issues'])
     check_version(run, paper)
     blocks = {block['id']: block for block in paper['blocks']}
     ledger = {row['finding_uid']: row for row in run['findings'] if isinstance(row.get('finding_uid'), str)}
@@ -329,12 +443,13 @@ def run_review(review, paper):
     for number, card in enumerate(loose, top + 1):
         card['number'] = number
     findings += loose
-    ids = [card['source_id'] for card in findings]
-    unique = len(set(ids)) == len(ids) and all(
-        isinstance(value, str) and (FINDING_UID.fullmatch(value) if card['group'] == 'ledger' else is_issue_id(value))
-        for card, value in zip(findings, ids))
+    uses = Counter(card['source_id'] for card in findings if isinstance(card['source_id'], str))
     for number, card in enumerate(findings, 1):
-        card['id'] = card['source_id'] if unique else f'{RUN_REVIEW_ID}-{number}'
+        value = card['source_id']
+        engine_id = (isinstance(value, str) and uses[value] == 1 and not POSITIONAL_ID.fullmatch(value)
+                     and bool(FINDING_UID.fullmatch(value) if card['group'] == 'ledger' else is_issue_id(value)))
+        card['id'] = value if engine_id else f'{RUN_REVIEW_ID}-{number}'
+        card['decidable'] = engine_id
     stages = run['stages'] or {}
     none_found = list(stages.get('none_found') or [])
     per_slot = Counter(row.get('slot') for row in run['findings'])
@@ -380,6 +495,7 @@ def run_review(review, paper):
     elif run['cause']:
         summary = f'The run stopped before the editor wrote its issues: {run["cause"]}'
     elif run['findings_source'] == 'ledger' and run['complete']:
+        # An older engine's folder never reaches here: check_engine refused it above.
         summary = 'The run finished without a readable issues.json, so its findings are not grouped into issues.'
     elif run['findings_source'] == 'ledger':
         summary = f'The run has not written its issues. Its last recorded status is {run["status"]}.'
@@ -387,3 +503,17 @@ def run_review(review, paper):
         summary = run['summary'] or f'The run recorded no findings. Its last recorded status is {run["status"]}.'
     return {'id': RUN_REVIEW_ID, 'paper_id': paper['id'], 'source_sha256': paper['source_sha256'],
             'summary': summary, 'findings': findings, 'run': view}
+
+
+def applicable(review, decisions):
+    """The decisions an export or a revision applies: none keyed on a card with no engine id.
+
+    Such a card is numbered by its place, so a decision saved under its number
+    may have been made on another card. It is left in the decisions file and
+    not applied.
+    """
+    placed = {item['id'] for item in review['findings'] if item.get('decidable') is False}
+    if not placed:
+        return decisions
+    return {**decisions, 'items': {key: value for key, value in decisions.get('items', {}).items()
+                                   if key not in placed}}

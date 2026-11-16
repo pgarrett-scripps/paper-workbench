@@ -97,6 +97,10 @@ order.forEach((text, index) => {
   assert.ok(comments.includes(text), text);
   if (index) assert.ok(comments.indexOf(text) > comments.indexOf(order[index - 1]), text);
 });
+assert.ok(comments.includes('<details class="closed-issues" id="closed-issues">'));
+// Nothing of the per-finding viewer is left: no appendix and no fallback for a server without revisions.
+const sources = code + fs.readFileSync('paper_workspace/web/style.css', 'utf8') + fs.readFileSync('paper_workspace/web/index.html', 'utf8');
+for (const text of ['appendix', 'legacyServer']) assert.ok(!sources.includes(text), text);
 const cardOf = id => comments.slice(comments.indexOf(`id="note-${id}"`)).split('</article>')[0];
 // Each card shows the issue, its status against the prior round, how many reviewers raised it and its members as evidence.
 for (const text of ['Major · Statistics and inference', 'Issue i01</span>', 'title="Persisting from the prior round">persisting</span>',
@@ -271,4 +275,47 @@ assert.ok(html('#comments').includes('It has no review to show.') === false);
 assert.equal(elements.get('#finding-count').textContent, '1 finding, not grouped into issues');
 // The member repeats neither the card's title nor its comment.
 assert.equal(html('#comments').split('Recorded finding').length - 1, 1);
+
+// A card with no engine id is numbered by its place and takes no decision. A decision saved
+// under its number is neither shown nor applied, and it is counted with the other stale ones.
+vm.runInContext(`review.findings = [{id:'run-1', source_id:'not a uid', number:1, group:'ledger', decidable:false,
+  title:'Recorded edit', comment:'Comment', severity:'minor', category:null, status:null, raised_by:1, kind:'edit',
+  replacement:'delta', block_id:'b1', quote:'gamma', start:11, end:16, placement:'anchored', evidence_blocks:[],
+  audits:[], surviving_quotes:[], members:[{finding_uid:'not a uid', slot:'core-1', title:'Recorded edit', comment:'Comment',
+  kind:'edit', replacement:'delta', quote:'gamma', block_id:'b1', start:11, end:16, placement:'anchored', evidence_blocks:[]}]}];
+decisions = {items:{'run-1':'accepted'}, annotations:{'run-1':{author_comment:'Saved on another card', issue_status:'open', rationale:''}}};
+cards();`, context);
+const placed = html('#comments');
+assert.ok(placed.includes('<p class="muted no-engine-id" role="note">This card has no engine id, so a decision on it could land on another card. Re-run the review to decide on it.</p>'));
+for (const text of ['data-action', 'author-response', 'Saved on another card', '>accepted<']) assert.ok(!placed.includes(text), text);
+assert.equal(vm.runInContext('acceptedText(paper.blocks[0])', context), 'alpha beta gamma');
+assert.ok(placed.startsWith('<p class="stale-decisions muted" role="note">1 saved decision no longer matches a card in this review. '
+  + 'The decisions file is left as it is.</p>'));
+
+// Decisions saved under an earlier viewer's per-finding keys, or under an issue this run no longer
+// holds, are counted once above the cards. A file with none says nothing.
+vm.runInContext(`review = {id:'run', summary:'', findings:[issue('i05', 1, 'required', {raised_by:2, members:[
+  member('u5', {}), member('u6', {slot:'core-2'})]})], run:{status:'complete', problems:[], publishable:true,
+  not_publishable_reasons:[], findings_source:'issues', issues_source:'editor', prior_round:null, missing_stages:[],
+  agents:[], limitations:[]}};
+decisions = {items:{'f-0001':'noted', i05:'noted', i09:'noted'}, annotations:{'f-0001':{author_comment:'Old'}, 'f-0002':{author_comment:'Old'}}};
+cards();`, context);
+const stale = html('#comments');
+assert.ok(stale.startsWith('<p class="stale-decisions muted" role="note">3 saved decisions no longer match a card in this review. '
+  + 'The decisions file is left as it is.</p>'));
+assert.equal(stale.split('stale-decisions').length - 1, 1);
+assert.ok(stale.includes('<span>noted</span>'));
+vm.runInContext("decisions = {items:{i05:'noted'}, annotations:{}}; cards();", context);
+assert.ok(!html('#comments').includes('stale-decisions'));
+
+// Two members of one issue quoting the same span are one mark and one pin, and the card lists both,
+// each linking to that one mark.
+assert.equal(vm.runInContext('quoteMarkup(paper.blocks[0])', context),
+  '<mark class="question-mark anchor" id="anchor-i05-1">alpha</mark><a class="pin" href="#note-i05" aria-label="Comment 1">1</a> beta gamma');
+const twice = html('#comments');
+for (const text of ['core-1 · core track · issue · major', 'core-2 · core track · issue · major', 'Evidence: 2 findings']) {
+  assert.ok(twice.includes(text), text);
+}
+assert.equal(twice.split('href="#anchor-i05-1">Go to passage').length - 1, 2);
+assert.ok(!twice.includes('anchor-i05-2'));
 console.log('Review rendering checks passed');

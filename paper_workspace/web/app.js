@@ -9,11 +9,15 @@ const withDraft=path=>path+(path.includes('?')?'&':'?')+'draft='+encodeURICompon
 function error(message){$('#error').textContent=message;$('#error').hidden=!message;}
 async function api(path,options){const response=await fetch(path,options);const value=await response.json();if(!response.ok){const failure=Error(value.error||response.statusText);failure.status=response.status;throw failure;}return value;}
 // The passages a card marks on the manuscript. A run's issue marks every anchored member, each
-// with its own anchor id. A workspace finding has no members and marks its own quote.
+// with its own anchor id. A workspace finding has no members and marks its own quote. Members of
+// one issue that quote the same span are one passage, marked and pinned once.
+const isMarked=member=>member.placement==='anchored'&&Boolean(member.block_id)&&Number.isInteger(member.start)&&Number.isInteger(member.end)&&member.start<member.end;
+const spanKey=member=>JSON.stringify([member.block_id,member.start,member.end]);
 function anchorsOf(item){
  const label=item.number??item.id.split('-').at(-1);
  const members=(item.members||[]).length?item.members.map((member,n)=>({...member,anchor:`${item.id}-${n+1}`})):[{...item,anchor:item.id}];
- return members.filter(member=>member.placement==='anchored'&&member.block_id&&Number.isInteger(member.start)&&Number.isInteger(member.end)&&member.start<member.end)
+ const seen=new Set();
+ return members.filter(member=>isMarked(member)&&!seen.has(spanKey(member))&&seen.add(spanKey(member)))
   .map(member=>({...member,target:item.id,label,edit:item.kind==='edit'&&typeof member.replacement==='string'?member.replacement:null}));
 }
 // Members of one issue, or of two, can quote the same or overlapping text, so the block is cut at
@@ -43,7 +47,7 @@ function quoteMarkup(block){
 }
 function acceptedText(block){
  let text=block.text;
- const notes=review.findings.filter(item=>item.block_id===block.id&&decisions.items[item.id]==='accepted').sort((a,b)=>b.start-a.start);
+ const notes=review.findings.filter(item=>item.block_id===block.id&&item.decidable!==false&&decisions.items[item.id]==='accepted').sort((a,b)=>b.start-a.start);
  for(const item of notes)text=segment(text,0,item.start)+item.replacement+segment(text,item.end);
  return esc(text);
 }
@@ -142,7 +146,9 @@ function memberItem(item,member,index){
   member.escalate&&'<span class="badge escalated">Escalated</span>'].filter(Boolean).join('');
  const wording=member.kind==='edit'&&typeof member.replacement==='string'?`<p class="muted">Suggested wording</p><blockquote>${esc(member.replacement)}</blockquote>`:'';
  const links=(member.source_urls||[]).filter(url=>typeof url==='string'&&url.startsWith('https://')).map(url=>`<a href="${esc(url)}" target="_blank" rel="noopener noreferrer">${esc(url)}</a>`).join('<br>');
- const where=member.placement==='anchored'?`<a href="#anchor-${esc(item.id)}-${index+1}">Go to passage</a>`:'Unplaced: the quote is not found once in its passage';
+ // A member quoting the same span as an earlier one links to that earlier member's mark.
+ const shared=isMarked(member)?item.members.findIndex(other=>isMarked(other)&&spanKey(other)===spanKey(member)):index;
+ const where=member.placement==='anchored'?`<a href="#anchor-${esc(item.id)}-${shared+1}">Go to passage</a>`:'Unplaced: the quote is not found once in its passage';
  const evidence=(member.evidence_blocks||[]).map(id=>`<a href="#${esc(id)}">${esc(id)}</a>`).join(' ');
  return `<li class="member"><p class="muted">${facts}</p>${badges?`<div class="run-badges">${badges}</div>`:''}${member.basis_reason?`<p class="muted">${esc(member.basis_reason)}</p>`:''}${member.title&&member.title!==item.title?`<p><strong>${esc(member.title)}</strong></p>`:''}${member.comment&&member.comment!==item.comment?`<p class="comment-text">${esc(member.comment)}</p>`:''}${member.quote?`<blockquote>${esc(member.quote)}</blockquote>`:''}${wording}${member.counterevidence?`<div class="cross-check"><p><strong>Counterevidence checked</strong><br>${esc(member.counterevidence)}</p></div>`:''}${ruling?`<div class="cross-check ruling"><p><strong>Escalation ruling</strong><br>${esc(ruling.ruling)}</p></div>`:''}${links?`<p class="muted">Sources cited: ${links}</p>`:''}<div class="evidence">${where}${evidence?`<br>Evidence: ${evidence}`:''}</div></li>`;
 }
@@ -259,9 +265,12 @@ function runPanel(){
  const reviewerHtml=reviewers.length||tracks.length?`<details><summary>Agents (${reviewers.length})</summary><ul>${reviewers.map(row=>`<li>${agentFacts(row)}</li>`).join('')}</ul>${tracks.length?`<p class="muted">Findings by track: ${tracks.map(([track,count])=>`${esc(track)} ${esc(count)}`).join(' · ')}</p>`:''}</details>`:'';
  $('#run-panel').innerHTML=`<p class="count">${facts.map(esc).join(' · ')}</p>${warnings.map(text=>`<p class="error">${esc(text)}</p>`).join('')}${unverified?`<p class="unverified">${esc(unverified)}</p>`:''}${verdictHtml}${citationPanel(run.citations)}${auditHtml}${reviewerHtml}${(run.limitations||[]).map(text=>`<p class="muted">${esc(text)}</p>`).join('')}`;
 }
+// A run card with no engine id is numbered by its place, so it takes no decision. The server refuses one too.
+const NO_ENGINE_ID='This card has no engine id, so a decision on it could land on another card. Re-run the review to decide on it.';
 function card(item){
- const wording=decisions.items[item.id]||'proposed';
- const annotation=pendingResponses.get(responseKey(item.id))||decisions.annotations?.[item.id]||{};
+ const decidable=item.decidable!==false;
+ const wording=decidable?decisions.items[item.id]||'proposed':'no decision';
+ const annotation=decidable?pendingResponses.get(responseKey(item.id))||decisions.annotations?.[item.id]||{}:{};
  const issueStatus=annotation.issue_status||'open';
  const run=isRunCard(item);
  const anchored=run?anchorsOf(item).length:item.placement==='anchored';
@@ -273,7 +282,17 @@ function card(item){
   :`<span class="category ${esc(categoryOf(item))}">${esc(categoryOf(item))} · ${esc(item.kind)} · ${esc(item.severity||'unspecified')}</span>`;
  const details=run?issueBadges(item):'';
  const notes=run?issueNotes(item)+memberList(item):item.counterevidence?`<div class="cross-check"><p><strong>Counterevidence checked</strong><br>${esc(item.counterevidence)}</p></div>`:'';
- return `<article class="finding" id="note-${esc(item.id)}" data-id="${esc(item.id)}"><div class="card-top">${top}<span>${esc(wording)}</span></div>${details}<h3>${number}${esc(item.title||(run?'Review issue':'Review finding'))}</h3><p class="comment-text">${esc(item.comment||item.text||'')}</p>${notes}${source||evidence?`<div class="evidence">${source}${source&&evidence?'<br>':''}${evidence?`Evidence: ${evidence}`:''}</div>`:''}${externalFinding(item)}<div class="actions">${actions}${wording!=='proposed'?'<button data-action="proposed">Undo wording decision</button>':''}</div><div class="author-response"><label>Author comment<textarea data-field="comment" maxlength="4000">${esc(annotation.author_comment||'')}</textarea></label><label>Issue status<select data-field="issue"><option value="open" ${issueStatus==='open'?'selected':''}>Open</option><option value="addressed" ${issueStatus==='addressed'?'selected':''}>Addressed by author</option></select></label><label>Rationale for status<textarea data-field="rationale" maxlength="2000">${esc(annotation.rationale||'')}</textarea></label><button data-save-response>Save author response</button><p class="muted">Addressed records the author's assessment. It does not verify the scientific issue.</p></div>${annotation.history?.length?`<details><summary>Author response history (${annotation.history.length})</summary><ol>${annotation.history.map(row=>`<li>${esc(row.at)} · ${esc(row.issue_status)} · ${esc(row.rationale||'No rationale')}</li>`).join('')}</ol></details>`:''}</article>`;
+ const decide=decidable?`<div class="actions">${actions}${wording!=='proposed'?'<button data-action="proposed">Undo wording decision</button>':''}</div><div class="author-response"><label>Author comment<textarea data-field="comment" maxlength="4000">${esc(annotation.author_comment||'')}</textarea></label><label>Issue status<select data-field="issue"><option value="open" ${issueStatus==='open'?'selected':''}>Open</option><option value="addressed" ${issueStatus==='addressed'?'selected':''}>Addressed by author</option></select></label><label>Rationale for status<textarea data-field="rationale" maxlength="2000">${esc(annotation.rationale||'')}</textarea></label><button data-save-response>Save author response</button><p class="muted">Addressed records the author's assessment. It does not verify the scientific issue.</p></div>${annotation.history?.length?`<details><summary>Author response history (${annotation.history.length})</summary><ol>${annotation.history.map(row=>`<li>${esc(row.at)} · ${esc(row.issue_status)} · ${esc(row.rationale||'No rationale')}</li>`).join('')}</ol></details>`:''}`
+  :`<p class="muted no-engine-id" role="note">${esc(NO_ENGINE_ID)}</p>`;
+ return `<article class="finding" id="note-${esc(item.id)}" data-id="${esc(item.id)}"><div class="card-top">${top}<span>${esc(wording)}</span></div>${details}<h3>${number}${esc(item.title||(run?'Review issue':'Review finding'))}</h3><p class="comment-text">${esc(item.comment||item.text||'')}</p>${notes}${source||evidence?`<div class="evidence">${source}${source&&evidence?'<br>':''}${evidence?`Evidence: ${evidence}`:''}</div>`:''}${externalFinding(item)}${decide}</article>`;
+}
+// Saved decisions that match no card that takes one: an earlier viewer's per-finding keys, a
+// numbered card's place, or an issue this run no longer holds. They are counted once and left in the file.
+function staleNote(){
+ const live=new Set(review.findings.filter(item=>item.decidable!==false).map(item=>item.id));
+ const stale=new Set([...Object.keys(decisions.items||{}),...Object.keys(decisions.annotations||{})].filter(id=>!live.has(id)));
+ if(!stale.size)return '';
+ return `<p class="stale-decisions muted" role="note">${esc(`${plural(stale.size,'saved decision')} no longer ${stale.size===1?'matches':'match'} a card in this review. The decisions file is left as it is.`)}</p>`;
 }
 function grouped(items){
  const groups={required:[],suggestion:[],closed:[],ledger:[]};
@@ -304,7 +323,7 @@ function runCards(){
  const loose=run.findings_source==='issues'?'Findings no issue holds':'Findings recorded before any issues were written';
  const sections=[groups.required.length&&`<h3 class="issue-group">Required changes (${groups.required.length})</h3>${groups.required.map(card).join('')}`,
   groups.suggestion.length&&`<h3 class="issue-group">Suggestions (${groups.suggestion.length})</h3>${suggestions.join('')}`,
-  groups.closed.length&&`<details class="appendix" id="closed-issues"${closedOpen}><summary>Prior round: resolved and unverified (${groups.closed.length})</summary>${groups.closed.map(card).join('')}</details>`,
+  groups.closed.length&&`<details class="closed-issues" id="closed-issues"${closedOpen}><summary>Prior round: resolved and unverified (${groups.closed.length})</summary>${groups.closed.map(card).join('')}</details>`,
   groups.ledger.length&&`<h3 class="issue-group">${loose} (${groups.ledger.length})</h3>${groups.ledger.map(card).join('')}`].filter(Boolean);
  const empty=review.findings.length||run.publishable!==false?'<div class="empty">No comments in this view.</div>':'';
  return banner+(sections.join('')||empty);
@@ -325,7 +344,7 @@ function cards(){
  for(const comparison of raw.result_comparisons||[]){
   $('#handoff-ledger').innerHTML+=`<details><summary>Quantity comparison: ${esc(comparison.status.replaceAll('_',' '))}</summary><p>${esc(comparison.limitation)}</p>${comparison.observations.map(obs=>`<p><a href="#${esc(obs.block_id)}">${esc(obs.block_id)}</a>: ${esc(obs.value)} (${esc(obs.metric)})</p><blockquote>${esc(obs.quote)}</blockquote>`).join('')}<p>Context labels are investigator assessments.</p></details>`;
  }
- $('#comments').innerHTML=review.run?runCards():(review.findings.filter(item=>filter==='all'||filter===categoryOf(item)||(filter==='questions'&&item.kind!=='edit')).map(card).join('')||'<div class="empty">No comments in this view.</div>');
+ $('#comments').innerHTML=staleNote()+(review.run?runCards():review.findings.filter(item=>filter==='all'||filter===categoryOf(item)||(filter==='questions'&&item.kind!=='edit')).map(card).join('')||'<div class="empty">No comments in this view.</div>');
  $('#comments').querySelectorAll('[data-action]').forEach(button=>button.addEventListener('click',()=>saveFinding(button.closest('article'),button.dataset.action)));
  $('#comments').querySelectorAll('[data-save-response]').forEach(button=>button.addEventListener('click',()=>saveFinding(button.closest('article'),decisions.items[button.closest('article').dataset.id]||'proposed')));
  $('#comments').querySelectorAll('[data-field]').forEach(input=>input.addEventListener('input',()=>{
@@ -333,7 +352,6 @@ function cards(){
   pendingResponses.set(responseKey(card.dataset.id),{...(decisions.annotations?.[card.dataset.id]||{}),author_comment:card.querySelector('[data-field=comment]').value,issue_status:card.querySelector('[data-field=issue]').value,rationale:card.querySelector('[data-field=rationale]').value});
   $('#save-status').textContent='Author response has unsaved changes.';
  }));
- if(state.legacyServer)$('#comments').querySelectorAll('.author-response').forEach(element=>element.hidden=true);
 }
 async function saveFinding(card,status){
  const issueStatus=card.querySelector('[data-field=issue]').value;
@@ -349,7 +367,7 @@ async function saveFinding(card,status){
 function render(){
  manuscript();cards();history();
  if(state.native)$('#build-revision').disabled=state.selected!==state.head.revision_id
-  ||!review.findings.some(item=>item.kind==='edit'&&decisions.items[item.id]==='accepted');
+  ||!review.findings.some(item=>item.kind==='edit'&&item.decidable!==false&&decisions.items[item.id]==='accepted');
 }
 function applySearch(){const query=$('#search').value.toLowerCase();document.querySelectorAll('.source-block').forEach(element=>element.hidden=query&&!element.textContent.toLowerCase().includes(query));}
 async function loadReview(id){
@@ -360,9 +378,8 @@ async function loadReview(id){
 function setDraftLink(id){const url=new URL(location.href);url.searchParams.set('draft',id);url.searchParams.delete('review');location.href=url;}
 async function start(){
  try{
-  try{state=await api(requestedDraft()?'/api/revisions?draft='+encodeURIComponent(requestedDraft()):'/api/revisions');}
-  catch(failure){if(failure.status!==404)throw failure;state={selected:'original',head:{revision_id:'original',version:0},revisions:[{id:'original'}],native:false,has_original_pdf:true,legacyServer:true};}
-  paper=await api(withDraft('/api/paper'));ledger=state.legacyServer?[]:await api(withDraft('/api/ledger'));
+  state=await api(requestedDraft()?'/api/revisions?draft='+encodeURIComponent(requestedDraft()):'/api/revisions');
+  paper=await api(withDraft('/api/paper'));ledger=await api(withDraft('/api/ledger'));
   $('#source-title').textContent=paper.title;document.title='Review · '+paper.title;
   $('#summary-counts').textContent=`${state.native?'Native source':paper.statistics.pdf_pages+' pages'} · ${paper.statistics.reference_entries} references · ${paper.statistics.blocks} source blocks`;
   $('#source-details').textContent=(paper.warnings||[]).join(' ')+' '+(paper.statistics.convention||'')+' Source fingerprint: '+paper.source_sha256.slice(0,16);
@@ -386,7 +403,6 @@ async function start(){
   const requested=new URLSearchParams(location.search).get('review');const preferred=ids.includes(requested)?requested:ids[0];
   if(preferred)$('#review-select').value=preferred;
   await loadReview(preferred);
-  if(state.legacyServer)$('#save-status').textContent='Wording decisions save locally. Restart this viewer to enable author responses and draft history.';
  }catch(e){error(e.message);}
 }
 $('#draft-select').addEventListener('change',event=>setDraftLink(event.target.value));

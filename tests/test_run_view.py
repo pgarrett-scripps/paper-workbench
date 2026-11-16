@@ -15,7 +15,7 @@ from peerreviewagents.issues import ISSUE_FIELDS, MEMBER_FIELDS
 from peerreviewagents.workspace import digest, write_json
 
 from paper_workspace.__main__ import main
-from paper_workspace.run_view import RunError, locate, run_review
+from paper_workspace.run_view import NO_ENGINE_ID, RunError, locate, run_review
 from paper_workspace.server import make_server
 
 TEXT = 'Knockdown lowered VPS35 in 12 samples.'
@@ -30,13 +30,18 @@ UNREADABLE = ('review/citations/ledger.jsonl is present and could not be read (P
               'so this run has no citation counts')
 
 
-def finding(uid, quote, **extra):
+def finding(uid, quote, slot='core-1', track='core', **extra):
+    """A ledger row with every key engine 0.10.0 writes on one. test_engine_rounds.py checks the keys."""
     start = TEXT.index(quote)
-    return {'id': f'core-1-1-{uid}', 'finding_uid': uid, 'slot': 'core-1', 'kind': 'question',
-            'severity': 'major', 'title': f'Finding {uid}', 'comment': 'Name the control.', 'block_id': 'b1',
-            'quote': quote, 'start': start, 'end': start + len(quote), 'block_sha256': digest(TEXT),
-            'placement': 'anchored', 'evidence_blocks': [], 'track': 'core', 'basis': 'judgement',
-            'basis_reason': 'No arithmetic receipt.', 'escalate': False, **extra}
+    return {'title': f'Finding {uid}', 'block_id': 'b1', 'quote': quote, 'comment': 'Name the control.',
+            'severity': 'major', 'kind': 'question', 'replacement': None, 'evidence_blocks': [],
+            'counterevidence': '', 'source_urls': [], 'id': f'{slot}-1-{uid}', 'review_id': f'{slot}-1',
+            'issue_status': 'open', 'edit_decision': 'proposed', 'category': 'scientific',
+            'invalid_evidence_blocks': [], 'start': start, 'end': start + len(quote), 'block_sha256': digest(TEXT),
+            'placement': 'anchored', 'schema_version': 'review-finding-v3', 'track': track, 'slot': slot,
+            'role': 'core' if track == 'core' else 'specialist', 'escalate': False, 'finding_uid': uid,
+            'basis': 'judgement', 'basis_reason': 'No arithmetic receipt.',
+            'recorded': '2026-11-15T12:00:00+00:00', **extra}
 
 
 # The ledger of the run make_run writes: two findings the editor pooled into one
@@ -232,21 +237,23 @@ class RunReviewTests(unittest.TestCase):
                           ('i02', 'suggestion', 'methods-and-reporting'), ('i01', 'suggestion', 'presentation')])
 
     def test_a_prior_round_gives_each_issue_its_status(self):
+        # As the engine numbers a second round: an issue carried or closed keeps its prior id, and a new
+        # one takes the next id no round has used. test_engine_rounds.py builds such a round through the engine.
         closed = {'rank': None, 'members': [], 'raised_by': 0}
         rows = [issue(1, 'The knockdown control is not named', 'major', 'claims-and-conclusions', [AA11, BB22],
                       status='persisting', prior_id='i01', prior_rank=1, status_reason='The control is still unnamed.'),
-                issue(2, 'The opening sentence needs an article', 'minor', 'presentation', [CC33]),
-                issue(3, 'The scale bar is missing', 'minor', 'figures-and-tables', [], status='resolved',
+                issue(4, 'The opening sentence needs an article', 'minor', 'presentation', [CC33], rank=2),
+                issue(2, 'The scale bar is missing', 'minor', 'figures-and-tables', [], status='resolved',
                       prior_id='i02', prior_rank=2, status_reason='Figure 1 now has a scale bar.', **closed),
-                issue(4, 'The seed is not reported', 'moderate', 'reproducibility', [], status='unverified',
+                issue(3, 'The seed is not reported', 'moderate', 'reproducibility', [], status='unverified',
                       prior_id='i03', prior_rank=3, status_reason='No reviewer looked at the code.', **closed)]
         prior = {'file': 'issues.json', 'digest': '0123456789abcdef', 'issues': 3,
-                 'tally': {'persisting': 1, 'regressed': 0, 'resolved': 1, 'unverified': 1}}
+                 'tally': {'new': 1, 'persisting': 1, 'regressed': 0, 'resolved': 1, 'unverified': 1}}
         self.write_issues(rows, prior_round=prior)
         review = run_review(self.review, self.paper)
         self.assertEqual([(f['id'], f['group'], f['status'], f['prior_id'], f['number']) for f in review['findings']],
-                         [('i01', 'required', 'persisting', 'i01', 1), ('i02', 'suggestion', 'new', None, 2),
-                          ('i03', 'closed', 'resolved', 'i02', None), ('i04', 'closed', 'unverified', 'i03', None)])
+                         [('i01', 'required', 'persisting', 'i01', 1), ('i04', 'suggestion', 'new', None, 2),
+                          ('i02', 'closed', 'resolved', 'i02', None), ('i03', 'closed', 'unverified', 'i03', None)])
         self.assertEqual(review['findings'][2]['status_reason'], 'Figure 1 now has a scale bar.')
         # A closed issue has no members, so it has no anchor and nothing to accept.
         self.assertEqual([(f['placement'], f['kind'], f['members']) for f in review['findings'][2:]],
@@ -266,9 +273,20 @@ class RunReviewTests(unittest.TestCase):
         self.assertTrue(any('synthesised by the server' in line and 'this arm has no editor' in line
                             for line in run['not_publishable_reasons']), run['not_publishable_reasons'])
 
-    def test_an_old_run_folder_shows_its_findings_and_why_it_is_not_a_review(self):
+    def test_an_older_engine_run_folder_is_refused_with_its_cause(self):
         # An engine before 0.10 wrote editor-package.json and no issues.json. The app does not read the package.
         (self.review / 'issues.json').rename(self.review / 'editor-package.json')
+        cause = 'This review was made by an older engine, re-run it.'
+        with self.assertRaises(RunError) as raised:
+            run_review(self.review, self.paper)
+        self.assertTrue(str(raised.exception).startswith(cause), raised.exception)
+        status, output, message = run_quietly(['serve', str(self.root)])
+        self.assertEqual((status, output), (1, ''))
+        self.assertTrue(message.startswith(f'paper-workbench: {cause}'), message)
+
+    def test_a_finished_run_without_issues_is_shown_as_not_publishable(self):
+        # A 0.10 run whose editor wrote nothing has neither file, and it opens with what it recorded.
+        (self.review / 'issues.json').unlink()
         review = run_review(self.review, self.paper)
         self.assertEqual([(f['id'], f['group'], f['number']) for f in review['findings']],
                          [('aa11', 'ledger', 1), ('bb22', 'ledger', 2), ('cc33', 'ledger', 3)])
@@ -368,18 +386,69 @@ class RunReviewTests(unittest.TestCase):
         self.assertTrue(any('quarantined 2' in reason for reason in run['not_publishable_reasons']),
                         run['not_publishable_reasons'])
 
-    def test_a_repeated_issue_id_falls_back_to_positional_ids(self):
+    def cards(self):
+        return [(f['id'], f['decidable']) for f in run_review(self.review, self.paper)['findings']]
+
+    def test_a_repeated_issue_id_is_numbered_and_takes_no_decision(self):
         rows = json.loads(json.dumps(ISSUES))
         rows[1]['id'] = 'i01'
         self.write_issues(rows)
-        self.assertEqual([f['id'] for f in run_review(self.review, self.paper)['findings']], ['run-1', 'run-2'])
+        self.assertEqual(self.cards(), [('run-1', False), ('run-2', False)])
 
-    def test_a_malformed_finding_uid_falls_back_to_positional_ids(self):
+    def test_only_the_card_without_an_engine_id_is_numbered(self):
+        # A decision keyed on a card's place would land on another card once the order changed,
+        # so the cards with an engine id keep it and the one without takes no decision.
         (self.review / 'issues.json').unlink()
         with (self.review / 'findings.jsonl').open('a') as stream:
             stream.write(json.dumps(finding('not a uid', '12 samples')) + '\n')
-        self.assertEqual([f['id'] for f in run_review(self.review, self.paper)['findings']],
-                         ['run-1', 'run-2', 'run-3', 'run-4'])
+        self.assertEqual(self.cards(), [('aa11', True), ('bb22', True), ('cc33', True), ('run-4', False)])
+
+    def test_a_uid_shaped_like_a_place_number_is_not_an_engine_id(self):
+        (self.review / 'issues.json').unlink()
+        with (self.review / 'findings.jsonl').open('a') as stream:
+            stream.write(json.dumps(finding('run-1', '12 samples')) + '\n')
+        self.assertEqual(self.cards(), [('aa11', True), ('bb22', True), ('cc33', True), ('run-4', False)])
+
+    def test_issues_json_with_a_value_of_the_wrong_type_is_refused_in_one_message(self):
+        lead = "This run's review/issues.json holds values of the wrong type, so the viewer cannot show it. "
+        cases = {
+            'members as a string': (lambda rows: rows[0].update(members='aa11'),
+                                    'In issue 1 (i01), members is not a list'),
+            'a member as a string': (lambda rows: rows[0].update(members=['aa11']),
+                                     'Issue 1 (i01) member 1 is not an object'),
+            'block_id as a list': (lambda rows: rows[0]['members'][0].update(block_id=['b1']),
+                                   'In issue 1 (i01) member 1, block_id is not text'),
+            'audits as a string': (lambda rows: rows[0].update(audits='audit_stats.md'),
+                                   'In issue 1 (i01), audits is not a list of file names'),
+            'surviving_quotes as a string': (lambda rows: rows[0].update(surviving_quotes='lowered VPS35'),
+                                             'In issue 1 (i01), surviving_quotes is not a list of quotes'),
+            'evidence_blocks as a string': (lambda rows: rows[0]['members'][0].update(evidence_blocks='b1'),
+                                            'In issue 1 (i01) member 1, evidence_blocks is not a list of block ids'),
+        }
+        for label, (change, line) in cases.items():
+            with self.subTest(label):
+                rows = json.loads(json.dumps(ISSUES))
+                change(rows)
+                self.write_issues(rows)
+                with self.assertRaises(RunError) as raised:
+                    run_review(self.review, self.paper)
+                self.assertEqual(str(raised.exception), f'{lead}{line}. Re-run the review.')
+        # The command line gives the same one message, and no traceback.
+        status, output, message = run_quietly(['serve', str(self.root)])
+        self.assertEqual((status, output), (1, ''))
+        self.assertEqual(message, f'paper-workbench: {lead}In issue 1 (i01) member 1, evidence_blocks is not a '
+                                  'list of block ids. Re-run the review.\n')
+
+    def test_every_value_of_the_wrong_type_is_counted_and_the_first_few_named(self):
+        rows = json.loads(json.dumps(ISSUES))
+        for row in rows:
+            row.update(name=5, statement=6, severity=['major'], rank='1', audits='x', surviving_quotes='y')
+        self.write_issues(rows)
+        with self.assertRaises(RunError) as raised:
+            run_review(self.review, self.paper)
+        message = str(raised.exception)
+        self.assertIn('In issue 1 (i01), name is not text. In issue 1 (i01), statement is not text.', message)
+        self.assertTrue(message.endswith('. 4 more are not listed. Re-run the review.'), message)
 
     def test_a_run_on_another_manuscript_version_is_refused(self):
         write_json(self.review / 'manifest.json', {'paper_id': 'qa', 'source_sha256': 'other'})
@@ -713,6 +782,55 @@ class RunServerTests(unittest.TestCase):
         self.assertEqual(status, 200)
         self.assertEqual((review['run']['status'], review['run']['cause']), ('blocked', CEILING))
         self.assertEqual([f['id'] for f in review['findings']], ['aa11', 'bb22', 'cc33'])
+
+    def add_card_without_an_engine_id(self):
+        """A ledger-only run whose fourth card is an edit the viewer can only number by its place."""
+        (self.review / 'issues.json').unlink()
+        with (self.review / 'findings.jsonl').open('a') as stream:
+            stream.write(json.dumps(finding('not a uid', '12 samples', kind='edit',
+                                            replacement='twelve samples')) + '\n')
+
+    def test_a_card_without_an_engine_id_takes_no_decision(self):
+        self.add_card_without_an_engine_id()
+        status, review = self.request('/api/review?review=run')
+        self.assertEqual([(f['id'], f['decidable']) for f in review['findings']],
+                         [('aa11', True), ('bb22', True), ('cc33', True), ('run-4', False)])
+        status, body = self.request('/api/decisions', {'review_id': 'run', 'annotation_id': 'run-4',
+            'status': 'accepted', 'revision': 0})
+        self.assertEqual((status, body), (400, {'error': NO_ENGINE_ID}))
+        self.assertFalse((self.manuscript / 'decisions' / 'run.json').exists())
+        # The card with an engine id still takes one.
+        status, decisions = self.request('/api/decisions', {'review_id': 'run', 'annotation_id': 'aa11',
+            'status': 'noted', 'revision': 0})
+        self.assertEqual((status, decisions['items']), (200, {'aa11': 'noted'}))
+        # The app says the same words on the card.
+        app = (Path(__file__).resolve().parents[1] / 'paper_workspace' / 'web' / 'app.js').read_text()
+        self.assertIn(f"const NO_ENGINE_ID='{NO_ENGINE_ID}'", app)
+
+    def test_a_saved_decision_on_a_place_number_is_not_applied(self):
+        # A decision saved under run-4 may have been made on another card, so the export leaves it out.
+        self.add_card_without_an_engine_id()
+        saved = self.manuscript / 'decisions' / 'run.json'
+        write_json(saved, {'paper_id': 'qa', 'review_id': 'run', 'revision': 1,
+                           'items': {'run-4': 'accepted'}, 'annotations': {}})
+        before = saved.read_bytes()
+        status, exported = self.request('/api/export?review=run')
+        self.assertEqual(status, 200)
+        self.assertEqual([b['text'] for b in exported['proposed_blocks']], [TEXT])
+        self.assertEqual(saved.read_bytes(), before)
+
+    def test_stale_saved_decisions_leave_the_file_as_it_is(self):
+        # Keys from the old per-finding shape and an issue this round does not hold. The app counts them once.
+        saved = self.manuscript / 'decisions' / 'run.json'
+        write_json(saved, {'paper_id': 'qa', 'review_id': 'run', 'revision': 4,
+                           'items': {'f-0001': 'accepted', 'i09': 'noted', 'i02': 'accepted'},
+                           'annotations': {'f-0001': {'author_comment': 'Done.'}}})
+        before = saved.read_bytes()
+        self.assertEqual(self.request('/api/review?review=run')[0], 200)
+        self.assertEqual(self.request('/api/decisions?review=run'), (200, json.loads(before)))
+        status, exported = self.request('/api/export?review=run')
+        self.assertEqual([b['text'] for b in exported['proposed_blocks']], ['The knockdown lowered VPS35 in 12 samples.'])
+        self.assertEqual(saved.read_bytes(), before)
 
 
 if __name__ == '__main__':

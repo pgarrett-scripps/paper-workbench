@@ -23,7 +23,7 @@ from peerreviewagents import export_draft, verify_workspace
 from peerreviewagents.workspace import digest, read_json, write_json
 
 from .revisions import checkout, create_revision, head, snapshot, valid_id
-from .run_view import RUN_REVIEW_ID, locate, run_review
+from .run_view import NO_ENGINE_ID, RUN_REVIEW_ID, applicable, locate, run_review
 
 
 LOCK = threading.Lock()
@@ -210,7 +210,7 @@ def make_server(root, port=38744):
                 if url.path == "/api/export":
                     verify_workspace(workspace)
                     review = review_for(workspace, paper, rid)
-                    package = export_draft(paper, review, decisions_for(workspace, paper, rid))
+                    package = export_draft(paper, review, applicable(review, decisions_for(workspace, paper, rid)))
                     # A run's verdict, tracks and specialist reports travel with its package.
                     if "run" in review:
                         package["run"] = review["run"]
@@ -301,6 +301,8 @@ def make_server(root, port=38744):
                                         if item["id"] == value["annotation_id"]), None)
                         if finding is None:
                             raise ValueError("Unknown annotation")
+                        if finding.get("decidable") is False:
+                            raise ValueError(NO_ENGINE_ID)
                         status = value["status"]
                         allowed = ("accepted", "rejected", "proposed") if finding["kind"] == "edit" else ("noted", "proposed")
                         if status not in allowed:
@@ -319,7 +321,7 @@ def make_server(root, port=38744):
                         if issue_status == "addressed" and not rationale.strip():
                             raise ValueError("Addressed issues require a rationale")
                         decisions["items"][finding["id"]] = status
-                        export_draft(paper, review, decisions)
+                        export_draft(paper, review, applicable(review, decisions))
                         next_revision = decisions["revision"] + 1
                         history = list(previous.get("history", []))
                         history.append({"revision": next_revision,
@@ -343,7 +345,8 @@ def make_server(root, port=38744):
                         decisions = decisions_for(workspace, paper, rid)
                         if value.get("decision_revision") != decisions["revision"]:
                             return self.send(409, {"error": "Decisions changed before the revision build. Reload and retry."})
-                        metadata = create_revision(root, review, decisions, revision_id, expected, build=True)
+                        metadata = create_revision(root, review, applicable(review, decisions), revision_id, expected,
+                                                   build=True)
                         return self.send(201, {"revision": metadata, "head": head(root)})
                     target = valid_id(value["revision_id"])
                     updated = checkout(root, target, value["expected_head"])
