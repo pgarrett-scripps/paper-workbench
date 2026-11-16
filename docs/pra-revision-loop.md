@@ -34,7 +34,7 @@ python -m paper_workspace revision-request /path/to/workspace
 python -m paper_workspace serve /path/to/workspace --port 38755
 ```
 
-A model or external agent can return a review response as JSON with `paper_id`, `source_sha256`, and `findings`. Each finding contains `category`, `kind`, `block_id`, `quote`, `replacement`, `comment`, and `evidence_blocks`. Categories are `scientific` and `copyedit`. Existing reviews without a category default to scientific. Use an empty replacement for a question.
+A model or external agent can return a review response as JSON with `paper_id`, `source_sha256`, and `findings`. Each finding contains `category`, `kind`, `document`, `line`, `quote`, `replacement`, `comment`, and `evidence_lines`, with `end_line` for a quote that runs onto a later line. Categories are `scientific` and `copyedit`. Existing reviews without a category default to scientific. Use an empty replacement for a question.
 
 ```bash
 python -m paper_workspace revise /path/to/workspace response.json --id revision-2 --source-revision language-pass-1 --expected-version 1
@@ -52,7 +52,7 @@ Document export requires Typst and a Python environment with the selected Scaffo
 
 Plain top-level BODY paragraphs, including native citation keys, are editable. Ported prose and abstract paragraphs also support edits through exact JSON string spans. The editor decodes a string, applies approved text changes, and encodes it again so quoted manuscript content cannot become executable Typst. Numeric bracket citations and native citation keys must remain unchanged and in order, including edits that touch only part of a marker. Equations, calls, raw code, headings, and other complex native Typst regions remain locked. A source location alone never authorizes a patch.
 
-The native import is a revision adapter, not yet a complete replacement for the existing scientific PDF and JATS import. General native reading blocks cover BODY sources and do not evaluate complex Typst. The verified reading-copy port additionally includes its abstract, original reference records, section identities, and supplementary table rows. Full scientific review still needs the rendered paper, figures, and supplements.
+The native import is a revision adapter, not yet a complete replacement for the existing scientific PDF and JATS import. The native reading text covers BODY sources, written through the engine's `write_manuscript` as `paper.md` and `map.json`, and does not evaluate complex Typst. The verified reading-copy port additionally includes its abstract, original reference records, section identities, and supplementary table rows. Full scientific review still needs the rendered paper, figures, and supplements.
 
 Character offsets preserve Unicode and CRLF. All accepted edits must match the decoded source span and file hash. A changed source inventory, an overlap, changed citation markers, a removed or reordered number, or a change to selected negation and qualification terms blocks revision creation. Association inflections share one protected concept so a grammar correction from associate to associated does not fail solely on inflection. Reimported text must exactly match the approved text projection before a revision can be promoted. These mechanical checks cannot prove semantic equivalence. Complex scientific rewrites remain outside automatic acceptance.
 

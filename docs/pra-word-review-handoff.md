@@ -8,7 +8,7 @@ The revision workflow now exports a Word review copy with real tracked changes a
 
 Tracked differences compare the immediate parent with the selected revision. Accepting all changes must recover the clean manuscript text. Rejecting changes in every edited paragraph must recover the parent text. Formatting on retained and inserted text follows the clean Word runs. Deleted text uses the formatting at its insertion point. Complex changed paragraphs containing fields, links, drawings, or bookmarks fail without publishing a partial package.
 
-Open scientific questions come from the inherited issue ledger. A comment attaches to a full paragraph only when its block fingerprint and exact text match the current Word document. The exact quoted passage appears inside the comment. Stale or ambiguous questions appear in an unlocated questions appendix with a location explanation. Scientific questions are not automatically resolved by a wording change.
+Open scientific questions come from the inherited issue ledger. A comment attaches to a full paragraph only when its quoted passage, read by document and line, is unchanged since the draft that raised it, sits inside one piece, and that piece's text matches exactly one Word paragraph. The exact quoted passage appears inside the comment. Stale or ambiguous questions appear in an unlocated questions appendix with a location explanation. Scientific questions are not automatically resolved by a wording change.
 
 The output contains `review.docx` and `word-review.json`, alongside the original clean export. Its manifest records all file hashes. The viewer exposes the review copy through a download that checks both the selected draft and file integrity.
 

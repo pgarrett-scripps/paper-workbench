@@ -9,8 +9,10 @@ from unittest.mock import patch
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
+from peerreviewagents import verify_workspace
 from peerreviewagents.workspace import digest, save_review, write_json
 
+from manuscripts import line_of
 from paper_workspace.revisions import copyedit_proposals, create_revision as real_create_revision
 from paper_workspace.scaffold_import import import_scaffold
 from paper_workspace.server import make_server
@@ -21,14 +23,15 @@ FIXTURE = Path(__file__).parent / "fixtures/scaffold-revision"
 
 with tempfile.TemporaryDirectory() as temporary:
     root = Path(temporary) / "workspace"
-    paper = import_scaffold(FIXTURE, root)
+    import_scaffold(FIXTURE, root)
+    paper = verify_workspace(root)
     response = copyedit_proposals(paper)
-    scientific_block = next(block for block in paper["blocks"] if "protein activity" in block["text"])
+    line = line_of(paper, "protein activity")
     response["findings"].append({
         "category": "scientific", "kind": "question",
-        "block_id": scientific_block["id"], "quote": "protein activity",
+        "line": line, "quote": "protein activity",
         "title": "Mechanistic support", "comment": "Clarify the evidence.",
-        "evidence_blocks": [scientific_block["id"]]
+        "evidence_lines": [line]
     })
     review = save_review(root, response, "ui")
     server = make_server(root, 0)
@@ -80,7 +83,7 @@ with tempfile.TemporaryDirectory() as temporary:
             status, created = request("/api/revisions?draft=original", create)
         assert status == 201 and created["head"]["revision_id"] == "ui-1"
         status, revised = request("/api/paper")
-        assert status == 200 and revised["id"] != paper["id"]
+        assert status == 200 and revised["id"] != paper.paper_id
         assert request("/api/reviews?draft=ui-1")[1] == []
         ledger = request("/api/ledger?draft=ui-1")[1]
         assert ledger and ledger[0]["anchor_status"] == "historical"
@@ -104,7 +107,7 @@ with tempfile.TemporaryDirectory() as temporary:
         status, checked_out = request("/api/checkout?draft=ui-1", {
             "revision_id": "original", "expected_head": created["head"]})
         assert status == 200 and checked_out["revision_id"] == "original"
-        assert request("/api/paper")[1]["id"] == paper["id"]
+        assert request("/api/paper")[1]["id"] == paper.paper_id
         print("Revision HTTP QA passed")
     finally:
         server.shutdown()

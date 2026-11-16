@@ -8,11 +8,21 @@ const requestedDraft=()=>new URLSearchParams(location.search).get('draft');
 const withDraft=path=>path+(path.includes('?')?'&':'?')+'draft='+encodeURIComponent(state?.selected||requestedDraft()||'original');
 function error(message){$('#error').textContent=message;$('#error').hidden=!message;}
 async function api(path,options){const response=await fetch(path,options);const value=await response.json();if(!response.ok){const failure=Error(value.error||response.statusText);failure.status=response.status;throw failure;}return value;}
+// The manuscript is each document's lines, and a finding cites a document and a line, as the engine
+// found its quote there. Each line is one element, so every link lands on the line it names.
+const lineId=(name,line)=>'line-'+String(name).replace(/[^\w-]/g,c=>'.'+c.codePointAt(0).toString(16))+'-'+line;
+const lineLabel=(name,line)=>name===paper.main?`line ${line}`:`${name}, line ${line}`;
+const lineLink=(name,line,text)=>`<a href="#${esc(lineId(name,line))}">${esc(text??lineLabel(name,line))}</a>`;
+const lineText=(name,line)=>paper.documents[name]?.[line-1]??'';
+const pieceAt=(name,line)=>Number.isInteger(line)?paper.pieces.find(row=>(row.document||paper.main)===name&&row.lines[0]<=line&&line<=row.lines[1]):undefined;
 // The passages a card marks on the manuscript. A run's issue marks every anchored member, each
 // with its own anchor id. A workspace finding has no members and marks its own quote. Members of
-// one issue that quote the same span are one passage, marked and pinned once.
-const isMarked=member=>member.placement==='anchored'&&Boolean(member.block_id)&&Number.isInteger(member.start)&&Number.isInteger(member.end)&&member.start<member.end;
-const spanKey=member=>JSON.stringify([member.block_id,member.start,member.end]);
+// one issue that quote the same span are one passage, marked and pinned once. A span starts at
+// an offset into its first line and ends at one into its last.
+const isMarked=member=>member.placement==='anchored'&&typeof member.document==='string'
+ &&[member.line,member.end_line,member.start,member.end].every(Number.isInteger)
+ &&(member.line<member.end_line||(member.line===member.end_line&&member.start<member.end));
+const spanKey=member=>JSON.stringify([member.document,member.line,member.start,member.end_line,member.end]);
 function anchorsOf(item){
  const label=item.number??item.id.split('-').at(-1);
  const members=(item.members||[]).length?item.members.map((member,n)=>({...member,anchor:`${item.id}-${n+1}`})):[{...item,anchor:item.id}];
@@ -20,39 +30,58 @@ function anchorsOf(item){
  return members.filter(member=>isMarked(member)&&!seen.has(spanKey(member))&&seen.add(spanKey(member)))
   .map(member=>({...member,target:item.id,label,edit:item.kind==='edit'&&typeof member.replacement==='string'?member.replacement:null}));
 }
-// Members of one issue, or of two, can quote the same or overlapping text, so the block is cut at
-// every start and end. Each piece is marked by every passage that covers it, and each passage
-// ends with its suggested wording, when it has one, and a pin to its card.
-function quoteMarkup(block){
- const marks=review.findings.flatMap(anchorsOf).filter(mark=>mark.block_id===block.id);
- const length=Array.from(block.text).length;
- const cuts=[...new Set([0,length,...marks.flatMap(mark=>[mark.start,mark.end])])].filter(at=>at>=0&&at<=length).sort((a,b)=>a-b);
+// Each passage that covers part of a line, as offsets into that line. A passage opens on its first
+// line and closes on its last, where its suggested wording and its pin go.
+function lineMarks(name,line,length){
+ return review.findings.flatMap(anchorsOf).filter(mark=>mark.document===name&&mark.line<=line&&line<=mark.end_line)
+  .map(mark=>({...mark,from:mark.line===line?mark.start:0,to:mark.end_line===line?mark.end:length,opens:mark.line===line,closes:mark.end_line===line}));
+}
+// Members of one issue, or of two, can quote the same or overlapping text, so the line is cut at
+// every start and end. Each piece is marked by every passage that covers it. The text before
+// ``skip`` is not shown, such as the hashes of a heading.
+function quoteMarkup(name,line,skip=0){
+ const text=lineText(name,line);
+ const length=Array.from(text).length;
+ const marks=lineMarks(name,line,length).map(mark=>({...mark,from:Math.max(mark.from,skip),to:Math.max(mark.to,skip)}));
+ const cuts=[...new Set([skip,length,...marks.flatMap(mark=>[mark.from,mark.to])])].filter(at=>at>=skip&&at<=length).sort((a,b)=>a-b);
  let output='';
  cuts.forEach((at,index)=>{
-  for(const mark of marks.filter(row=>row.end===at)){
+  for(const mark of marks.filter(row=>row.closes&&row.to===at)){
    if(mark.edit!==null)output+=` <span class="after">${esc(mark.edit)}</span>`;
    output+=`<a class="pin" href="#note-${esc(mark.target)}" aria-label="Comment ${esc(mark.label)}">${esc(mark.label)}</a>`;
   }
   const next=cuts[index+1];
-  if(next===undefined)return;
-  const text=esc(segment(block.text,at,next));
-  const covering=marks.filter(mark=>mark.start<=at&&mark.end>=next);
-  if(!covering.length){output+=text;return;}
-  const [first,...others]=marks.filter(mark=>mark.start===at);
+  const opening=marks.filter(mark=>mark.opens&&mark.from===at);
+  if(next===undefined){output+=opening.map(mark=>`<span class="anchor" id="anchor-${esc(mark.anchor)}"></span>`).join('');return;}
+  const piece=esc(segment(text,at,next));
+  const covering=marks.filter(mark=>mark.from<=at&&mark.to>=next);
+  if(!covering.length){output+=piece;return;}
+  const [first,...others]=opening;
   const tag=covering.some(mark=>mark.edit!==null)?['span','before']:['mark','question-mark'];
   output+=others.map(mark=>`<span class="anchor" id="anchor-${esc(mark.anchor)}"></span>`).join('')
-   +`<${tag[0]} class="${tag[1]}${first?' anchor':''}"${first?` id="anchor-${esc(first.anchor)}"`:''}>${text}</${tag[0]}>`;
+   +`<${tag[0]} class="${tag[1]}${first?' anchor':''}"${first?` id="anchor-${esc(first.anchor)}"`:''}>${piece}</${tag[0]}>`;
  });
  return output;
 }
-function acceptedText(block){
- let text=block.text;
- const notes=review.findings.filter(item=>item.block_id===block.id&&item.decidable!==false&&decisions.items[item.id]==='accepted').sort((a,b)=>b.start-a.start);
- for(const item of notes)text=segment(text,0,item.start)+item.replacement+segment(text,item.end);
- return esc(text);
+// A line with every accepted edit applied. An edit's wording takes the place of its span on its first
+// line, and the lines it spans after that keep only what follows the span, so the lines keep their numbers.
+function acceptedText(name,line){
+ const text=lineText(name,line);
+ const length=Array.from(text).length;
+ return review.findings.filter(item=>item.decidable!==false&&decisions.items[item.id]==='accepted'&&typeof item.replacement==='string'
+  &&isMarked(item)&&item.document===name&&item.line<=line&&line<=item.end_line)
+  .map(item=>({from:item.line===line?item.start:0,to:item.end_line===line?item.end:length,insert:item.line===line?item.replacement:''}))
+  .sort((a,b)=>b.from-a.from).reduce((value,edit)=>segment(value,0,edit.from)+edit.insert+segment(value,edit.to),text);
 }
-function tableMarkup(block,text){
- const structure=block.table_structure;
+function shownLine(name,line,skip){
+ if(mode==='markup')return quoteMarkup(name,line,skip);
+ return esc(segment(mode==='accepted'?acceptedText(name,line):lineText(name,line),skip));
+}
+const HEADING=/^#+\s+/;
+// A table whose source Word table was found keeps that table's merged cells. Its lines stay below it,
+// open when a comment is anchored on them, since a finding cites a line and not a cell.
+function tableMarkup(piece,name,lines){
+ const structure=piece.native?.table_structure;
  const validCell=cell=>cell&&typeof cell.text==='string'&&Number.isInteger(cell.colspan)&&cell.colspan>0
   &&(cell.rowspan===undefined||(Number.isInteger(cell.rowspan)&&cell.rowspan>0));
  if(!structure||!Number.isInteger(structure.columns)||structure.columns<1||!Array.isArray(structure.rows)
@@ -63,28 +92,84 @@ function tableMarkup(block,text){
   const rowspan=cell.rowspan>1?` rowspan="${cell.rowspan}"`:'';
   return `<td${colspan}${rowspan}>${esc(cell.text)}</td>`;
  }).join('')}</tr>`).join('');
- const hasAnchors=review.findings.some(item=>anchorsOf(item).some(mark=>mark.block_id===block.id));
- const fallbackLabel=hasAnchors&&mode==='markup'?'Exact source text with comment anchors':'Exact source text';
- return `<div class="table-scroll"><table class="source-table"><colgroup>${columns}</colgroup><tbody>${rows}</tbody></table></div><details class="table-source"><summary>${fallbackLabel}</summary><p class="table-text">${text}</p></details>`;
+ const [first,last]=piece.lines;
+ const marked=mode==='markup'&&review.findings.some(item=>anchorsOf(item).some(mark=>mark.document===name&&mark.line<=last&&first<=mark.end_line));
+ return `<div class="table-scroll"><table class="source-table"><colgroup>${columns}</colgroup><tbody>${rows}</tbody></table></div><details class="table-source"${marked?' open':''}><summary>${marked?'Exact source text with comment anchors':'Exact source text'}</summary>${lines}</details>`;
 }
+function pieceMarkup(piece,name,newSection){
+ const [first,last]=piece.lines;
+ const numbers=Array.from({length:last-first+1},(_,k)=>first+k);
+ const line=(number,skip=0)=>`<span class="line" id="${esc(lineId(name,number))}">${shownLine(name,number,skip)}</span>`;
+ if(piece.kind==='heading')return `<section class="source-block"><h2>${numbers.map(number=>line(number,Array.from(lineText(name,number).match(HEADING)?.[0]||'').length)).join(' ')}</h2></section>`;
+ // A piece of a Scaffold draft says whether its source can be edited in place.
+ const native=piece.native?(piece.native.editable&&piece.native.file?`Editable source · ${esc(piece.native.file)}`:'Protected source region'):'';
+ const page=Number.isInteger(piece.page)&&piece.page>0?`<button class="page-preview" data-page-document="${esc(name)}" data-page-line="${first}">Original page ${piece.page}</button>${native?' · '+native:''}`
+  :native||(name===paper.main?'Page anchor unavailable':'Supplement text');
+ const where=first===last?`line ${first}`:`lines ${first} to ${last}`;
+ const tableLines=()=>`<p class="table-text">${numbers.map(number=>line(number)).join('\n')}</p>`;
+ const content=piece.kind==='table'?tableMarkup(piece,name,tableLines())||tableLines()
+  :`<p class="${piece.kind==='reference'?'refs':''}">${numbers.map(number=>line(number)).join('<br>')}</p>`;
+ return `<section class="source-block">${newSection&&piece.section?`<h2>${esc(piece.section)}</h2>`:''}<div class="source-link">${page} <span class="muted">· ${esc(where)}</span></div>${content}</section>`;
+}
+// The main document first, then each supplement under its own title, with a link to its file.
 function manuscript(){
- let previous='';const nav=[];
- $('#manuscript').innerHTML=paper.blocks.map(block=>{
-  const newSection=block.section!==previous;previous=block.section;
-  if(newSection)nav.push(`<a href="#${esc(block.id)}">${esc(block.section)}</a>`);
-  if(block.kind==='heading')return `<section class="source-block" id="${esc(block.id)}"><h2>${esc(paper.source_format==='scaffold-typst'?block.text.replace(/^=+\s+/,''):block.text)}</h2></section>`;
-  const text=mode==='markup'?quoteMarkup(block):mode==='accepted'?acceptedText(block):esc(block.text);
-  const source=block.page?`<button class="page-preview" data-page="${block.page}">Original page ${block.page}</button>`:block.source_span?`Editable source · ${esc(block.source_span.file)}`:paper.source_format==='scaffold-typst'?'Protected source region':block.document==='main'?'Page anchor unavailable':`<a href="${esc(withDraft('/supplements/'+encodeURIComponent(block.document)))}">Supplement source</a>`;
-  const table=block.kind==='table'?tableMarkup(block,text):null;
-  const content=table||`<p class="${block.kind==='table'?'table-text':block.kind==='reference'?'refs':''}">${text}</p>`;
-  return `<section class="source-block" id="${esc(block.id)}">${newSection?`<h2>${esc(block.section)}</h2>`:''}<div class="source-link">${source} <span class="muted">· ${esc(block.id)}</span></div>${content}</section>`;
- }).join('');
+ const nav=[],parts=[];
+ for(const name of Object.keys(paper.documents)){
+  if(name!==paper.main){
+   const asset=paper.assets.find(item=>item.document===name&&item.path);
+   const link=asset?` <a class="source-link" href="${esc(withDraft('/'+(asset.preview||asset.path)))}" target="_blank" rel="noopener">Supplement file</a>`:'';
+   parts.push(`<h2 class="document-title" id="${esc(lineId(name,0))}">${esc(asset?.label||name)}${link}</h2>`);
+   nav.push(`<a href="#${esc(lineId(name,0))}">${esc(asset?.label||name)}</a>`);
+  }
+  let previous;
+  for(const piece of paper.pieces.filter(row=>(row.document||paper.main)===name).sort((a,b)=>a.lines[0]-b.lines[0])){
+   const newSection=piece.section!==previous;previous=piece.section;
+   if(newSection&&piece.section)nav.push(`<a href="#${esc(lineId(name,piece.lines[0]))}">${esc(piece.section)}</a>`);
+   parts.push(pieceMarkup(piece,name,newSection));
+  }
+ }
+ $('#manuscript').innerHTML=parts.join('');
  const assets=paper.assets.filter(item=>item.path).map(item=>`<a href="${esc(withDraft('/'+(item.preview||item.path)))}" target="_blank" rel="noopener">${esc(item.label)}</a>`);
  $('#outline').innerHTML=nav.join('')+'<h3>Source files</h3>'+assets.join('');
- $('#manuscript').querySelectorAll('[data-page]').forEach(button=>button.addEventListener('click',()=>showPage(Number(button.dataset.page))));
+ $('#manuscript').querySelectorAll('[data-page-line]').forEach(button=>button.addEventListener('click',()=>showPage(pieceAt(button.dataset.pageDocument,Number(button.dataset.pageLine)))));
  applySearch();
 }
-function showPage(page){$('#page-image').src=withDraft(`/pages/${page}.png`);$('#page-image').alt=`Original manuscript page ${page}`;$('#page-title').textContent=`Original page ${page}`;$('#page-dialog').showModal();}
+// The box of a passage on its page, as shares of the page image. A box is in PDF points from the
+// top left corner of the page as the converter read it, and the manifest gives that page's size.
+// A page printed turned is rendered turned, so its box is turned the same way. A page whose size
+// was not recorded gets no box, because a box placed against a guessed size is in the wrong place.
+function boxStyle(bbox,size){
+ if(!Array.isArray(bbox)||bbox.length!==4||!bbox.every(Number.isFinite)||!size)return null;
+ const [width,height,turn]=[size.width,size.height,((size.rotation||0)%360+360)%360];
+ if(!(width>0&&height>0)||turn%90)return null;
+ const [x0,y0,x1,y1]=bbox;
+ if(!(x1>x0&&y1>y0))return null;
+ // Each quarter turn clockwise moves a point (x, y) of a page of height h to (h - y, x).
+ const shown=[[x0,y0],[x1,y1]].map(([x,y])=>({0:[x,y],90:[height-y,x],180:[width-x,height-y],270:[y,width-x]})[turn]);
+ const [across,down]=turn%180?[height,width]:[width,height];
+ const [left,right]=[Math.min(shown[0][0],shown[1][0]),Math.max(shown[0][0],shown[1][0])];
+ const [top,bottom]=[Math.min(shown[0][1],shown[1][1]),Math.max(shown[0][1],shown[1][1])];
+ const share=(value,total)=>`${(100*value/total).toFixed(3)}%`;
+ return `left:${share(left,across)};top:${share(top,down)};width:${share(right-left,across)};height:${share(bottom-top,down)}`;
+}
+// The original page of a passage, with the passage's box on it and, from a card, the quote.
+function showPage(row){
+ if(!row||!Number.isInteger(row.page))return;
+ const image=$('#page-image'),box=$('#page-box');
+ const style=boxStyle(row.bbox,(paper.pages||[]).find(item=>item.page===row.page));
+ box.hidden=!style;
+ if(style)box.setAttribute('style',style);
+ image.src=withDraft(`/pages/${row.page}.png`);image.alt=`Original manuscript page ${row.page}`;
+ $('#page-title').textContent=`Original page ${row.page}`;
+ $('#page-quote').textContent=row.quote||'';$('#page-quote').hidden=!row.quote;
+ $('#page-dialog').showModal();
+}
+const pageButton=(row,id,index)=>Number.isInteger(row.page)&&row.page>0
+ ?` <button class="page-preview" data-page-card="${esc(id)}" data-page-member="${index}">Show on page ${esc(row.page)}</button>`:'';
+// The further lines a card or a member cites. A run card lists them with their document. A
+// finding lists line numbers in its own document.
+const evidenceRows=item=>Array.isArray(item.evidence)?item.evidence:(item.evidence_lines||[]).map(line=>({document:item.document,line}));
+const evidenceLinks=rows=>rows.filter(row=>row&&Number.isInteger(row.line)).map(row=>lineLink(row.document||paper.main,row.line)).join(' ');
 function categoryOf(item){return item.category==='copyedit'?'copyedit':'scientific';}
 function externalCard(card,quote=''){
  const link=typeof card.source_url==='string'&&card.source_url.startsWith('https://')?`<a href="${esc(card.source_url)}" target="_blank" rel="noopener noreferrer">Source record</a>`:'';
@@ -102,14 +187,15 @@ function externalFinding(item){
   return card?externalCard(card,[...quotes].join('\n\n')):'<p>External evidence record is unavailable in this review export.</p>';
  }).join('');
 }
+// A carried finding still stands on this draft while the passage on its line has the fingerprint it was found on.
 function history(){
  $('#history-details').hidden=!ledger.length;
  if(ledger.length&&!review.findings.length)$('#history-details').open=true;
  $('#history-ledger').innerHTML=ledger.map(row=>{
   const finding=row.finding||{};
   const feedback=row.author_feedback||{};
-  const current=paper.blocks.find(block=>block.id===finding.block_id&&block.sha256===finding.block_sha256);
-  const location=current?`<p><a href="#${esc(current.id)}">View unchanged passage in this draft</a></p>`:'';
+  const current=pieceAt(finding.document,finding.line);
+  const location=current&&finding.fingerprint&&current.fingerprint===finding.fingerprint?`<p>${lineLink(finding.document,finding.line,'View unchanged passage in this draft')}</p>`:'';
   return `<div class="cross-check"><p><strong>${esc(categoryOf(finding))}: ${esc(finding.title||'Historical finding')}</strong></p><p>${esc(finding.comment||'')}</p><blockquote>${esc(finding.quote||'')}</blockquote>${location}<p>Origin draft: ${esc(row.origin_revision||'unknown')}<br>Wording decision: ${esc(row.wording_decision||'proposed')}<br>Scientific status: ${esc(row.scientific_status||'open')}</p>${feedback.author_comment?`<p>Author response: ${esc(feedback.author_comment)}<br>Author status: ${esc(feedback.issue_status)}<br>${esc(feedback.rationale||'')}</p>`:''}<p>${esc(row.note||'Historical anchors require reassessment on this draft.')}</p></div>`;
  }).join('');
 }
@@ -132,9 +218,9 @@ function issueNotes(item){
  const quotes=(item.surviving_quotes||[]).filter(row=>row&&row.quote);
  const notes=[item.status_reason&&`<p><strong>${esc(ISSUE_STATUS[item.status]||'Status')}</strong><br>${esc(item.status_reason)}</p>`,
   Number.isInteger(item.prior_rank)&&`<p class="muted">Rank in the prior round: ${esc(item.prior_rank)}${item.prior_id&&item.prior_id!==item.source_id?`, as issue ${esc(item.prior_id)}`:''}</p>`,
-  item.rebuttal_quote&&`<p><strong>Manuscript text the editor weighed against the computed finding</strong></p><blockquote>${esc(item.rebuttal_quote)}</blockquote>${item.rebuttal_block_id?`<p><a href="#${esc(item.rebuttal_block_id)}">Go to passage</a></p>`:''}`,
+  item.rebuttal_quote&&`<p><strong>Manuscript text the editor weighed against the computed finding</strong></p><blockquote>${esc(item.rebuttal_quote)}</blockquote>${Number.isInteger(item.rebuttal_line)?`<p>${lineLink(item.rebuttal_document||paper.main,item.rebuttal_line,'Go to passage')}</p>`:''}`,
   item.text_unchanged_reason&&`<p><strong>Why it is fixed although the passages it cited still read the same</strong><br>${esc(item.text_unchanged_reason)}</p>`,
-  quotes.length&&`<p><strong>The prior round's evidence still in the manuscript</strong></p>${quotes.map(row=>`<blockquote>${esc(row.quote)}</blockquote>${row.block_id?`<p><a href="#${esc(row.block_id)}">Go to passage</a></p>`:''}`).join('')}`,
+  quotes.length&&`<p><strong>The prior round's evidence still in the manuscript</strong></p>${quotes.map(row=>`<blockquote>${esc(row.quote)}</blockquote>${Number.isInteger(row.line)?`<p>${lineLink(row.document||paper.main,row.line,'Go to passage')}</p>`:''}`).join('')}`,
   (item.audits||[]).length&&`<p class="muted">Specialist reports: ${item.audits.map(esc).join(', ')}</p>`].filter(Boolean);
  return notes.length?`<div class="cross-check">${notes.join('')}</div>`:'';
 }
@@ -149,8 +235,8 @@ function memberItem(item,member,index){
  // A member quoting the same span as an earlier one links to that earlier member's mark.
  const shared=isMarked(member)?item.members.findIndex(other=>isMarked(other)&&spanKey(other)===spanKey(member)):index;
  const where=member.placement==='anchored'?`<a href="#anchor-${esc(item.id)}-${shared+1}">Go to passage</a>`:'Unplaced: the quote is not found once in its passage';
- const evidence=(member.evidence_blocks||[]).map(id=>`<a href="#${esc(id)}">${esc(id)}</a>`).join(' ');
- return `<li class="member"><p class="muted">${facts}</p>${badges?`<div class="run-badges">${badges}</div>`:''}${member.basis_reason?`<p class="muted">${esc(member.basis_reason)}</p>`:''}${member.title&&member.title!==item.title?`<p><strong>${esc(member.title)}</strong></p>`:''}${member.comment&&member.comment!==item.comment?`<p class="comment-text">${esc(member.comment)}</p>`:''}${member.quote?`<blockquote>${esc(member.quote)}</blockquote>`:''}${wording}${member.counterevidence?`<div class="cross-check"><p><strong>Counterevidence checked</strong><br>${esc(member.counterevidence)}</p></div>`:''}${ruling?`<div class="cross-check ruling"><p><strong>Escalation ruling</strong><br>${esc(ruling.ruling)}</p></div>`:''}${links?`<p class="muted">Sources cited: ${links}</p>`:''}<div class="evidence">${where}${evidence?`<br>Evidence: ${evidence}`:''}</div></li>`;
+ const evidence=evidenceLinks(evidenceRows(member));
+ return `<li class="member"><p class="muted">${facts}</p>${badges?`<div class="run-badges">${badges}</div>`:''}${member.basis_reason?`<p class="muted">${esc(member.basis_reason)}</p>`:''}${member.title&&member.title!==item.title?`<p><strong>${esc(member.title)}</strong></p>`:''}${member.comment&&member.comment!==item.comment?`<p class="comment-text">${esc(member.comment)}</p>`:''}${member.quote?`<blockquote>${esc(member.quote)}</blockquote>`:''}${wording}${member.counterevidence?`<div class="cross-check"><p><strong>Counterevidence checked</strong><br>${esc(member.counterevidence)}</p></div>`:''}${ruling?`<div class="cross-check ruling"><p><strong>Escalation ruling</strong><br>${esc(ruling.ruling)}</p></div>`:''}${links?`<p class="muted">Sources cited: ${links}</p>`:''}<div class="evidence">${where}${pageButton(member,item.id,index)}${evidence?`<br>Evidence: ${evidence}`:''}</div></li>`;
 }
 function memberList(item){
  if(!item.members.length)return '';
@@ -208,7 +294,7 @@ function useVerdict(row){
  return `${row.verdict}, judged by ${row.judged_by||'a worker not recorded'}`;
 }
 function useItem(row){
- const where=[row.section&&esc(row.section),row.block_id&&`<a href="#${esc(row.block_id)}">Go to passage</a>`,
+ const where=[row.section&&esc(row.section),Number.isInteger(row.line)&&lineLink(row.document||paper.main,row.line,'Go to passage'),
   sourceLink(row.source_url,row.source_kind?`Source ${row.source_kind}`:'Source')].filter(Boolean).join(' · ');
  const blind=row.verdict==='cannot tell'&&!row.source_kind?'<p class="muted">The worker had no source text for this reference.</p>':'';
  return `<li data-verdict="${esc(row.verdict||'none')}"><strong>${row.label?`[${esc(row.label)}]`:''} ${esc(useVerdict(row))}</strong>${quoted('Sentence in the manuscript',row.sentence)}${quoted('Source passage the worker quoted, fetched from the internet',row.passage)}${quoted('Worker note',row.note)}${blind}${where?`<p class="muted">${where}</p>`:''}</li>`;
@@ -274,8 +360,9 @@ function card(item){
  const issueStatus=annotation.issue_status||'open';
  const run=isRunCard(item);
  const anchored=run?anchorsOf(item).length:item.placement==='anchored';
- const source=run&&!item.members.length?'':anchored?`<a href="#${esc(item.block_id)}">Go to passage</a>`:run?'No finding behind this issue is placed on the manuscript text':'Unplaced comment: source anchor needs review';
- const evidence=(item.evidence_blocks||[]).map(id=>`<a href="#${esc(id)}">${esc(id)}</a>`).join(' ');
+ const source=run&&!item.members.length?'':anchored&&Number.isInteger(item.line)?lineLink(item.document||paper.main,item.line,'Go to passage')+(run?'':pageButton(item,item.id,-1))
+  :run?'No finding behind this issue is placed on the manuscript text':'Unplaced comment: source anchor needs review';
+ const evidence=evidenceLinks(evidenceRows(item));
  const actions=item.kind==='edit'?`<button data-action="accepted" ${wording!=='proposed'?'disabled':''}>Accept wording</button><button data-action="rejected" ${wording!=='proposed'?'disabled':''}>Decline wording</button>`:`<button data-action="noted" ${wording!=='proposed'?'disabled':''}>Mark for follow-up</button>`;
  const number=item.number?`${esc(item.number)}. `:'';
  const top=run?`<span class="category run ${esc(item.group)}">${esc(categoryLabel(item.severity||'unspecified'))} · ${esc(categoryLabel(item.category))}</span>`
@@ -339,14 +426,18 @@ function cards(){
  $('#handoff-ledger').innerHTML+=(raw.source_cards||[]).map(card=>externalCard(card)).join('');
  if(raw.result_map){
   const map=raw.result_map;
-  $('#handoff-ledger').innerHTML+=`<details><summary>Claims, figures and tables (${map.nodes.length} passages)</summary><p>${esc(map.limitation)}</p><p>Figure pixels require separate inspection.</p>${map.edges.map(edge=>`<p><a href="#${esc(edge.from)}">${esc(edge.from)}</a> cites ${esc(edge.quote)}: ${edge.to.length?edge.to.map(id=>`<a href="#${esc(id)}">${esc(id)}</a>`).join(', '):'Target not extracted'}</p>`).join('')}${map.checks.map(check=>`<p>${esc(check.reason)} ${check.blocks.map(id=>`<a href="#${esc(id)}">${esc(id)}</a>`).join(', ')}</p>`).join('')}</details>`;
+  $('#handoff-ledger').innerHTML+=`<details><summary>Claims, figures and tables (${map.nodes.length} passages)</summary><p>${esc(map.limitation)}</p><p>Figure pixels require separate inspection.</p>${map.edges.map(edge=>`<p>${lineLink(edge.document,edge.from)} cites ${esc(edge.quote)}: ${edge.to.length?edge.to.map(target=>lineLink(target.document,target.line)).join(', '):'Target not extracted'}</p>`).join('')}${map.checks.map(check=>`<p>${esc(check.reason)} ${check.lines.map(line=>lineLink(check.document,line)).join(', ')}</p>`).join('')}</details>`;
  }
  for(const comparison of raw.result_comparisons||[]){
-  $('#handoff-ledger').innerHTML+=`<details><summary>Quantity comparison: ${esc(comparison.status.replaceAll('_',' '))}</summary><p>${esc(comparison.limitation)}</p>${comparison.observations.map(obs=>`<p><a href="#${esc(obs.block_id)}">${esc(obs.block_id)}</a>: ${esc(obs.value)} (${esc(obs.metric)})</p><blockquote>${esc(obs.quote)}</blockquote>`).join('')}<p>Context labels are investigator assessments.</p></details>`;
+  $('#handoff-ledger').innerHTML+=`<details><summary>Quantity comparison: ${esc(comparison.status.replaceAll('_',' '))}</summary><p>${esc(comparison.limitation)}</p>${comparison.observations.map(obs=>`<p>${lineLink(obs.document,obs.line)}: ${esc(obs.value)} (${esc(obs.metric)})</p><blockquote>${esc(obs.quote)}</blockquote>`).join('')}<p>Context labels are investigator assessments.</p></details>`;
  }
  $('#comments').innerHTML=staleNote()+(review.run?runCards():review.findings.filter(item=>filter==='all'||filter===categoryOf(item)||(filter==='questions'&&item.kind!=='edit')).map(card).join('')||'<div class="empty">No comments in this view.</div>');
  $('#comments').querySelectorAll('[data-action]').forEach(button=>button.addEventListener('click',()=>saveFinding(button.closest('article'),button.dataset.action)));
  $('#comments').querySelectorAll('[data-save-response]').forEach(button=>button.addEventListener('click',()=>saveFinding(button.closest('article'),decisions.items[button.closest('article').dataset.id]||'proposed')));
+ $('#comments').querySelectorAll('[data-page-card]').forEach(button=>button.addEventListener('click',()=>{
+  const item=review.findings.find(row=>row.id===button.dataset.pageCard),index=Number(button.dataset.pageMember);
+  showPage(index<0?item:item?.members?.[index]);
+ }));
  $('#comments').querySelectorAll('[data-field]').forEach(input=>input.addEventListener('input',()=>{
   const card=input.closest('article');
   pendingResponses.set(responseKey(card.dataset.id),{...(decisions.annotations?.[card.dataset.id]||{}),author_comment:card.querySelector('[data-field=comment]').value,issue_status:card.querySelector('[data-field=issue]').value,rationale:card.querySelector('[data-field=rationale]').value});
@@ -381,7 +472,7 @@ async function start(){
   state=await api(requestedDraft()?'/api/revisions?draft='+encodeURIComponent(requestedDraft()):'/api/revisions');
   paper=await api(withDraft('/api/paper'));ledger=await api(withDraft('/api/ledger'));
   $('#source-title').textContent=paper.title;document.title='Review · '+paper.title;
-  $('#summary-counts').textContent=`${state.native?'Native source':paper.statistics.pdf_pages+' pages'} · ${paper.statistics.reference_entries} references · ${paper.statistics.blocks} source blocks`;
+  $('#summary-counts').textContent=`${state.native?'Native source':paper.statistics.pdf_pages+' pages'} · ${paper.statistics.reference_entries} references · ${plural(paper.pieces.length,'passage')}`;
   $('#source-details').textContent=(paper.warnings||[]).join(' ')+' '+(paper.statistics.convention||'')+' Source fingerprint: '+paper.source_sha256.slice(0,16);
   $('#draft-select').innerHTML=state.revisions.map(item=>`<option value="${esc(item.id)}" ${item.id===state.selected?'selected':''}>${esc(item.id)}</option>`).join('');
   $('#revision-tools').hidden=!state.native;$('#head-state').textContent=`Active draft: ${state.head.revision_id} · pointer version ${state.head.version}`;

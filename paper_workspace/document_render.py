@@ -8,18 +8,21 @@ import tempfile
 import unicodedata
 
 
-def remove_flattened_tables(docx_path, blocks, embedded_table_texts):
-    """Remove exact text duplicates after structured source tables are embedded."""
+def remove_flattened_tables(docx_path, pieces, embedded_table_texts):
+    """Remove exact text duplicates after structured source tables are embedded.
+
+    ``pieces`` are the manuscript's pieces with their ``kind``, ``text`` and ``document``.
+    """
     from docx import Document
     def normalized(value):
         return re.sub(r'\s+', '', unicodedata.normalize('NFKC', value))
     embedded = {normalized(text) for text in embedded_table_texts}
-    tables = {normalized(block['text']) for block in blocks
-              if block.get('kind') == 'table' and normalized(block['text']) in embedded}
-    table_documents = {block.get('document') for block in blocks
-                       if block.get('kind') == 'table' and normalized(block['text']) in tables}
-    labels = {normalized(block['text']) for block in blocks if block.get('kind') == 'supplement'
-              and block.get('document') in table_documents and re.fullmatch(r'S\d+ Table', block['text'])}
+    tables = {normalized(piece['text']) for piece in pieces
+              if piece.get('kind') == 'table' and normalized(piece['text']) in embedded}
+    table_documents = {piece.get('document') for piece in pieces
+                       if piece.get('kind') == 'table' and normalized(piece['text']) in tables}
+    labels = {normalized(piece['text']) for piece in pieces if piece.get('kind') == 'supplement'
+              and piece.get('document') in table_documents and re.fullmatch(r'S\d+ Table', piece['text'])}
     document = Document(docx_path)
     removed = []
     for paragraph in list(document.paragraphs):

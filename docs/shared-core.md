@@ -1,10 +1,10 @@
 # Engine contract
 
-PeerReviewAgents 0.10.0 runs the review. Paper Workbench starts one and reads the run folder it writes. This page lists what the app depends on, so an engine change that breaks the app can be found before it ships.
+PeerReviewAgents 0.10.0 runs the review. Paper Workbench starts one and reads the run folder it writes. This page lists what the app depends on, so an engine change that breaks the app can be found before it ships. The app is tested against PeerReviewAgents main at commit c8a8c9c.
 
 ## Ownership
 
-The engine owns ingest, source integrity, manuscript block identities, the review plugin and its agents, tool access, the finding ledger, the issues document and the run reports. The app owns manuscript presentation, author decisions, revision workflows and exports. The benchmark owns datasets, hidden answer keys, candidate selection, controlled conditions, anonymous judging, statistics and rankings.
+The engine owns ingest, source integrity, the line-based manuscript and its writer, the review plugin and its agents, tool access, the finding ledger, the issues document and the run reports. The app owns manuscript presentation, author decisions, revision workflows and exports. The benchmark owns datasets, hidden answer keys, candidate selection, controlled conditions, anonymous judging, statistics and rankings.
 
 Neither answer keys nor human evaluation labels belong in a review. The benchmark must give the review a manuscript-only PDF and keep grading inputs outside the run folder. Engine outputs are review artifacts, not scores.
 
@@ -21,7 +21,10 @@ Every review, report and run-reading call goes through the engine's public surfa
 | `peerreviewagents.locate_run` and `NotARunFolder` | `run_view.locate` | No |
 | `peerreviewagents.MANUSCRIPT_DIRECTORY` | `run_view.locate` | No |
 | `peerreviewagents.import_paper(pdf, workspace, xml, ...)` | `paper-workbench import` | No |
+| `peerreviewagents.write_manuscript(folder, documents, ...)` | `paper-workbench import-scaffold` | No |
 | `peerreviewagents.verify_workspace` and `export_draft` | `verify`, the viewer, revisions and exports | No |
+| `peerreviewagents.cited_text(base, citation)` | `run_view.span_holds` | No |
+| `peerreviewagents.MAIN_DOCUMENT` | Paper Scaffold import and port, table structure | No |
 
 The app's `ENGINE_COMMANDS` must equal `peerreviewagents.CLI_COMMANDS`, and a test checks it, so an engine command added or renamed fails the app's tests until the app passes it on.
 
@@ -35,9 +38,19 @@ The smaller helpers come from the public `peerreviewagents.workspace`:
 | --- | --- |
 | `digest`, `read_json`, `write_json` | decisions, revisions, exports and tests |
 | `save_review`, `normalize_review` | revisions, `revise` and tests |
-| `words`, `text_of` | Paper Scaffold import and table structure |
+| `text_of` | table structure |
 
-No module under `paper_workspace/` or `tests/` imports `peerreviewagents.engine`, `.plugin`, `.cli` or `.runs`, or imports one of those modules from `peerreviewagents`. The one exception is `tests/test_engine_rounds.py`, which imports the engine's plugin server to build two review rounds without a model, as the engine's own tests do, because the engine has no public way to. `PublicSurfaceTest` in `tests/test_engine_contract.py` fails if any other import comes back.
+No module under `paper_workspace/` or `tests/` imports `peerreviewagents.engine`, `.plugin`, `.cli` or `.runs`, or imports one of those modules from `peerreviewagents`. There are two exceptions, both in tests. `tests/test_engine_rounds.py` imports the engine's plugin server to build two review rounds without a model, as the engine's own tests do, because the engine has no public way to. `tests/fixtures/citations/generate.py` imports the engine's citation ledger module to write the ledger fixture, because the engine has no public ledger writer, and no test runs it. `PublicSurfaceTest` in `tests/test_engine_contract.py` fails if any other import comes back.
+
+## The manuscript
+
+The engine writes every manuscript as one base: `paper.md` and any supplement documents such as `S1.md`, with `map.json` and `manifest.json`. `verify_workspace` checks it and returns it. The app names a place in it by document and line, never by a block id.
+
+1. A finding carries `document`, `line` and `end_line`, with `start` as an offset into `line` and `end` as one into `end_line`, and `evidence_lines` for the further lines it cites in its own document.
+2. Each map row is a piece with its document, its lines, its kind, its section and the page and box it sits at in the PDF. A highlight on the page is that page and box plus the quote.
+3. The viewer gets the base from `/api/paper` with each document as its list of lines and each piece as `document`, `lines`, `kind`, `section`, `page` and `bbox`. A link to a line in another document names that document.
+4. `paper-workbench import-scaffold` cuts a Typst tree into pieces and writes them with `write_manuscript`, so a Scaffold manuscript is the same base a PDF import writes. A map row keeps only the fields the engine knows, so where each piece sits in the Typst source is kept beside it in `scaffold-spans.json`, one entry per map row, which the manifest digests.
+5. `export_draft` returns `original_documents` and `proposed_documents`, each a document name to its text. A revision checks the draft it rebuilt against `proposed_documents`.
 
 ## What the app reads from a run
 
@@ -50,7 +63,7 @@ No module under `paper_workspace/` or `tests/` imports `peerreviewagents.engine`
 | `findings_source` | `issues`, `ledger` or `none`, for the count line and the summary of a run that has not written its issues |
 | `issues_source` | the run panel line saying whether the editor or the server wrote the issues |
 | `prior_round` | the run panel line with the prior file, the issues carried and this round's tally by status, and whether cards show their status |
-| `identity.paper_id`, `identity.source_sha256`, each finding's `block_sha256` | the check that the run reviewed this manuscript version |
+| `identity.paper_id`, `identity.source_sha256`, the `fingerprint` of each finding and issue member | the check that the run reviewed this manuscript version. A fingerprint must be the one on the map row at its finding's line |
 | `status`, `complete`, `cause`, `note`, `problems`, `publishable` | the run panel's status and warnings, and the summary of a run with no issues |
 | `not_publishable_reasons` | one line per reason, above the comments, when `publishable` is false. A run with nothing to show says it has no review rather than looking empty |
 | `summary`, `verdict`, `escalations`, `escalation_rulings`, `limitations`, `guard_status`, `counts` | the summary and the run panel |
@@ -67,11 +80,11 @@ No module under `paper_workspace/` or `tests/` imports `peerreviewagents.engine`
 | `citations.counts` | one line for the references and one for the uses. `resolved`, `not_found`, `not_located`, `could_not_check` and `unresolved` each keep their own count and are never added together. Empty `counts` with a ledger means the ledger could not be read, and the panel shows no rows |
 | `citations.complete`, `citations.problems` | a line saying the check did not finish, and each problem line once, in the citation section. The engine puts those lines in `problems` as well, and the run panel leaves them out there |
 
-The engine writes `protocol.json` and `manifest.json` only when the run finishes or is marked blocked. A run the starter stopped early, from a token ceiling, a timeout, a rate limit or a session error, has neither. The viewer still opens it with its status, its cause and the findings in the ledger. Each finding's `block_sha256` then pins the manuscript version. Its arm and reviewer count are empty, because `read_run` takes them only from `protocol.json` or the plan. A run blocked at startup, or stopped before it imported the manuscript, has nothing to show, so `serve` prints its status and cause and exits 1.
+The engine writes `protocol.json` and `manifest.json` only when the run finishes or is marked blocked. A run the starter stopped early, from a token ceiling, a timeout, a rate limit or a session error, has neither. The viewer still opens it with its status, its cause and the findings in the ledger. Each finding's `fingerprint` then pins the manuscript version. Its arm and reviewer count are empty, because `read_run` takes them only from `protocol.json` or the plan. A run blocked at startup, or stopped before it imported the manuscript, has nothing to show, so `serve` prints its status and cause and exits 1.
 
 A run written before engine commit bfc8aae recorded no model asked per slot, so each of its agent lines shows "model asked not recorded" and its `models_unverified` is empty. A slot that ran a different model family than it was asked is in `problems` and `not_publishable_reasons`, and the run panel shows it there. A `cite-N` citation worker holds no review, so its mismatch is a `problems` line only and the run stays publishable.
 
-Each issue keeps every `ISSUE_FIELDS` key: `id`, `name`, `severity`, `category`, `rank`, `statement`, `status`, `status_reason`, `prior_id`, `prior_rank`, `raised_by`, `members`, `audits`, `surviving_quotes`, `rebuttal_quote`, `rebuttal_block_id` and `text_unchanged_reason`. A member carries its quote and block ids only. `run_view.issue_card` joins it to its ledger row by `finding_uid` for `comment`, `start`, `end`, `block_sha256`, `replacement`, `basis_reason`, `counterevidence` and `source_urls`, then checks the span against this manuscript's text. A span that no longer holds the quote is placed where the quote occurs exactly once in its block, and is unplaced otherwise. The card takes the annotation keys the viewer and `export_draft` use (`kind`, `block_id`, `quote`, `start`, `end`, `placement`, `comment`, `replacement`, `evidence_blocks`) from its first anchored member. It is an edit only when its one member is an anchored edit with wording, so accepting it applies exactly that wording.
+Each issue keeps every `ISSUE_FIELDS` key: `id`, `name`, `severity`, `category`, `rank`, `statement`, `members`, `raised_by`, `rebuttal_line`, `rebuttal_quote`, `prior_id`, `prior_rank`, `status`, `status_reason`, `text_unchanged_reason`, `surviving_quotes` and `audits`. A member carries its quote and where the engine placed it: `document`, `line`, `end_line`, `start`, `end`, `anchor_text` and `fingerprint`. `run_view.issue_card` joins it to its ledger row by `finding_uid` for `comment`, the span, `placement`, `replacement`, `basis_reason`, `counterevidence` and `source_urls`. It reads the span off this manuscript with `cited_text` and keeps it only while that text is still `anchor_text`. A span that no longer holds is unplaced and keeps its line, and the viewer never searches the line for the quote again. The card takes `document`, `line`, `end_line`, `start`, `end`, `anchor_text`, `quote` and `fingerprint` from its first anchored member, the page and box from the map row at that line, and `evidence` as each document and line its members cite, once. It is an edit only when its one member is an anchored edit with wording, so accepting it applies exactly that wording. `rebuttal_line` names no document, so the card's `rebuttal_document` is that of the issue's computed member, or the main document when it has none.
 
 The viewer keys a card by its issue id. A finding no issue holds is keyed by its `finding_uid`. A card whose id is missing, malformed, repeated or shaped like a place number is numbered `run-N` by its place and takes no decision, because a decision keyed on a place could land on another card once the order changed. The card says so and asks for a re-run. A decision already saved under such a number is kept in the file and not applied to an export or a revision. A revision's issue ledger keeps the issue id and the issue's status in the round that raised it.
 
@@ -79,7 +92,7 @@ The engine carries an issue id from round to round, but decisions do not follow 
 
 Saved decisions that no longer match a card, such as keys from the per-finding shape before 0.10 or an issue this round does not hold, are counted once above the cards. The decisions file is left as it is.
 
-The app reads only the `issues.json` that engine 0.10.0 writes. A review folder with `editor-package.json` and no `issues.json` is from an older engine, and the viewer refuses it with "This review was made by an older engine, re-run it." A 0.10 run whose editor failed has neither file and opens with its findings as not publishable. `run_view.check_issues` checks the type of every value the viewer reads from an issue and its members, and a run with a wrong one is refused in one message that names the issue and the field.
+The app reads only the `issues.json` that engine 0.10.0 writes. A review folder with `editor-package.json` and no `issues.json` is from an older engine, and the viewer refuses it with "This review was made by an older engine, re-run it." A 0.10 run whose editor failed has neither file and opens with its findings as not publishable. The engine stamps `issues.json` `review-issues-v3`. `read_run` counts any other stamp, `review-issues-v2` included, as a problem, so the run is not publishable and its findings show ungrouped. `run_view.check_issues` checks the type of every value the viewer reads from an issue and its members, and a run with a wrong one is refused in one message that names the issue and the field.
 
 ## The citation ledger
 
@@ -91,7 +104,9 @@ The run panel lists the references that need a second look and every in-text use
 
 A ledger that is present and cannot be read gives one citation problem line that names `review/citations/ledger.jsonl` and why. The counts are empty, the panel shows that line and no rows, and the run stays publishable. A torn last line is counted in `unreadable_rows` and the rows before it stand.
 
-`tests/fixtures/citations` holds a ledger written by hand in the shape the engine documents in `docs/INTEGRATIONS.md`, and its README says what each row is for. No test imports the engine's private ledger module.
+A use row names its sentence by `document`, `line`, `end_line`, `start` and `end`, and its `row_id` is `use:<document>:<piece first line>:<sentence>:<reference>`. The panel links each use to its line.
+
+`tests/fixtures/citations` holds a ledger that `generate.py` wrote through the engine's own ledger code, with canned lookups and no network, and its README says what each row is for. No test imports the engine's private ledger module.
 
 ## Versioning
 

@@ -16,8 +16,10 @@ from pathlib import Path
 from unittest.mock import patch
 
 from peerreviewagents import CLI_COMMANDS, export_draft, verify_workspace
-from peerreviewagents.workspace import digest, save_review, write_json
+from peerreviewagents.workspace import save_review
 
+import manuscripts
+from manuscripts import line_of
 from paper_workspace.__main__ import ENGINE_COMMANDS, build_parser, main
 
 
@@ -145,41 +147,40 @@ class EngineOutputContractTest(unittest.TestCase):
     def test_review_and_export_keys_the_app_reads(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
-            text = 'A claim with 12 samples.'
-            write_json(root / 'paper.json', {'id': 'qa', 'title': 'QA', 'source_sha256': 'qa',
-                'blocks': [{'id': 'b1', 'text': text, 'sha256': digest(text)}],
-                'statistics': {'pdf_pages': 1}})
-            write_json(root / 'manifest.json', {'files': {'paper.json': digest((root / 'paper.json').read_bytes())}})
+            paper = manuscripts.build(root, ['A claim with 12 samples.'])
+            line = line_of(paper, '12 samples')
             review = save_review(root, {'summary': 'One edit and one question.', 'findings': [
-                {'kind': 'edit', 'block_id': 'b1', 'quote': '12 samples', 'replacement': '12 donors',
-                 'evidence_blocks': ['b1']},
-                {'kind': 'question', 'block_id': 'b1', 'quote': 'A claim', 'comment': 'Name the cohort.',
-                 'evidence_blocks': ['b1']}]}, 'qa')
+                {'kind': 'edit', 'line': line, 'quote': '12 samples', 'replacement': '12 donors',
+                 'evidence_lines': [line]},
+                {'kind': 'question', 'line': line, 'quote': 'A claim', 'comment': 'Name the cohort.',
+                 'evidence_lines': [line]}]}, 'qa')
             paper = verify_workspace(root)
         # server.py, revisions.py and web/app.js read these review keys.
         self.assertLessEqual({'id', 'findings', 'summary', 'raw_response'}, set(review))
         edit, question = review['findings']
         for finding in (edit, question):
-            self.assertLessEqual({'id', 'kind', 'block_id', 'block_sha256', 'start', 'end', 'placement',
-                                  'quote', 'category', 'evidence_blocks'}, set(finding))
-        self.assertEqual((edit['kind'], edit['placement'], edit['start'], edit['end'], edit['replacement']),
-                         ('edit', 'anchored', 13, 23, '12 donors'))
+            self.assertLessEqual({'id', 'kind', 'document', 'line', 'end_line', 'start', 'end', 'placement',
+                                  'quote', 'anchor_text', 'category', 'evidence_lines', 'fingerprint'}, set(finding))
+        self.assertEqual((edit['kind'], edit['document'], edit['line'], edit['end_line'], edit['placement'],
+                          edit['start'], edit['end'], edit['replacement']),
+                         ('edit', 'paper.md', line, line, 'anchored', 13, 23, '12 donors'))
         self.assertEqual((question['kind'], question['comment']), ('question', 'Name the cohort.'))
-        decisions = {'paper_id': 'qa', 'review_id': 'qa', 'revision': 0,
+        decisions = {'paper_id': paper.paper_id, 'review_id': 'qa', 'revision': 0,
                      'items': {edit['id']: 'accepted', question['id']: 'noted'}, 'annotations': {}}
         exported = export_draft(paper, review, decisions)
-        # revisions.py applies proposed_blocks, and the viewer download carries the rest.
-        self.assertEqual([(b['id'], b['text']) for b in exported['proposed_blocks']],
-                         [('b1', 'A claim with 12 donors.')])
-        self.assertEqual([b['text'] for b in exported['original_blocks']], [text])
+        # revisions.py checks a rebuilt draft against proposed_documents, and the viewer download carries the rest.
+        self.assertEqual(exported['proposed_documents'], {'paper.md': '# QA\n\nA claim with 12 donors.\n'})
+        self.assertEqual(exported['original_documents'], paper.documents)
         self.assertEqual([f['issue_status'] for f in exported['findings']], ['open', 'open'])
 
 
 class PublicSurfaceTest(unittest.TestCase):
     PRIVATE = ('engine', 'plugin', 'cli', 'runs')
     # The engine has no public way to build a run folder without a model. test_engine_rounds.py builds two
-    # rounds through the engine's own server, as the engine's tests do, and is the one file allowed to.
-    ALLOWED = ['tests/test_engine_rounds.py: ' + 'peerreviewagents.' + 'plugin']
+    # rounds through the engine's own server, as the engine's tests do. It has no public ledger writer
+    # either, so the fixture generator imports its ledger module. No test runs the generator.
+    ALLOWED = ['tests/fixtures/citations/generate.py: ' + 'peerreviewagents.' + 'engine',
+               'tests/test_engine_rounds.py: ' + 'peerreviewagents.' + 'plugin']
 
     def test_the_app_and_its_tests_use_only_public_engine_names(self):
         # A dotted name catches an import, a lazy import or a patch target. The AST catches

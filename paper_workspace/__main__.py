@@ -107,9 +107,12 @@ def dispatch(parser,args):
         print(json.dumps(paper['statistics'],indent=2))
     elif args.command=='verify':
         from peerreviewagents import verify_workspace
+        from .run_view import source_sha256
         paper=verify_workspace(args.workspace)
-        print(json.dumps({'paper_id':paper['id'],'source_sha256':paper['source_sha256'],
-                          'blocks':len(paper['blocks']),'status':'verified'},indent=2))
+        print(json.dumps({'paper_id':paper.paper_id,'source_sha256':source_sha256(paper),
+                          'pieces':len(paper.rows),
+                          'lines':{name:paper.line_count(name) for name in paper.document_names()},
+                          'status':'verified'},indent=2))
     elif args.command=='port-scaffold':
         from .scaffold_port import port_workspace
         print(port_workspace(args.workspace,args.output)['statistics'])

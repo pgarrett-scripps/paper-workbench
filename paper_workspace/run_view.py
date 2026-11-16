@@ -18,7 +18,7 @@ import re
 from collections import Counter
 from pathlib import Path
 
-from peerreviewagents import MANUSCRIPT_DIRECTORY, read_citation_ledger, read_run
+from peerreviewagents import MANUSCRIPT_DIRECTORY, cited_text, read_citation_ledger, read_run
 from peerreviewagents import locate_run, NotARunFolder
 from peerreviewagents.issues import (ISSUE_FIELDS, by_category, closed_issues, is_issue_id, required_issues,
                                      suggestion_issues)
@@ -38,16 +38,20 @@ OLDER_ENGINE = ('This review was made by an older engine, re-run it. Its review 
 # The types the viewer reads from each issue in issues.json. A value of another
 # type is a malformed file, and the run is refused with each such value named.
 ISSUE_TEXT = ('id', 'name', 'statement', 'severity', 'category', 'status', 'status_reason',
-              'text_unchanged_reason', 'rebuttal_quote', 'rebuttal_block_id', 'prior_id')
-ISSUE_NUMBERS = ('rank', 'prior_rank', 'raised_by')
-MEMBER_TEXT = ('finding_uid', 'slot', 'track', 'severity', 'kind', 'basis', 'title', 'quote', 'block_id')
+              'text_unchanged_reason', 'rebuttal_quote', 'prior_id')
+ISSUE_NUMBERS = ('rank', 'prior_rank', 'raised_by', 'rebuttal_line')
+MEMBER_TEXT = ('finding_uid', 'slot', 'track', 'severity', 'kind', 'basis', 'title', 'quote', 'anchor_text',
+               'document', 'fingerprint')
+MEMBER_NUMBERS = ('line', 'end_line', 'start', 'end')
 TYPE_PROBLEMS_SHOWN = 8
-# An issue's members carry the quote and the blocks. Their ledger rows, joined
-# by finding_uid, carry the comment, the span and the suggested wording.
-FROM_LEDGER = ('comment', 'start', 'end', 'block_sha256', 'placement', 'replacement', 'basis_reason',
+# An issue's members carry the quote and where the engine placed it. Their ledger
+# rows, joined by finding_uid, carry the comment, the span and the suggested wording.
+FROM_LEDGER = ('comment', 'start', 'end', 'anchor_text', 'placement', 'replacement', 'basis_reason',
                'counterevidence', 'source_urls')
+# Where a finding sits in the manuscript.
+SPAN = ('document', 'line', 'end_line', 'start', 'end', 'anchor_text')
 # What a card copies from the member it is anchored to.
-ANCHOR = ('block_id', 'quote', 'start', 'end', 'block_sha256')
+ANCHOR = (*SPAN, 'quote', 'page', 'bbox', 'fingerprint')
 
 # The citation ledger, as the run panel shows it.
 CITATION_ROWS = 500
@@ -89,6 +93,19 @@ def is_text_list(value):
     return value is None or (isinstance(value, list) and all(isinstance(item, str) for item in value))
 
 
+def is_line(value):
+    """A line number: a whole number that is not true or false."""
+    return type(value) is int
+
+
+def is_number(value):
+    return value is None or is_line(value)
+
+
+def is_line_list(value):
+    return value is None or (isinstance(value, list) and all(is_line(item) for item in value))
+
+
 def issue_problems(rows):
     """Each value in the issues that is not of the type the viewer reads, as a line of prose."""
     problems = []
@@ -98,14 +115,13 @@ def issue_problems(rows):
             continue
         name = f'issue {number}' + (f' ({row["id"]})' if isinstance(row.get('id'), str) else '')
         problems += [f'in {name}, {key} is not text' for key in ISSUE_TEXT if not is_text(row.get(key))]
-        problems += [f'in {name}, {key} is not a whole number' for key in ISSUE_NUMBERS
-                     if not (row.get(key) is None or type(row.get(key)) is int)]
+        problems += [f'in {name}, {key} is not a whole number' for key in ISSUE_NUMBERS if not is_number(row.get(key))]
         if not is_text_list(row.get('audits')):
             problems.append(f'in {name}, audits is not a list of file names')
         quotes = row.get('surviving_quotes')
         if not (quotes is None or (isinstance(quotes, list) and all(
-                isinstance(quote, dict) and is_text(quote.get('quote')) and is_text(quote.get('block_id'))
-                for quote in quotes))):
+                isinstance(quote, dict) and is_text(quote.get('quote')) and is_text(quote.get('document'))
+                and is_number(quote.get('line')) for quote in quotes))):
             problems.append(f'in {name}, surviving_quotes is not a list of quotes')
         members = row.get('members')
         if not (members is None or isinstance(members, list)):
@@ -117,10 +133,12 @@ def issue_problems(rows):
                 problems.append(f'{where} is not an object')
                 continue
             problems += [f'in {where}, {key} is not text' for key in MEMBER_TEXT if not is_text(member.get(key))]
+            problems += [f'in {where}, {key} is not a whole number' for key in MEMBER_NUMBERS
+                         if not is_number(member.get(key))]
             if not (member.get('escalate') is None or isinstance(member.get('escalate'), bool)):
                 problems.append(f'in {where}, escalate is not true or false')
-            if not is_text_list(member.get('evidence_blocks')):
-                problems.append(f'in {where}, evidence_blocks is not a list of block ids')
+            if not is_line_list(member.get('evidence_lines')):
+                problems.append(f'in {where}, evidence_lines is not a list of line numbers')
     return problems
 
 
@@ -184,24 +202,44 @@ def locate(path):
     except ValueError as exc:
         raise RunError(str(exc)) from None
     manuscript = root / MANUSCRIPT_DIRECTORY
-    if not (manuscript / 'paper.json').is_file():
+    if not (manuscript / 'map.json').is_file():
         run = recorded(review)
         raise RunError(f'The run in {root} stopped before it imported the manuscript, so there is '
                        f'nothing to show. Status: {run["status"]}. Cause: {run["cause"] or "not recorded"}')
     return manuscript, review
 
 
-def check_version(run, paper):
+def main_document(base):
+    """The name of the manuscript's own document. The engine lists it first."""
+    return base.document_names()[0]
+
+
+def source_sha256(base):
+    return (base.manifest.get('source') or {}).get('sha256')
+
+
+def pinned(row, base):
+    """Whether a finding's fingerprint, where it has one, is the passage's on the line it names."""
+    fingerprint = row.get('fingerprint')
+    if fingerprint is None:
+        return True
+    if not is_line(row.get('line')):
+        return False
+    piece = base.piece_at(row['line'], row.get('document') or main_document(base))
+    return piece is not None and piece.get('fingerprint') == fingerprint
+
+
+def check_version(run, base):
     """Refuse a run that reviewed another version of this manuscript.
 
-    The run names the manuscript it reviewed, and each finding pins its block
-    by hash, so a run that stopped before naming it is still checked.
+    The run names the manuscript it reviewed, and each finding and each issue
+    member pins the passage it quoted by its fingerprint, so a run that stopped
+    before naming the manuscript is still checked.
     """
     identity = run['identity']
-    blocks = {block['id']: block.get('sha256') for block in paper['blocks']}
-    same = ((identity['paper_id'], identity['source_sha256']) == (paper['id'], paper['source_sha256'])
-            and all(blocks.get(row.get('block_id')) == row['block_sha256']
-                    for row in run['findings'] if row.get('block_sha256') is not None))
+    members = [member for issue in run['issues'] for member in issue.get('members') or [] if isinstance(member, dict)]
+    same = ((identity['paper_id'], identity['source_sha256']) == (base.paper_id, source_sha256(base))
+            and all(pinned(row, base) for row in [*run['findings'], *members]))
     if not same:
         raise RunError('The run reviewed a different manuscript version')
 
@@ -288,7 +326,9 @@ def use_entry(row, labels):
         'label': labels.get(reference),
         'marker': clip(row.get('marker'), 120),
         'section': clip(row.get('section'), 200),
-        'block_id': clip(row.get('block_id'), 200),
+        'document': clip(row.get('document'), 200),
+        'line': row.get('line') if is_line(row.get('line')) else None,
+        'end_line': row.get('end_line') if is_line(row.get('end_line')) else None,
         'sentence': clip(row.get('sentence')),
         'ambiguous': row.get('derivation') == 'marker-author-year-ambiguous',
         'verdict': verdict,
@@ -350,33 +390,60 @@ def citation_view(citations, review):
     return view
 
 
-def placed(row, blocks):
+def span_holds(row, base):
+    """Whether a recorded span still covers the text it was anchored to.
+
+    ``start`` is an offset into ``line`` and ``end`` one into ``end_line``, as
+    the engine records them on every citation, and ``cited_text`` reads that
+    span off the manuscript, a quote across a line break included.
+    """
+    document, text = row.get('document'), row.get('anchor_text')
+    numbers = [row.get(key) for key in ('line', 'end_line', 'start', 'end')]
+    if document not in base.documents or not (isinstance(text, str) and text) or not all(map(is_line, numbers)):
+        return False
+    line, end_line, start, end = numbers
+    if not (1 <= line <= end_line <= base.line_count(document)
+            and 0 <= start <= len(base.line_text(line, document))
+            and 0 <= end <= len(base.line_text(end_line, document))):
+        return False
+    return cited_text(base, row) == text
+
+
+def placed(row, base):
     """A finding with its anchor checked against this manuscript's text.
 
-    A recorded span counts only while it still holds the quote. A member read
-    from ``issues.json`` alone has no span, so its quote is anchored where it
-    occurs exactly once in its block. Anything else is ``unplaced``.
+    The engine places every citation and records where, on the issue member as
+    on the ledger row, so the viewer reads that span and never searches the line
+    for the quote again. A span counts only while it still covers its text. One
+    the engine did not place, or that no longer holds, is ``unplaced`` and keeps
+    its line. The page and the box are the passage's on that line, from the
+    manuscript's map.
     """
     row = dict(row)
-    block = blocks.get(row.get('block_id'))
-    text, quote = (block or {}).get('text', ''), row.get('quote')
-    start, end = row.get('start'), row.get('end')
-    if not (block and isinstance(quote, str) and quote):
-        row.update(start=None, end=None, placement='unplaced')
-        return row
-    if not (type(start) is int and type(end) is int and 0 <= start <= end <= len(text) and text[start:end] == quote):
-        start = text.find(quote)
-        if start < 0 or text.find(quote, start + 1) >= 0:
-            row.update(start=None, end=None, placement='unplaced')
-            return row
-        end = start + len(quote)
-    row.update(start=start, end=end, placement='anchored')
-    if row.get('block_sha256') is None:
-        row['block_sha256'] = block.get('sha256')
+    row['document'] = row.get('document') or main_document(base)
+    if span_holds(row, base):
+        row['placement'] = 'anchored'
+    else:
+        row.update(start=None, end=None, anchor_text=None, placement='unplaced')
+    piece = base.piece_at(row['line'], row['document']) if is_line(row.get('line')) else None
+    row.update(page=(piece or {}).get('page'), bbox=(piece or {}).get('bbox'))
     return row
 
 
-def issue_card(issue, group, ledger, blocks):
+def evidence_of(members):
+    """The further lines an issue's members cite, each once, in the member's own document."""
+    seen = dict.fromkeys((member['document'], line) for member in members
+                         for line in member.get('evidence_lines') or [] if is_line(line))
+    return [{'document': document, 'line': line} for document, line in seen]
+
+
+def rebuttal_document(members, base):
+    """The document a rebuttal quote is on: the computed member's, as the engine places it."""
+    computed = next((member for member in members if member.get('basis') == 'computed'), None)
+    return (computed or {}).get('document') or main_document(base)
+
+
+def issue_card(issue, group, ledger, base):
     """One issue as one card and one author decision.
 
     Each member is joined to its ledger row by ``finding_uid`` for the comment,
@@ -389,28 +456,28 @@ def issue_card(issue, group, ledger, blocks):
         if isinstance(member, dict):
             uid = member.get('finding_uid')
             row = ledger.get(uid, {}) if isinstance(uid, str) else {}
-            members.append(placed({**member, **{key: row[key] for key in FROM_LEDGER if key in row}}, blocks))
+            members.append(placed({**member, **{key: row[key] for key in FROM_LEDGER if key in row}}, base))
     edit = (len(members) == 1 and members[0].get('kind') == 'edit' and members[0]['placement'] == 'anchored'
             and isinstance(members[0].get('replacement'), str))
     anchor = next((m for m in members if m['placement'] == 'anchored'), None) or next(
-        (m for m in members if m.get('block_id')), {})
-    evidence = dict.fromkeys(block for m in members for block in m.get('evidence_blocks') or [] if isinstance(block, str))
+        (m for m in members if is_line(m.get('line'))), {})
     return {**issue, 'group': group, 'source_id': issue.get('id'), 'number': issue.get('rank'),
             'title': issue.get('name'), 'comment': issue.get('statement'), 'members': members,
             'kind': 'edit' if edit else 'issue', 'escalate': any(m.get('escalate') is True for m in members),
-            'evidence_blocks': list(evidence), **{key: anchor.get(key) for key in ANCHOR},
+            'evidence': evidence_of(members), 'rebuttal_document': rebuttal_document(members, base),
+            **{key: anchor.get(key) for key in ANCHOR},
             'placement': anchor.get('placement', 'unplaced'), 'replacement': anchor.get('replacement') if edit else None}
 
 
-def finding_card(row, ledger, blocks):
+def finding_card(row, ledger, base):
     """A ledger finding no issue holds, as a card of its own with itself as the one member."""
     issue = {**dict.fromkeys(ISSUE_FIELDS), 'id': row.get('finding_uid'), 'name': row.get('title'),
              'severity': row.get('severity'), 'statement': row.get('comment'), 'members': [row], 'raised_by': 1,
              'surviving_quotes': [], 'audits': []}
-    return issue_card(issue, 'ledger', ledger, blocks)
+    return issue_card(issue, 'ledger', ledger, base)
 
 
-def run_review(review, paper):
+def run_review(review, base):
     """The run as a review that the viewer, the decisions and ``export_draft`` read.
 
     The unit is the editor's issue. Required changes come first in rank order,
@@ -427,18 +494,17 @@ def run_review(review, paper):
     run = recorded(review)
     # With an empty ledger the engine rebuilds the findings from the members, so they are checked first.
     check_issues(run['issues'])
-    check_version(run, paper)
-    blocks = {block['id']: block for block in paper['blocks']}
+    check_version(run, base)
     ledger = {row['finding_uid']: row for row in run['findings'] if isinstance(row.get('finding_uid'), str)}
     issues = run['issues']
     held = {member.get('finding_uid') for issue in issues for member in issue.get('members') or []
             if isinstance(member, dict) and isinstance(member.get('finding_uid'), str)}
-    findings = ([issue_card(issue, 'required', ledger, blocks) for issue in required_issues(issues)]
-                + [issue_card(issue, 'suggestion', ledger, blocks)
+    findings = ([issue_card(issue, 'required', ledger, base) for issue in required_issues(issues)]
+                + [issue_card(issue, 'suggestion', ledger, base)
                    for _, rows in by_category(suggestion_issues(issues)) for issue in rows]
-                + [issue_card(issue, 'closed', ledger, blocks) for issue in closed_issues(issues)])
+                + [issue_card(issue, 'closed', ledger, base) for issue in closed_issues(issues)])
     top = max((card['number'] for card in findings if type(card['number']) is int), default=0)
-    loose = [finding_card(row, ledger, blocks) for row in run['findings']
+    loose = [finding_card(row, ledger, base) for row in run['findings']
              if not (isinstance(row.get('finding_uid'), str) and row['finding_uid'] in held)]
     for number, card in enumerate(loose, top + 1):
         card['number'] = number
@@ -501,7 +567,7 @@ def run_review(review, paper):
         summary = f'The run has not written its issues. Its last recorded status is {run["status"]}.'
     else:
         summary = run['summary'] or f'The run recorded no findings. Its last recorded status is {run["status"]}.'
-    return {'id': RUN_REVIEW_ID, 'paper_id': paper['id'], 'source_sha256': paper['source_sha256'],
+    return {'id': RUN_REVIEW_ID, 'paper_id': base.paper_id, 'source_sha256': source_sha256(base),
             'summary': summary, 'findings': findings, 'run': view}
 
 

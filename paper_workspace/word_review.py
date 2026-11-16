@@ -11,6 +11,7 @@ import zipfile
 from peerreviewagents.workspace import digest, read_json, write_json
 
 from .revisions import snapshot
+from .scaffold_export import export_pieces
 
 W = 'http://schemas.openxmlformats.org/wordprocessingml/2006/main'
 R = 'http://schemas.openxmlformats.org/package/2006/relationships'
@@ -37,7 +38,26 @@ def visible(element, rejected=False):
     return ''.join(visible(child, rejected) for child in element)
 
 
-def patch_document(source, destination, parent, current, ledger):
+def passage(base, finding):
+    """The whole lines a placed finding sits on in one draft, or ``None`` when it has no place there."""
+    document, line, last = finding.get('document'), finding.get('line'), finding.get('end_line')
+    if finding.get('start') is None or finding.get('end') is None:
+        return None
+    if document not in base.document_names() or type(line) is not int or type(last) is not int:
+        return None
+    if not 1 <= line <= last <= base.line_count(document):
+        return None
+    return base.range_text(line, last, document)
+
+
+def patch_document(source, destination, parent, current, ledger, origin):
+    """Write the review copy of one draft.
+
+    ``parent`` and ``current`` are the drafts, read as their pieces, which pair one
+    to one by position because a revision edits text in place. ``origin(revision)``
+    is the draft an inherited ledger row was raised on: a question is anchored on
+    the current draft only when its lines read there as they did in that draft.
+    """
     from lxml import etree as ET
     parser = ET.XMLParser(resolve_entities=False, no_network=True)
     with zipfile.ZipFile(source) as archive:
@@ -47,10 +67,10 @@ def patch_document(source, destination, parent, current, ledger):
         raise ValueError('Review export requires a clean document without existing annotations')
     original_text = visible(document)
     paragraphs = document.findall('.//' + tag('p'))
-    before = {b['id']: b for b in parent['blocks']}
-    after = {b['id']: b for b in current['blocks']}
-    if before.keys() != after.keys():
-        raise ValueError('Review export does not yet support added or removed blocks')
+    before, after = export_pieces(parent), export_pieces(current)
+    if [(p['document'], p['kind']) for p in before] != [(p['document'], p['kind']) for p in after]:
+        raise ValueError('Review export does not yet support added or removed pieces')
+    by_lines = {(p['document'], tuple(p['lines'])): p for p in after}
     when = datetime.now(timezone.utc).isoformat(timespec='seconds').replace('+00:00', 'Z')
     used_ids = [int(v) for v in document.xpath('//@w:id', namespaces=NS) if v.isdigit()]
     next_id = max(used_ids, default=0) + 1
@@ -67,12 +87,12 @@ def patch_document(source, destination, parent, current, ledger):
     def locate(text):
         matches = [p for p in paragraphs if visible(p) == text]
         if len(matches) != 1:
-            raise ValueError('Expected one exact Word paragraph for the source block')
+            raise ValueError('Expected one exact Word paragraph for the source piece')
         return matches[0]
 
     changed = []
-    for bid, block in after.items():
-        old, new = before[bid]['text'], block['text']
+    for was, piece in zip(before, after):
+        old, new = was['text'], piece['text']
         if old == new:
             continue
         paragraph = locate(new)
@@ -109,7 +129,7 @@ def patch_document(source, destination, parent, current, ledger):
             new_offset += len(right)
         if visible(paragraph) != new or visible(paragraph, True) != old:
             raise ValueError('Tracked change projections do not match the saved drafts')
-        changed.append(bid)
+        changed.append({'document': piece['document'], 'lines': piece['lines']})
     if visible(document) != original_text:
         raise ValueError('Review markup altered clean manuscript text')
 
@@ -119,19 +139,25 @@ def patch_document(source, destination, parent, current, ledger):
         if entry.get('scientific_status') != 'open':
             continue
         finding = entry['finding']
-        block = after.get(finding.get('block_id'))
-        reason = None
-        if not block or digest(block['text'].encode()) != finding.get('block_sha256'):
+        quote = finding.get('anchor_text') or finding.get('quote', '')
+        reason, piece, paragraph = None, None, None
+        was = passage(origin(entry['origin_revision']), finding)
+        if was is None:
+            reason = 'The finding has no place in the draft it was raised on'
+        elif passage(current, finding) != was:
             reason = 'The originating passage changed or is unavailable'
-        quote = finding.get('quote', '')
-        if not reason and (not quote or block['text'].count(quote) != 1):
-            reason = 'The quoted passage is not unique in the current block'
-        paragraph = None
+        else:
+            first = current.piece_at(finding['line'], finding['document'])
+            last = current.piece_at(finding['end_line'], finding['document'])
+            if first is None or first is not last:
+                reason = 'The quoted passage crosses a paragraph boundary'
+            else:
+                piece = by_lines[(finding['document'], tuple(first['lines']))]
         if not reason:
             try:
-                paragraph = locate(block['text'])
+                paragraph = locate(piece['text'])
             except ValueError:
-                reason = 'No unique Word paragraph matches the current block'
+                reason = 'No unique Word paragraph matches the current piece'
         source_cards = {card.get('evidence_id') or card.get('source_url'): card
                         for card in finding.get('external_sources', [])}
         evidence = '\n\n'.join('Source: ' + str(card.get('source_url', '')) +
@@ -156,7 +182,8 @@ def patch_document(source, destination, parent, current, ledger):
         comment = ET.SubElement(comments, tag('comment'), {tag('id'): cid, tag('author'): 'In Silico', tag('date'): when})
         for line in (text + '\n\nQuoted passage: ' + quote).split('\n'):
             ET.SubElement(comment, tag('p')).append(run(line))
-        located.append({'finding_id': finding['id'], 'comment_id': cid, 'block_id': block['id'], 'anchor': 'exact paragraph', 'quote': quote})
+        located.append({'finding_id': finding['id'], 'comment_id': cid, 'document': piece['document'],
+                        'lines': piece['lines'], 'anchor': 'exact paragraph', 'quote': quote})
     if unlocated:
         body = document.find(tag('body'))
         position = len(body) - (1 if body.find(tag('sectPr')) is not None else 0)
@@ -195,8 +222,8 @@ def patch_document(source, destination, parent, current, ledger):
     with zipfile.ZipFile(destination, 'w', zipfile.ZIP_DEFLATED) as archive:
         for name, data in entries.items():
             archive.writestr(name, data)
-    return {'changed_blocks': changed, 'comments': located, 'unlocated_questions': unlocated,
-            'accepted_text_matches_clean': True, 'rejected_changed_blocks_match_parent': True,
+    return {'changed_pieces': changed, 'comments': located, 'unlocated_questions': unlocated,
+            'accepted_text_matches_clean': True, 'rejected_changed_pieces_match_parent': True,
             'scope': 'Changes from the immediate parent revision. Open questions from the inherited ledger.'}
 
 
@@ -212,8 +239,14 @@ def export_review(root, revision_id, clean_export, output):
     if output.is_relative_to(workspace) and output.relative_to(workspace).parts[0] != 'exports':
         raise ValueError('Exports inside a workspace must use its exports directory')
     record = read_json(clean_export / 'export.json')
-    if record['paper_id'] != paper['id'] or record['source_sha256'] != paper['source_sha256']:
+    if record['paper_id'] != paper.paper_id or record['source_sha256'] != paper.manifest['source']['sha256']:
         raise ValueError('Clean export belongs to a different draft')
+    drafts = {revision_id: paper, metadata['parent']: parent}
+
+    def origin(revision):
+        if revision not in drafts:
+            drafts[revision] = snapshot(root, revision)[1]
+        return drafts[revision]
     for path in clean_export.rglob('*'):
         if path.is_symlink():
             raise ValueError('Export source contains a symbolic link')
@@ -227,7 +260,8 @@ def export_review(root, revision_id, clean_export, output):
     with tempfile.TemporaryDirectory(prefix='.review-export-', dir=output.parent) as temporary:
         stage = Path(temporary) / 'artifacts'
         shutil.copytree(clean_export, stage)
-        audit = patch_document(stage / 'paper.docx', stage / 'review.docx', parent, paper, read_json(source / 'issue-ledger.json'))
+        audit = patch_document(stage / 'paper.docx', stage / 'review.docx', parent, paper,
+                               read_json(source / 'issue-ledger.json'), origin)
         audit.update({'revision_id': revision_id, 'parent_revision': metadata['parent'],
                       'clean_docx_sha256': record['files']['paper.docx'], 'new_review_model_calls': 0})
         write_json(stage / 'word-review.json', audit)

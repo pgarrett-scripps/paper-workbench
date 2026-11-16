@@ -13,18 +13,21 @@ def _natural(path):
             for part in re.split(r'(\d+)', path.name)]
 
 
-def _figure_captions(blocks):
+def _figure_captions(pieces):
     captions = {}
-    for block in blocks:
-        text = block.get('text', '')
+    for piece in pieces:
+        text = piece.get('text', '')
         match = re.match(r'(S\d+) Fig\s+(.+)', text)
         if match:
             captions[match.group(1) + '_Fig'] = text.removesuffix(' (TIF)')
     return captions
 
 
-def append_supplements(docx_path, supplements, blocks, main_figures=()):
-    """Append verified main figures, supplements, and tables to a reading copy."""
+def append_supplements(docx_path, supplements, pieces, main_figures=()):
+    """Append verified main figures, supplements, and tables to a reading copy.
+
+    ``pieces`` are the manuscript's pieces, read for the captions of supplement figures.
+    """
     from docx import Document
     from docx.enum.section import WD_ORIENT, WD_SECTION
     from docx.enum.text import WD_ALIGN_PARAGRAPH
@@ -58,7 +61,7 @@ def append_supplements(docx_path, supplements, blocks, main_figures=()):
     )
     note.paragraph_format.space_after = Pt(10)
 
-    captions = _figure_captions(blocks)
+    captions = _figure_captions(pieces)
     usable_width = section.page_width - section.left_margin - section.right_margin
     usable_height = section.page_height - section.top_margin - section.bottom_margin - Inches(2.8)
     all_figures = []
@@ -124,8 +127,21 @@ def append_supplements(docx_path, supplements, blocks, main_figures=()):
             'embedded_table_texts': embedded_table_texts}
 
 
-def extract_main_figures(original_pdf, destination, paper):
-    """Losslessly extract unambiguous large image objects from recorded figure pages."""
+def main_captions(pieces):
+    """The pieces that caption a main figure, ``(page, number, piece)``, for a piece on a page."""
+    for piece in pieces:
+        match = re.match(r'Fig\s+(\d+)\s+(.+)', piece.get('text', ''))
+        page = piece.get('page')
+        if piece.get('kind') == 'caption' and match and type(page) is int:
+            yield page, int(match.group(1)), piece
+
+
+def extract_main_figures(original_pdf, destination, pieces):
+    """Losslessly extract unambiguous large image objects from recorded figure pages.
+
+    ``pieces`` are the manuscript's pieces. Each extracted figure keeps the
+    ``origin`` of its caption: the document and lines it was read from.
+    """
     from pypdf import PdfReader
 
     original_pdf = Path(original_pdf)
@@ -133,11 +149,8 @@ def extract_main_figures(original_pdf, destination, paper):
     destination.mkdir(parents=True, exist_ok=True)
     reader = PdfReader(original_pdf)
     captions_by_page = {}
-    for block in paper.get('blocks', []):
-        match = re.match(r'Fig\s+(\d+)\s+(.+)', block.get('text', ''))
-        page = block.get('page')
-        if block.get('kind') == 'caption' and match and isinstance(page, int):
-            captions_by_page.setdefault(page, []).append((int(match.group(1)), block))
+    for page, number, piece in main_captions(pieces):
+        captions_by_page.setdefault(page, []).append((number, piece))
 
     extracted = []
     fallbacks = []
@@ -152,7 +165,7 @@ def extract_main_figures(original_pdf, destination, paper):
         if len(images) != 1:
             fallbacks.append({'page': page, 'reason': 'pdf_image_count', 'count': len(images)})
             continue
-        number, block = captions[0]
+        number, piece = captions[0]
         image = images[0]
         width, height = image.image.size
         if image.image.mode != 'RGB' or width < 1000 or height < 1000:
@@ -169,8 +182,8 @@ def extract_main_figures(original_pdf, destination, paper):
         extracted.append({
             'figure': number,
             'page': page,
-            'origin_block_id': block.get('origin_block_id') or block.get('id'),
-            'caption': block['text'],
+            'origin': piece.get('origin'),
+            'caption': piece['text'],
             'path': str(path),
             'file': filename,
             'sha256': digest(image.data),
@@ -184,7 +197,7 @@ def extract_main_figures(original_pdf, destination, paper):
     return extracted, fallbacks
 
 
-def preserve_source_evidence(source, destination, paper):
+def preserve_source_evidence(source, destination, pieces):
     """Copy source assets and extract exact PDF pages that contain main figures."""
     from pypdf import PdfReader, PdfWriter
 
@@ -193,7 +206,7 @@ def preserve_source_evidence(source, destination, paper):
     destination.mkdir(parents=True)
     copied = []
     for name in ('original.pdf', 'original.xml'):
-        path = source / name
+        path = source / 'original' / name
         if path.is_file():
             shutil.copy2(path, destination / name)
             copied.append(destination / name)
@@ -202,17 +215,14 @@ def preserve_source_evidence(source, destination, paper):
         shutil.copytree(supplements, destination / 'supplements')
         copied.extend(path for path in (destination / 'supplements').rglob('*') if path.is_file())
 
-    pages = sorted({block['page'] for block in paper.get('blocks', [])
-                    if block.get('kind') == 'caption'
-                    and re.match(r'Fig\s+\d+', block.get('text', ''))
-                    and isinstance(block.get('page'), int)})
+    pages = sorted({page for page, _, _ in main_captions(pieces)})
     figure_pdf = None
-    original = source / 'original.pdf'
+    original = source / 'original' / 'original.pdf'
     main_figures = []
     extraction_fallbacks = []
     if original.is_file():
         main_figures, extraction_fallbacks = extract_main_figures(
-            original, destination / 'main-figures', paper)
+            original, destination / 'main-figures', pieces)
         copied.extend(destination / 'main-figures' / item['file'] for item in main_figures)
     if pages and original.is_file():
         reader = PdfReader(original)

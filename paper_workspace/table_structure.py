@@ -1,11 +1,11 @@
 """Recover display geometry from exact source Word tables without guessing merges."""
-import copy
 from pathlib import Path
 import re
 import unicodedata
 import xml.etree.ElementTree as ET
 import zipfile
 
+from peerreviewagents import MAIN_DOCUMENT
 from peerreviewagents.workspace import text_of
 
 NS = {'w': 'http://schemas.openxmlformats.org/wordprocessingml/2006/main'}
@@ -64,31 +64,46 @@ def word_tables(path):
     return result
 
 
-def enrich_tables(source_root, paper):
-    """Attach verified display metadata while preserving the stored manuscript."""
-    paper = copy.deepcopy(paper)
+def table_text(piece):
+    """A table piece's cells as one string, the text its source Word table is matched on."""
+    rows = piece.get('table')
+    if rows:
+        return '\n'.join('\t'.join(str(cell) for cell in row) for row in rows)
+    return piece.get('text') or ''
+
+
+def enrich_tables(source_root, items, supplements_of=None):
+    """Attach the exact Word geometry of each table piece to its spans entry.
+
+    ``items`` are ``(document, piece, entry)``. A table matches a supplement table
+    only when exactly one has the same text. A table of a supplement document only
+    matches tables of the file that document was imported from, which
+    ``supplements_of`` names: the file name of each supplement document, as the
+    source manifest's assets record it. Returns warnings.
+    """
+    supplements_of = supplements_of or {}
     source_root = Path(source_root).resolve()
     supplements = source_root / 'source/supplements'
     if not supplements.is_dir():
-        return paper
-    inventory = {}
+        return []
+    warnings, inventory = [], {}
     for path in sorted(supplements.glob('*.docx')):
         if path.is_symlink() or not path.resolve().is_relative_to(source_root):
             continue
         try:
             tables = word_tables(path)
         except (ValueError, KeyError, zipfile.BadZipFile, ET.ParseError):
-            paper.setdefault('warnings', []).append('Table geometry could not be recovered from ' + path.name + '. Exact text and the source file remain available.')
+            warnings.append('Table geometry could not be recovered from ' + path.name + '. Exact text and the source file remain available.')
             continue
         for table in tables:
-            inventory.setdefault(normalized(table['text']), []).append((path.name, table['structure']))
-    for block in paper.get('blocks', []):
-        if block.get('kind') != 'table':
+            inventory.setdefault(normalized(table['text']), []).append((path, table['structure']))
+    for document, piece, entry in items:
+        if piece.get('kind') != 'table':
             continue
-        candidates = inventory.get(normalized(block['text']), [])
-        if block.get('document') not in (None, 'main'):
-            candidates = [item for item in candidates if item[0] == block['document']]
+        candidates = inventory.get(normalized(table_text(piece)), [])
+        if document != MAIN_DOCUMENT:
+            candidates = [item for item in candidates if supplements_of.get(document) == item[0].name]
         if len(candidates) == 1:
-            block['table_structure'] = candidates[0][1]
-            block['table_structure_source'] = 'source/supplements/' + candidates[0][0]
-    return paper
+            entry['table_structure'] = candidates[0][1]
+            entry['table_structure_source'] = 'source/supplements/' + candidates[0][0].name
+    return warnings

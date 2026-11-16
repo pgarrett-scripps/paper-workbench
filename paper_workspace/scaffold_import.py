@@ -1,4 +1,15 @@
-"""Import an immutable Paper Scaffold source tree for conservative editing."""
+"""Import a Paper Scaffold source tree as a manuscript workspace the engine reviews.
+
+The tree is copied under ``scaffold/`` and cut into pieces: the title, each heading, each
+plain prose paragraph and each locked stretch of Typst. The engine's ``write_manuscript``
+writes those pieces as the same base a PDF import writes (``paper.md``, ``map.json`` and
+``manifest.json``), so a finding cites a scaffold manuscript by document and line like
+any other.
+
+Where each piece sits in the source is kept in ``scaffold-spans.json``: one entry per map
+row, in map order, written before the manifest so the manifest digests it with the rest.
+A changed source is a new workspace, never a patched one.
+"""
 from __future__ import annotations
 
 import collections
@@ -9,7 +20,8 @@ import re
 import shutil
 import tempfile
 
-from peerreviewagents.workspace import digest, words, write_json
+from peerreviewagents import MAIN_DOCUMENT, verify_workspace, write_manuscript
+from peerreviewagents.workspace import digest, read_json, write_json
 
 from .source_edits import NATIVE_CITATION
 
@@ -33,6 +45,18 @@ ASSET_SUFFIXES = {
 }
 PREVIEW_SUFFIXES = {".gif", ".jpeg", ".jpg", ".pdf", ".png", ".svg", ".webp"}
 MAX_SOURCE_BYTES = 250 * 1024 * 1024
+
+#: The file beside the base that says where each piece is in the scaffold source.
+SPANS = "scaffold-spans.json"
+SPANS_SCHEMA = "paper-workbench-scaffold-spans-v1"
+PARSER = "paper_workspace.scaffold_import"
+SOURCE_FILE = "scaffold/paper.typ"
+#: Where a ported manuscript keeps the PDF it was read from, in the scaffold tree and in the workspace.
+PORTED_PDF = Path("source") / "original" / "original.pdf"
+ORIGINAL_PDF = Path("original") / "original.pdf"
+WARNING = ("Scaffold source was imported without compilation. Plain BODY prose and verified ported "
+           "string literals are editable. Citation markers are protected and other Typst syntax "
+           "remains locked.")
 
 
 def _mask(source: str, *, strings: bool = False) -> str:
@@ -161,6 +185,18 @@ def _plain_paragraph(text: str, start_depth: int, end_depth: int, visible: str) 
     return not any(BLOCK_PREFIX.match(line) for line in text.splitlines())
 
 
+def plain_prose(text: str) -> bool:
+    """Whether this text, as a file of its own, is one editable plain paragraph.
+
+    The port writes a paragraph as plain Typst only when this holds, so a ported
+    paragraph imports back as the same editable piece and never as locked source.
+    """
+    if not text or text != text.strip() or re.search(r"\n[ \t]*\n", text) or HEADING.fullmatch(text):
+        return False
+    depths = _depths(text)
+    return _plain_paragraph(text, depths[0], depths[len(text)], _mask(text))
+
+
 def _citation_ids(text: str) -> list[str]:
     excluded = {"fig", "tbl", "tab", "sec", "eq", "chap", "preview"}
     return list(dict.fromkeys(
@@ -205,7 +241,7 @@ def _inventory_assets(root: Path) -> list[dict]:
     return assets
 
 
-def _reference_inventory(root: Path, cited: list[str]) -> list[dict]:
+def _reference_inventory(root: Path) -> list[dict]:
     known = set()
     for path in root.rglob("*.bib"):
         source = path.read_text(encoding="utf-8", errors="replace")
@@ -216,57 +252,16 @@ def _reference_inventory(root: Path, cited: list[str]) -> list[dict]:
     ]
 
 
-def _extract_blocks(root: Path, hashes: dict[str, str]) -> list[dict]:
-    blocks = []
+def segments(root: Path, hashes: dict[str, str]) -> list[dict]:
+    """The BODY of ``paper.typ`` and every file it includes, cut into source segments in reading order.
+
+    A segment is a heading, a plain paragraph (the only kind a revision may edit) or a
+    stretch of Typst kept verbatim. An ``#include`` line routes the document and is not
+    part of what a reader reads, so it is followed and not kept.
+    """
+    found = []
     visited = set()
     active = set()
-    section = "Body"
-
-    def add_block(relative: str, source: str, start: int, end: int, *, editable: bool) -> None:
-        nonlocal section
-        raw = source[start:end]
-        left = len(raw) - len(raw.lstrip())
-        right = len(raw.rstrip())
-        start += left
-        end = start + max(0, right - left)
-        text = source[start:end]
-        if not text:
-            return
-        heading = HEADING.fullmatch(text)
-        if heading:
-            section = heading.group(2).strip()
-        identifier = f"b{len(blocks) + 1:04d}"
-        block = {
-            "id": identifier,
-            "text": text,
-            "sha256": digest(text),
-            "section": section,
-            "kind": "heading" if heading else "paragraph" if editable else "source",
-            "source_id": relative,
-            "page": None,
-            "page_mapping": "unavailable",
-            "bbox": None,
-            "citations": _citation_ids(text),
-            "document": "main",
-            "table": None,
-            "editable": editable,
-            "locked": not editable,
-            "source_span": {
-                "file": relative,
-                "start": start,
-                "end": end,
-                "file_sha256": hashes[relative],
-            } if editable else None,
-            "source_location": {
-                "file": relative,
-                "start": start,
-                "end": end,
-                "file_sha256": hashes[relative],
-            },
-        }
-        if not editable:
-            block["lock_reason"] = "Typst syntax or structural source is preserved verbatim"
-        blocks.append(block)
 
     def visit(path: Path, *, main: bool = False) -> None:
         resolved = path.resolve()
@@ -293,24 +288,32 @@ def _extract_blocks(root: Path, hashes: dict[str, str]) -> list[dict]:
             if (depths[match.start()] == 0
                     and visible[match.start():match.end()] == source[match.start():match.end()]):
                 cuts.update((match.start(), match.end()))
+        routes = set()
         for start, _ in includes:
             match = INCLUDE.match(visible, start, body_end)
             if match:
                 cuts.update((match.start(), match.end()))
+                routes.add(match.start() + len(match.group()) - len(match.group().lstrip()))
         points = sorted(cuts)
-        segments = list(zip(points, points[1:]))
         include_index = 0
-        for start, end in segments:
+        for start, end in zip(points, points[1:]):
             raw = source[start:end]
             left = len(raw) - len(raw.lstrip())
             right = len(raw.rstrip())
             trimmed_start = start + left
-            trimmed_end = start + right
-            candidate = source[trimmed_start:trimmed_end]
-            editable = (_plain_paragraph(candidate, depths[trimmed_start], depths[trimmed_end],
-                                         visible[trimmed_start:trimmed_end])
-                        if candidate else False)
-            add_block(relative, source, start, end, editable=editable)
+            trimmed_end = start + max(left, right)
+            text = source[trimmed_start:trimmed_end]
+            if text and trimmed_start not in routes:
+                heading = HEADING.fullmatch(text)
+                editable = not heading and _plain_paragraph(
+                    text, depths[trimmed_start], depths[trimmed_end], visible[trimmed_start:trimmed_end])
+                found.append({
+                    "file": relative, "start": trimmed_start, "end": trimmed_end,
+                    "file_sha256": hashes[relative], "text": text,
+                    "kind": "heading" if heading else "paragraph" if editable else "source",
+                    "level": len(heading.group(1)) if heading else None,
+                    "heading": heading.group(2).strip() if heading else None,
+                })
             while include_index < len(includes) and includes[include_index][0] < end:
                 visit(includes[include_index][1])
                 include_index += 1
@@ -320,73 +323,77 @@ def _extract_blocks(root: Path, hashes: dict[str, str]) -> list[dict]:
         active.remove(resolved)
 
     visit(root / "paper.typ", main=True)
-    return blocks
+    return found
 
 
-def _paper(root: Path, title: str | None) -> dict:
+def span_entry(segment: dict, kind: str, *, editable: bool, **extra) -> dict:
+    """Where one piece is in the source, as ``scaffold-spans.json`` records it."""
+    return {"kind": kind, "file": segment["file"], "start": segment["start"], "end": segment["end"],
+            "file_sha256": segment["file_sha256"], "editable": editable, **extra}
+
+
+def _plain_items(found: list[dict]) -> list[tuple]:
+    """``(document, piece, entry)`` for each segment of a scaffold written by hand."""
+    items = []
+    section = "Body"
+    for segment in found:
+        if segment["kind"] == "heading":
+            section = segment["heading"]
+            piece = {"kind": "heading", "level": segment["level"], "text": segment["heading"],
+                     "section": section}
+        else:
+            piece = {"kind": segment["kind"], "text": segment["text"], "section": section,
+                     "citations": _citation_ids(segment["text"])}
+        items.append((MAIN_DOCUMENT, piece,
+                      span_entry(segment, piece["kind"], editable=segment["kind"] == "paragraph")))
+    return items
+
+
+def _documents(root: Path, title: str):
+    """The pieces of each document, the spans record beside them, and what the manifest says."""
     hashes = {
         path.relative_to(root).as_posix(): digest(path.read_bytes())
         for path in sorted(root.rglob("*")) if path.is_file()
     }
-    blocks = _extract_blocks(root, hashes)
-    from .scaffold_port import port_context
-    port = port_context(root, blocks)
-    cited = list(dict.fromkeys(key for block in blocks for key in block["citations"]))
-    references = _reference_inventory(root, cited)
-    if port:
-        references = port.get('references', references)
-    assets = _inventory_assets(root)
-    sections = collections.defaultdict(list)
-    for block in blocks:
-        sections[block["section"]].append(block["id"])
-    statistics = {
-        "total_words": sum(len(words(block["text"])) for block in blocks if block["kind"] != "heading"),
-        "main_words": sum(len(words(block["text"])) for block in blocks
-                          if block["kind"] not in ("heading", "reference") and block['document'] == 'main'),
-        "reference_words": sum(len(words(block["text"])) for block in blocks if block["kind"] == "reference"),
-        "reference_entries": len(references),
-        "blocks": len(blocks),
-        "pdf_pages": port.get('pdf_pages',0) if port else 0,
-        "sections": {
-            name: {
-                "blocks": len(identifiers),
-                "words": sum(len(words(block["text"])) for block in blocks
-                             if block["id"] in identifiers and block["kind"] != "heading"),
-            }
-            for name, identifiers in sections.items()
-        },
-        "convention": "Unicode words in imported Scaffold BODY sources. No PDF build or model inference was run.",
-    }
-    source_sha256 = digest(json.dumps(hashes, sort_keys=True, separators=(",", ":")))
-    paper = {
-        "schema_version": 1,
-        "id": source_sha256[:16],
-        "title": _title(root, title),
-        "source_url": "",
-        "source_sha256": source_sha256,
-        "source_format": "scaffold-typst",
-        "parser": "paper_workspace.scaffold_import",
-        "xml_sha256": None,
-        "blocks": blocks,
-        "references": references,
-        "assets": assets,
-        "sections": dict(sections),
-        "statistics": statistics,
-        "warnings": [
-            "Scaffold source was imported without compilation. Plain BODY prose and verified ported string literals are editable. Citation markers are protected and other Typst syntax remains locked."
-        ],
-    }
-    if port:
-        paper['source_url'] = port.get('source_url','')
-        paper['port_provenance'] = {k:port[k] for k in ('source_paper_id','source_sha256','limitations')}
-        paper['warnings'] += port['limitations']
-        from .table_structure import enrich_tables
-        paper = enrich_tables(root, paper)
-    return paper
+    found = segments(root, hashes)
+    warnings = [WARNING]
+    references = _reference_inventory(root)
+    port = None
+    pages = []
+    if (root / "pra-port.json").is_file():
+        from .scaffold_port import ported_items
+        items, port = ported_items(root, found, hashes)
+        references = port["references"]
+        pages = port["pages"]
+        warnings += port["limitations"]
+    else:
+        items = _plain_items(found)
+        items.insert(0, (MAIN_DOCUMENT, {"kind": "title", "text": title, "section": "Title"},
+                         {"kind": "title", "file": None, "editable": False}))
+    from .table_structure import enrich_tables
+    warnings += enrich_tables(root, items, port["supplements"] if port else {})
+    documents = collections.OrderedDict([(MAIN_DOCUMENT, [])])
+    entries = collections.OrderedDict([(MAIN_DOCUMENT, [])])
+    for document, piece, entry in items:
+        documents.setdefault(document, []).append(piece)
+        entries.setdefault(document, []).append(entry)
+    spans = {"schema": SPANS_SCHEMA, "documents": entries,
+             "port": {key: port[key] for key in ("source_paper_id", "source_sha256", "source_url")}
+             if port else None}
+    tree = digest(json.dumps(hashes, sort_keys=True, separators=(",", ":")))
+    return documents, spans, {"references": references, "warnings": warnings, "pages": pages,
+                              "tree": tree, "source_url": port.get("source_url") if port else ""}
 
 
-def import_scaffold(source, output, title=None):
-    """Copy a Scaffold project and create a verified immutable review workspace."""
+def import_scaffold(source, output, title=None, prepare=None, check=None):
+    """Copy a Scaffold project and write a verified, immutable review workspace from it.
+
+    ``prepare(folder, paper_id)``, when given, writes the caller's own files into the
+    workspace before the manifest is taken, so they are digested with it. It is told
+    the id the manuscript will have. ``check(folder, base)``
+    runs on the written workspace before it is moved into place, and refuses it by
+    raising. Returns the manifest.
+    """
     source = Path(source)
     output = Path(output)
     if source.is_symlink() or not source.is_dir():
@@ -405,20 +412,62 @@ def import_scaffold(source, output, title=None):
     try:
         copied = temporary / "scaffold"
         _copy_project(source, copied)
-        paper = _paper(copied, title)
-        if paper.get('port_provenance') and (copied/'source/original.pdf').is_file():
-            shutil.copyfile(copied/'source/original.pdf', temporary/'original.pdf')
-        write_json(temporary / "paper.json", paper)
-        files = {
-            path.relative_to(temporary).as_posix(): digest(path.read_bytes())
-            for path in sorted(temporary.rglob("*"))
-            if path.is_file() and path != temporary / "manifest.json"
-        }
-        write_json(temporary / "manifest.json", {"paper_id": paper["id"], "files": files})
+        name = _title(copied, title)
+        documents, spans, about = _documents(copied, name)
+        write_json(temporary / SPANS, spans)
+        if spans["port"] and (copied / PORTED_PDF).is_file():
+            (temporary / ORIGINAL_PDF).parent.mkdir()
+            shutil.copyfile(copied / PORTED_PDF, temporary / ORIGINAL_PDF)
+        if prepare:
+            prepare(temporary, about["tree"][:16])
+        manifest = write_manuscript(
+            temporary, documents, title=name, paper_id=about["tree"][:16],
+            source={"file": SOURCE_FILE, "sha256": about["tree"]}, parser=PARSER,
+            source_url=about["source_url"], references=about["references"],
+            assets=_inventory_assets(copied), warnings=about["warnings"], pages=about["pages"])
+        base = verify_workspace(temporary)
+        scaffold_spans(temporary, base)
+        if check:
+            check(temporary, base)
         if output.exists():
             output.rmdir()
         os.replace(temporary, output)
-        return paper
+        return manifest
     except Exception:
         shutil.rmtree(temporary, ignore_errors=True)
         raise
+
+
+def scaffold_spans(folder, base) -> dict:
+    """Each map row of a scaffold workspace, with where its piece is in the source.
+
+    Returns ``{document: [entry, ...]}`` in map order, each entry carrying its row's
+    ``lines``. A spans record that does not pair one to one with the map, kind for kind,
+    is refused rather than joined.
+    """
+    record = read_json(Path(folder) / SPANS)
+    if not isinstance(record, dict) or record.get("schema") != SPANS_SCHEMA:
+        raise ValueError(f"{SPANS} is not a scaffold spans record this version reads")
+    stored = record.get("documents") or {}
+    if set(stored) != set(base.document_names()):
+        raise ValueError(f"{SPANS} names other documents than the manuscript holds")
+    joined = {}
+    for document in base.document_names():
+        rows, entries = base.pieces(document), stored[document]
+        if len(rows) != len(entries) or any(row["kind"] != entry["kind"] for row, entry in zip(rows, entries)):
+            raise ValueError(f"{SPANS} does not pair with the map of {document}")
+        joined[document] = [{**entry, "lines": row["lines"]} for row, entry in zip(rows, entries)]
+    return joined
+
+
+def span_at(spans: dict, document: str, line: int):
+    """The spans entry of the piece that holds this line, or ``None``."""
+    for entry in spans.get(document, []):
+        if entry["lines"][0] <= line <= entry["lines"][1]:
+            return entry
+    return None
+
+
+def port_record(folder) -> dict | None:
+    """The source manuscript a ported workspace was read from, or ``None`` for a hand-written scaffold."""
+    return read_json(Path(folder) / SPANS).get("port")

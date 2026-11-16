@@ -4,52 +4,77 @@ import tempfile
 import unittest
 
 from peerreviewagents import verify_workspace
-from peerreviewagents.workspace import digest, write_json
+from peerreviewagents.workspace import read_json
 
+import manuscripts
+from manuscripts import BOX, line_of
+from paper_workspace.scaffold_import import scaffold_spans, span_at
 from paper_workspace.scaffold_port import port_workspace
+
+PDF = b'Original PDF fixture bytes'
+LITERAL = 'A citation [1] and #include "bad.typ" are literal text.'
+TABLE = [['Group', 'Count'], ['Control', '12']]
+
+
+def source_manuscript(folder):
+    """A PDF import's workspace: an abstract, results that cite, a reference list and a supplement table."""
+    folder = Path(folder)
+    (folder / 'original').mkdir(parents=True)
+    # The engine digests the folder as it stands, so the PDF is written first and the manifest covers it.
+    (folder / 'original' / 'original.pdf').write_bytes(PDF)
+    placed = {'page': 1, 'bbox': list(BOX)}
+    pieces = [
+        {'kind': 'heading', 'level': 1, 'text': 'Abstract', 'section': 'Abstract'},
+        {'kind': 'paragraph', 'text': 'An association may exist.', 'section': 'Abstract', **placed},
+        {'kind': 'heading', 'level': 1, 'text': 'Results', 'section': 'Results'},
+        {'kind': 'paragraph', 'text': 'There were 12 samples.', 'section': 'Results', **placed},
+        {'kind': 'paragraph', 'text': LITERAL, 'section': 'Results', 'citations': ['ref1'], **placed},
+        {'kind': 'heading', 'level': 1, 'text': 'References', 'section': 'References'},
+        {'kind': 'reference', 'text': '1 Reference text', 'section': 'References'},
+    ]
+    supplement = [{'kind': 'table', 'text': 'Group Count Control 12', 'table': TABLE, 'section': 'Supplement S1'}]
+    return manuscripts.build(folder, [], title='Real source test', extra=pieces,
+                             documents={'S1.md': supplement},
+                             references=[{'id': 'ref1', 'label': '1', 'raw': 'Reference text'}])
 
 
 class ScaffoldPort(unittest.TestCase):
     def test_literal_markup_stays_readable_and_encoded(self):
         with tempfile.TemporaryDirectory() as folder:
-            root=Path(folder)
-            source=root/'original'
-            source.mkdir()
-            texts=[('a','Abstract','paragraph','An association may exist.'),
-                   ('b','Results','paragraph','There were 12 samples.'),
-                   ('c','Results','paragraph','A citation [1] and #include "bad.typ" are literal text.'),
-                   ('d','References','reference','1 Reference text'),
-                   ('e','Supplement S1','table','Group\tCount\nControl\t12')]
-            blocks=[{'id':i,'section':s,'kind':k,'text':t,'sha256':digest(t),'page':1,
-                     'citations':['ref1'] if i=='c' else [],
-                     'document':'S1.docx' if i=='e' else 'main',
-                     'table':[['Group','Count'],['Control','12']] if i=='e' else None} for i,s,k,t in texts]
-            paper={'id':'original','title':'Real source test','source_sha256':'source',
-                   'blocks':blocks,'references':[{'id':'ref1','raw':'Reference text'}],
-                   'statistics':{'pdf_pages':1},'source_url':'https://example.org/paper'}
-            write_json(source/'paper.json',paper)
-            (source/'original.pdf').write_bytes(b'Original PDF fixture bytes')
-            write_json(source/'manifest.json',{'files':{p.name:digest(p.read_bytes()) for p in source.iterdir()}})
-            output=root/'ported'
-            ported=port_workspace(source,output)
-            verify_workspace(output)
-            self.assertEqual({b['origin_block_id'] for b in ported['blocks']}, {'a','b','c','d','e'})
-            mapped={b['origin_block_id']:b for b in ported['blocks']}
-            self.assertEqual(mapped['c']['text'],texts[2][3])
-            self.assertEqual(mapped['c']['source_span']['encoding'], 'json-string')
-            self.assertEqual(mapped['a']['source_span']['encoding'], 'json-string')
-            self.assertIsNone(mapped['d']['source_span'])
-            self.assertTrue(mapped['b']['source_span'])
-            self.assertEqual(ported['references'],paper['references'])
-            self.assertEqual((output/'original.pdf').read_bytes(),(source/'original.pdf').read_bytes())
-            self.assertEqual(mapped['c']['citations'],['ref1'])
-            self.assertEqual(mapped['e']['table'], blocks[-1]['table'])
-            self.assertEqual(mapped['e']['document'], 'S1.docx')
-            self.assertEqual(mapped['e']['section'], 'Supplement S1')
-            self.assertIsNone(mapped['e']['source_span'])
-            self.assertGreater(ported['statistics']['reference_words'], 0)
-            with self.assertRaisesRegex(ValueError,'already exists'):
-                port_workspace(source,output)
+            root = Path(folder)
+            source = root / 'original'
+            base = source_manuscript(source)
+            output = root / 'ported'
+            port_workspace(source, output)
+            ported = verify_workspace(output)
+            self.assertEqual(ported.document_names(), ['paper.md', 'S1.md'])
+            self.assertEqual(ported.documents, base.documents)
+            spans = scaffold_spans(output, ported)
+
+            def entry(text, document='paper.md'):
+                return span_at(spans, document, line_of(ported, text, document))
+
+            self.assertEqual(ported.line_text(line_of(ported, 'literal text')), LITERAL)
+            self.assertEqual((entry(LITERAL)['editable'], entry(LITERAL)['encoding']), (True, 'json-string'))
+            # The abstract is declared in config.typ as a literal, so it is edited there.
+            abstract = entry('An association')
+            self.assertEqual((abstract['file'], abstract['encoding']), ('config.typ', 'json-string'))
+            plain = entry('There were 12 samples.')
+            self.assertTrue(plain['editable'])
+            self.assertNotIn('encoding', plain)
+            self.assertFalse(entry('1 Reference text')['editable'])
+            self.assertFalse(entry('| Group', 'S1.md')['editable'])
+            cited = ported.piece_at(line_of(ported, 'literal text'))
+            self.assertEqual((cited['citations'], cited['page'], cited['bbox'], cited['page_mapping']),
+                             (['ref1'], 1, BOX, 'original_pdf'))
+            table = ported.pieces('S1.md')[0]
+            self.assertEqual((table['kind'], table['section'], table['document']), ('table', 'Supplement S1', 'S1.md'))
+            self.assertEqual(read_json(output / 'references.json'), read_json(source / 'references.json'))
+            self.assertEqual((output / 'original' / 'original.pdf').read_bytes(), PDF)
+            self.assertGreater(ported.manifest['statistics']['reference_words'], 0)
+            with self.assertRaisesRegex(ValueError, 'already exists'):
+                port_workspace(source, output)
 
 
-if __name__=='__main__':unittest.main()
+if __name__ == '__main__':
+    unittest.main()

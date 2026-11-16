@@ -17,9 +17,11 @@ from contextlib import contextmanager
 from pathlib import Path
 from unittest import mock
 
+from peerreviewagents import read_manuscript
 from peerreviewagents.plugin import server as engine
-from peerreviewagents.workspace import digest, write_json
+from peerreviewagents.workspace import digest
 
+import manuscripts
 from paper_workspace.run_view import run_review
 from paper_workspace.server import make_server
 from test_run_view import finding, issue
@@ -31,16 +33,6 @@ SECOND = ['Knockdown lowered VPS35 in twelve samples drawn from four donors.', F
 CREDENTIALS = ('ANTHROPIC_API_KEY', 'ANTHROPIC_AUTH_TOKEN', 'OPENAI_API_KEY')
 
 
-def workspace(root, texts, source):
-    """The manuscript workspace the engine reads: paper.json and the manifest that pins it."""
-    blocks = [{'id': f'b{number}', 'text': text, 'sha256': digest(text), 'type': 'paragraph', 'page': 1}
-              for number, text in enumerate(texts, 1)]
-    paper = root / 'manuscript' / 'paper.json'
-    write_json(paper, {'id': 'qa', 'title': 'QA', 'source_sha256': source, 'blocks': blocks,
-                       'statistics': {'pdf_pages': 1}})
-    write_json(root / 'manuscript' / 'manifest.json', {'files': {'paper.json': digest(paper.read_bytes())}})
-
-
 def grouped(name, rank, members, **extra):
     return {'name': name, 'severity': 'major', 'category': 'claims-and-conclusions', 'rank': rank,
             'members': members, 'statement': f'{name} is stated more strongly than the data carry.', **extra}
@@ -49,7 +41,7 @@ def grouped(name, rank, members, **extra):
 def one_round(root, texts, source, quotes, issues, prior='', **ruling):
     """One reviewers-only round: core-1 raises a finding per quote, core-2 finds none, the editor groups them."""
     engine.STATE['run'] = None
-    workspace(root, texts, source)
+    manuscripts.build(root / 'manuscript', texts, source_sha256=digest(source))
     opened = engine.ingest(str(root / 'manuscript.pdf'), str(root), arm='reviewers-only', reviewers=2,
                            prior_issues=prior)
     assert 'request_rejected' not in opened, opened
@@ -60,9 +52,11 @@ def one_round(root, texts, source, quotes, issues, prior='', **ruling):
         return engine.claim_agent(slot, codes.pop(slot))['agent_token']
 
     core = token('core-1')
+    # The engine refuses findings and issues from a slot it has not served the whole manuscript.
+    engine.read_paper(core)
     uids = []
-    for block, quote in quotes:
-        stored = engine.submit_finding(core, title='Claim', block_id=block, quote=quote,
+    for quote in quotes:
+        stored = engine.submit_finding(core, title='Claim', quote=quote,
                                        comment='The sentence asserts more than it shows.', severity='major')
         assert stored.get('stored'), stored
         uids.append(stored['finding_uid'])
@@ -70,6 +64,7 @@ def one_round(root, texts, source, quotes, issues, prior='', **ruling):
     other = token('core-2')
     assert engine.submit_report(other, 'Nothing.', none_found=True, model=run.models.get('core-2'))['closed']
     editor = token('editor')
+    engine.read_paper(editor)
     stored = engine.submit_issues(editor, issues(uids))
     assert 'request_rejected' not in stored, stored
     answer = engine.submit_editor(editor, summary='One question of scope.', significance='Modest.',
@@ -79,10 +74,6 @@ def one_round(root, texts, source, quotes, issues, prior='', **ruling):
     assert engine.submit_report(editor, 'Grouped.', model=run.models.get('editor'))['closed']
     engine.write_review(token('recorder'))
     engine.STATE['run'] = None
-
-
-def paper_of(root):
-    return json.loads((root / 'manuscript' / 'paper.json').read_text())
 
 
 @contextmanager
@@ -125,14 +116,13 @@ class EngineRoundsTests(unittest.TestCase):
             engine.STATE['plugin_root'] = None
             try:
                 one_round(cls.first, FIRST, 'source-1', [
-                    ('b1', 'twelve samples drawn from one donor'),
-                    ('b2', 'controls retromer assembly in all tissues'),
-                    ('b3', 'repeated three times')],
+                    'twelve samples drawn from one donor', 'controls retromer assembly in all tissues',
+                    'repeated three times'],
                     lambda uids: [grouped('The sample', 1, [uids[0]]), grouped('The scope', 2, [uids[1]]),
                                   grouped('The repeats', 3, [uids[2]])])
                 # Round two reads round one's issues.json, and the editor rules on each prior issue.
                 one_round(cls.second, SECOND, 'source-2', [
-                    ('b2', 'controls retromer assembly in all tissues'), ('b2', 'The authors conclude')],
+                    'controls retromer assembly in all tissues', 'The authors conclude'],
                     lambda uids: [grouped('The scope', 1, [uids[0]], prior_id='i02', status='persisting',
                                           status_reason='The sentence is unchanged.'),
                                   grouped('The attribution', 2, [uids[1]])],
@@ -150,7 +140,7 @@ class EngineRoundsTests(unittest.TestCase):
         cls.temporary.cleanup()
 
     def view(self, root):
-        return run_review(root / 'review', paper_of(root))
+        return run_review(root / 'review', read_manuscript(root / 'manuscript'))
 
     def test_the_fixture_has_the_keys_the_engine_writes(self):
         row = json.loads((self.first / 'review' / 'findings.jsonl').read_text().splitlines()[0])

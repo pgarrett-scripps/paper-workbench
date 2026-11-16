@@ -10,8 +10,7 @@ import unittest
 from pathlib import Path
 from unittest.mock import patch
 
-from peerreviewagents.workspace import digest, write_json
-
+import manuscripts
 from paper_workspace import server as server_module
 from paper_workspace.server import make_server
 
@@ -20,12 +19,7 @@ class ServerHttpTests(unittest.TestCase):
     def setUp(self):
         self.temporary = tempfile.TemporaryDirectory()
         self.root = Path(self.temporary.name)
-        text = 'A claim with 12 samples.'
-        write_json(self.root / 'paper.json', {'id': 'qa', 'title': 'QA', 'source_sha256': 'qa',
-            'blocks': [{'id': 'b1', 'text': text, 'sha256': digest(text)}],
-            'statistics': {'pdf_pages': 2}})
-        write_json(self.root / 'manifest.json', {'files': {
-            'paper.json': digest((self.root / 'paper.json').read_bytes())}})
+        manuscripts.build(self.root, ['A claim with 12 samples.'])
         self.server = make_server(self.root, 0)
         self.port = self.server.server_port
         self.thread = threading.Thread(target=self.server.serve_forever, daemon=True)
@@ -126,11 +120,11 @@ class ServerHttpTests(unittest.TestCase):
         with patch.object(server_module, 'snapshot', side_effect=AssertionError('verified')):
             for path in ('/', '/index.html', '/app.js', '/style.css'):
                 self.assertEqual(self.request(path)[0], 200, path)
-        (self.root / 'paper.json').write_text('{"id": "changed"}')
+        (self.root / 'paper.md').write_text('# Changed\n')
         self.assertEqual(self.request('/')[0], 200)
         status, body = self.request('/api/paper')
         self.assertEqual(status, 400)
-        self.assertIn('Manuscript source changed', json.loads(body)['error'])
+        self.assertIn('paper.md', json.loads(body)['error'])
 
     def test_page_render_failure_returns_a_short_error_and_leaves_no_image(self):
         def fail(command, **kwargs):

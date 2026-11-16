@@ -1,5 +1,4 @@
 """Revision safety and loop stopping behavior, without review inference."""
-import copy
 from pathlib import Path
 import tempfile
 import unittest
@@ -8,6 +7,7 @@ from unittest.mock import patch
 from peerreviewagents import verify_workspace
 from peerreviewagents.workspace import normalize_review, read_json
 
+from manuscripts import line_of
 from paper_workspace.revisions import (agent_request, automation_decisions, checkout, copyedit_proposals,
     create_revision, head, run_loop, safety_reasons, snapshot)
 from paper_workspace.scaffold_import import import_scaffold
@@ -20,11 +20,20 @@ class Revisions(unittest.TestCase):
         self.temp = tempfile.TemporaryDirectory()
         self.addCleanup(self.temp.cleanup)
         self.root = Path(self.temp.name) / 'workspace'
-        self.paper = import_scaffold(FIXTURE, self.root)
+        import_scaffold(FIXTURE, self.root)
+        self.paper = verify_workspace(self.root)
 
     def proposals(self):
         review = normalize_review(self.paper, copyedit_proposals(self.paper), 'copyedit')
         return review, automation_decisions(self.paper, review)
+
+    def edit(self, text, quote, replacement, review_id):
+        """A review of one edit on the line that holds ``text``, and a decision accepting it."""
+        response = {'findings': [{'kind': 'edit', 'line': line_of(self.paper, text), 'quote': quote,
+                                  'replacement': replacement}]}
+        review = normalize_review(self.paper, response, review_id)
+        return review, {'paper_id': self.paper.paper_id, 'review_id': review['id'],
+                        'items': {f'{review_id}-1': 'accepted'}}
 
     def test_round_trip_preserves_original_and_all_unedited_files(self):
         before = (self.root / 'scaffold/paper.typ').read_bytes()
@@ -33,8 +42,10 @@ class Revisions(unittest.TestCase):
         self.assertEqual(len(metadata['applied_findings']), 2)
         self.assertEqual((self.root / 'scaffold/paper.typ').read_bytes(), before)
         draft, _ = snapshot(self.root, 'first')
-        self.assertIn('to assess', (draft / 'scaffold/paper.typ').read_text())
-        self.assertIn('were imaged', (draft / 'scaffold/paper.typ').read_text())
+        source = (draft / 'scaffold/paper.typ').read_text()
+        self.assertIn('to assess', source)
+        # The line folds the source's double space, and the edit leaves that space as the author wrote it.
+        self.assertIn('Seedlings were  imaged at 6 hours to track bending.', source)
         for name in ('config.typ', 'references.bib', 'results.typ'):
             self.assertEqual((draft / 'scaffold' / name).read_bytes(), (FIXTURE / name).read_bytes())
         self.assertIn('changes.patch', read_json(draft / 'manifest.json')['files'])
@@ -82,15 +93,16 @@ class Revisions(unittest.TestCase):
 
     def test_scientific_findings_survive_accepted_copyedits(self):
         response = copyedit_proposals(self.paper)
-        block = next(b for b in self.paper['blocks'] if 'protein activity' in b['text'])
-        response['findings'].append({'kind': 'question', 'category': 'scientific', 'block_id': block['id'],
-            'quote': 'protein activity', 'comment': 'Clarify mechanistic support.', 'evidence_blocks': [block['id']]})
+        line = line_of(self.paper, 'protein activity')
+        response['findings'].append({'kind': 'question', 'category': 'scientific', 'line': line,
+            'quote': 'protein activity', 'comment': 'Clarify mechanistic support.', 'evidence_lines': [line]})
         review = normalize_review(self.paper, response, 'mixed')
         decisions = automation_decisions(self.paper, review)
         create_revision(self.root, review, decisions, 'mixed', head(self.root), build=False)
         ledger = read_json(self.root / 'revisions/mixed/issue-ledger.json')
         self.assertEqual(ledger[-1]['scientific_status'], 'open')
         self.assertEqual(ledger[-1]['anchor_status'], 'historical')
+        self.assertEqual((ledger[-1]['finding']['document'], ledger[-1]['finding']['line']), ('paper.md', line))
         self.assertNotIn('issue_id', ledger[-1])
 
     def test_run_issue_cards_keep_their_issue_id_in_the_ledger(self):
@@ -120,29 +132,30 @@ class Revisions(unittest.TestCase):
         self.assertEqual(head(self.root)['version'], 0)
 
     def test_numeric_removal_and_reordering_rejected(self):
-        block = next(b for b in self.paper['blocks'] if '8 of 12' in b['text'])
+        quote = 'Root bending was observed in 8 of 12 seedlings.'
         for replacement in ('Root bending was observed in 12 of 8 seedlings.', 'Root bending was observed in seedlings.'):
-            response = {'findings': [{'kind': 'edit', 'block_id': block['id'],
-                'quote': 'Root bending was observed in 8 of 12 seedlings.', 'replacement': replacement}]}
-            review = normalize_review(self.paper, response, 'numeric')
-            decisions = {'paper_id': self.paper['id'], 'review_id': review['id'], 'items': {'numeric-1': 'accepted'}}
+            review, decisions = self.edit('8 of 12', quote, replacement, 'numeric')
             with self.assertRaisesRegex(ValueError, 'Numerical'):
                 create_revision(self.root, review, decisions, 'bad', head(self.root), build=False)
 
     def test_locked_markup_cannot_be_accepted(self):
-        block = next(b for b in self.paper['blocks'] if '$x^2$' in b['text'])
-        response = {'findings': [{'kind': 'edit', 'block_id': block['id'], 'quote': 'background', 'replacement': 'context'}]}
-        review = normalize_review(self.paper, response, 'locked')
-        decisions = {'paper_id': self.paper['id'], 'review_id': review['id'], 'items': {'locked-1': 'accepted'}}
+        review, decisions = self.edit('$x^2$', 'background', 'context', 'locked')
         with self.assertRaisesRegex(ValueError, 'no editable'):
             create_revision(self.root, review, decisions, 'bad', head(self.root), build=False)
 
+    def test_edit_across_a_line_break_in_the_source_lands_in_place(self):
+        # The paragraph is wrapped over two source lines and renders as one manuscript line.
+        review, decisions = self.edit('could distinguish', 'distinguish the proposed', 'separate the proposed', 'wrap')
+        create_revision(self.root, review, decisions, 'wrap', head(self.root), build=False)
+        source = (self.root / 'revisions/wrap/scaffold/paper.typ').read_text()
+        self.assertIn('could separate the proposed mechanism', source)
+        draft = verify_workspace(self.root / 'revisions/wrap')
+        self.assertIn('could separate the proposed mechanism', draft.line_text(line_of(draft, 'associative')))
+
     def test_guard_rejects_markup_injection_and_negation_removal(self):
-        block = next(b for b in self.paper['blocks'] if 'not measure' in b['text'])
+        quote = 'We did not measure protein activity directly.'
         for replacement in ('We did measure protein activity directly.', '#include "evil.typ"'):
-            review = normalize_review(self.paper, {'findings': [{'kind': 'edit', 'block_id': block['id'],
-                'quote': 'We did not measure protein activity directly.', 'replacement': replacement}]}, 'unsafe')
-            decisions = {'paper_id': self.paper['id'], 'review_id': review['id'], 'items': {'unsafe-1': 'accepted'}}
+            review, decisions = self.edit('not measure', quote, replacement, 'unsafe')
             with self.assertRaisesRegex(ValueError, 'source-aware'):
                 create_revision(self.root, review, decisions, 'bad', head(self.root), build=False)
 
@@ -192,6 +205,7 @@ class Revisions(unittest.TestCase):
         self.assertNotEqual(before['source_sha256'], after['source_sha256'])
         self.assertEqual(after['head']['revision_id'], 'agent-1')
         self.assertEqual(len(after['historical_issues']), 2)
+        self.assertEqual(after['editable_lines'], before['editable_lines'])
         self.assertTrue((self.root / 'reviews/agent-r1.json').exists())
         self.assertTrue((self.root / 'revisions/agent-1/reviews/agent-r2.json').exists())
 

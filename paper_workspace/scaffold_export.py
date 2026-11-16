@@ -12,6 +12,8 @@ from peerreviewagents.workspace import digest, write_json
 
 from .export_evidence import append_supplements, preserve_source_evidence
 from .revisions import snapshot
+from .scaffold_import import PARSER, SPANS, scaffold_spans
+from .scaffold_port import PORT, recovered
 
 
 WORKER = '''
@@ -69,10 +71,27 @@ def normalize_heading_colors(path):
             archive.writestr(item, rendered if item.filename == 'word/styles.xml' else data)
 
 
+def export_pieces(base):
+    """Each piece of a scaffold draft as an export reads it.
+
+    A piece has its ``document``, ``lines``, ``kind``, ``text`` and ``page``, and the
+    ``origin`` its spans entry records: the source lines a ported piece was read from.
+    """
+    spans = scaffold_spans(base.folder, base)
+    pieces = []
+    for document in base.document_names():
+        for row, entry in zip(base.pieces(document), spans[document]):
+            start, end = row['lines']
+            text = recovered(row['kind'], base.range_text(start, end, document).split('\n'))['text']
+            pieces.append({'document': document, 'lines': row['lines'], 'kind': row['kind'],
+                           'text': text, 'page': row.get('page'), 'origin': entry.get('origin')})
+    return pieces
+
+
 def export_revision(root, revision_id, output, scaffold_root, python=None):
     """No source analysis scripts or project build recipes are executed."""
     source, paper = snapshot(root, revision_id)
-    if paper.get('source_format') != 'scaffold-typst':
+    if paper.manifest.get('parser') != PARSER or not (source / SPANS).is_file():
         raise ValueError('Native document export requires Paper Scaffold sources')
     output = Path(output).resolve()
     workspace = Path(root).resolve()
@@ -112,25 +131,25 @@ def export_revision(root, revision_id, output, scaffold_root, python=None):
                 raise ValueError('Document export failed. Draft preserved. ' + result.stderr[-2000:] + result.stdout[-1000:])
         normalize_heading_colors(artifacts / 'paper.docx')
         evidence = None
-        port = project / 'pra-port.json'
-        if port.is_file():
+        if (project / PORT).is_file():
+            pieces = export_pieces(paper)
             evidence, main_figures = preserve_source_evidence(
-                project / 'source', artifacts / 'source-evidence', paper)
+                project / 'source', artifacts / 'source-evidence', pieces)
             supplements = project / 'source' / 'supplements'
             evidence.update(append_supplements(
-                artifacts / 'paper.docx', supplements, paper.get('blocks', []), main_figures))
+                artifacts / 'paper.docx', supplements, pieces, main_figures))
             if evidence.get('tables_embedded'):
                 from .document_render import remove_flattened_tables
                 evidence['flattened_tables_removed'] = remove_flattened_tables(
-                    artifacts / 'paper.docx', paper['blocks'], evidence.pop('embedded_table_texts'))
+                    artifacts / 'paper.docx', pieces, evidence.pop('embedded_table_texts'))
             from .document_render import render_word_pdf
             (artifacts / 'paper.pdf').rename(artifacts / 'source-build.pdf')
             logs.append(render_word_pdf(artifacts / 'paper.docx', artifacts / 'paper.pdf'))
         snapshot(root, revision_id)
         if any(digest((tools / name).read_bytes()) != sha for name, sha in tool_hashes.items()):
             raise ValueError('Scaffold tools changed during export')
-        record = {'paper_id': paper['id'], 'revision_id': revision_id,
-                  'source_sha256': paper['source_sha256'], 'tools': tool_hashes, 'logs': logs,
+        record = {'paper_id': paper.paper_id, 'revision_id': revision_id,
+                  'source_sha256': paper.manifest['source']['sha256'], 'tools': tool_hashes, 'logs': logs,
                   'files': {p.relative_to(artifacts).as_posix(): digest(p.read_bytes())
                             for p in artifacts.rglob('*') if p.is_file()},
                   'format': ('Editable Word and a PDF rendered from the same document for ported manuscripts. '

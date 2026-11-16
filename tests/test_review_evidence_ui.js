@@ -15,40 +15,44 @@ const code = fs.readFileSync('paper_workspace/web/app.js', 'utf8');
 vm.runInContext(code.slice(0, code.indexOf("$('#draft-select').addEventListener")), context);
 const html = selector => elements.get(selector).innerHTML;
 
-// A workspace review keeps its result map and quantity comparisons.
+// A workspace review keeps its result map and quantity comparisons, each linking to a line of a document.
 vm.runInContext(`
 state = {};
-paper = {id: 'p'};
+paper = {id: 'p', main: 'paper.md'};
 decisions = {items:{}};
 review = {id:'workspace', findings:[], raw_response:{
-  result_map:{nodes:[{block_id:'b1'}],edges:[{from:'b1',quote:'Fig 1',to:['b2']}],checks:[],limitation:'Literal references only.'},
-  result_comparisons:[{status:'needs_reconciliation',limitation:'Not independently verified.',observations:[{block_id:'b1',value:'1.2',metric:'slope',quote:'<script>value</script>'}]}]
+  result_map:{nodes:[{document:'paper.md', line:1}],edges:[{document:'paper.md', from:1, quote:'Fig 1',
+    to:[{document:'paper.md', line:2}, {document:'S1.md', line:3}]}],checks:[],limitation:'Literal references only.'},
+  result_comparisons:[{status:'needs_reconciliation',limitation:'Not independently verified.',observations:[{document:'paper.md',line:1,value:'1.2',metric:'slope',quote:'<script>value</script>'}]}]
 }};
 cards();
 `, context);
 assert.equal(elements.get('#handoff-details').hidden, false);
 assert.equal(elements.get('#run-panel').hidden, true);
 assert.equal(elements.get('#filter-escalated').hidden, true);
-assert.ok(html('#handoff-ledger').includes('href="#b2"'));
+assert.ok(html('#handoff-ledger').includes('<p><a href="#line-paper.2emd-1">line 1</a> cites Fig 1: '
+  + '<a href="#line-paper.2emd-2">line 2</a>, <a href="#line-S1.2emd-3">S1.md, line 3</a></p>'));
 assert.ok(html('#handoff-ledger').includes('&lt;script&gt;value&lt;/script&gt;'));
 assert.ok(!html('#handoff-ledger').includes('<script>'));
 
 // A PeerReviewAgents run shows one card per issue, as run_view.py hands it over: the required
 // changes, the suggestions under their categories, then the prior round's closed issues.
 vm.runInContext(`
-paper = {id: 'p', blocks: [{id:'b1', text:'alpha beta gamma', kind:'paragraph', section:'Results'}]};
+paper = {id: 'p', main: 'paper.md', documents: {'paper.md': ['alpha beta gamma']}, assets: [],
+  pieces: [{document:'paper.md', lines:[1, 1], kind:'paragraph', section:'Results'}]};
 const member = (uid, extra) => ({finding_uid:uid, slot:'core-1', track:'core', severity:'major', kind:'issue',
-  basis:'judgement', escalate:false, title:'Finding '+uid, block_id:'b1', quote:'alpha', evidence_blocks:['b1'],
-  comment:'Comment '+uid, start:0, end:5, placement:'anchored', ...extra});
+  basis:'judgement', escalate:false, title:'Finding '+uid, document:'paper.md', line:1, end_line:1, quote:'alpha',
+  evidence_lines:[1], comment:'Comment '+uid, start:0, end:5, placement:'anchored', ...extra});
 const issue = (id, rank, group, extra) => ({id, source_id:id, number:rank, rank, group, name:'Issue '+id,
   title:'Issue '+id, statement:'Statement '+id, comment:'Statement '+id, severity:'major',
   category:'statistics-and-inference', status:'new', status_reason:null, prior_id:null, prior_rank:null, raised_by:1,
-  members:[], audits:[], surviving_quotes:[], rebuttal_quote:null, rebuttal_block_id:null, text_unchanged_reason:null,
-  kind:'issue', escalate:false, evidence_blocks:['b1'], block_id:'b1', quote:'alpha', start:0, end:5,
-  placement:'anchored', replacement:null, ...extra});
+  members:[], audits:[], surviving_quotes:[], rebuttal_quote:null, rebuttal_line:null, rebuttal_document:'paper.md',
+  text_unchanged_reason:null, kind:'issue', escalate:false, evidence:[{document:'paper.md', line:1}],
+  document:'paper.md', line:1, end_line:1, quote:'alpha', start:0, end:5, placement:'anchored', replacement:null, ...extra});
 review = {id:'run', summary:'Editor summary', raw_response:undefined, findings:[
   issue('i01', 1, 'required', {raised_by:2, escalate:true, status:'persisting', status_reason:'Still <b>wrong</b>',
-    prior_id:'i01', prior_rank:2, audits:['audit_stats.md'], members:[
+    prior_id:'i01', prior_rank:2, audits:['audit_stats.md'], rebuttal_quote:'gamma', rebuttal_line:1,
+    evidence:[{document:'paper.md', line:1}, {document:'S1.md', line:2}], members:[
       member('u1', {track:'field', basis_reason:'No arithmetic receipt.', escalate:true,
                     source_urls:['https://example.org/a', 'javascript:alert(1)']}),
       member('u2', {slot:'core-2', basis:'two-quotes', quote:'alpha beta', end:10, counterevidence:'Checked the methods.'})]}),
@@ -58,8 +62,9 @@ review = {id:'run', summary:'Editor summary', raw_response:undefined, findings:[
   issue('i03', 3, 'suggestion', {severity:'minor', category:'reproducibility', placement:'unplaced', start:null,
     end:null, members:[member('u4', {severity:'minor', placement:'unplaced', start:null, end:null})]}),
   issue('i04', null, 'closed', {status:'unverified', status_reason:'No editor ruled on it.', prior_id:'i04',
-    prior_rank:4, raised_by:0, block_id:null, quote:null, start:null, end:null, placement:'unplaced',
-    evidence_blocks:[], surviving_quotes:[{finding_uid:'old', block_id:'b1', quote:'beta gamma'}]}),
+    prior_rank:4, raised_by:0, document:null, line:null, end_line:null, quote:null, start:null, end:null,
+    placement:'unplaced', evidence:[],
+    surviving_quotes:[{finding_uid:'old', document:'paper.md', line:1, quote:'beta gamma'}]}),
 ], run:{arm:'full-two-track', reviewer_count:3, status:'complete', escalated_count:1, review_guard_status:'clean',
   cause:null, note:'the review was written and the run was marked blocked afterwards: rate limit',
   problems:['runtime.json is not valid JSON <x>'], publishable:false,
@@ -110,7 +115,10 @@ for (const text of ['Major · Statistics and inference', 'Issue i01</span>', 'ti
                     'Basis: judgement', 'title="No arithmetic receipt."', 'Basis: two-quotes', 'Comment u1', 'Comment u2',
                     '<blockquote>alpha beta</blockquote>', 'Counterevidence checked', 'Escalation ruling',
                     'Accepted as central.', 'href="https://example.org/a"', 'href="#anchor-i01-1">Go to passage',
-                    'href="#anchor-i01-2">Go to passage', 'Mark for follow-up']) {
+                    'href="#anchor-i01-2">Go to passage', 'Mark for follow-up',
+                    'Manuscript text the editor weighed against the computed finding</strong></p><blockquote>gamma</blockquote>'
+                    + '<p><a href="#line-paper.2emd-1">Go to passage</a></p>',
+                    'Evidence: <a href="#line-paper.2emd-1">line 1</a> <a href="#line-S1.2emd-2">S1.md, line 2</a>']) {
   assert.ok(cardOf('i01').includes(text), text);
 }
 assert.ok(!cardOf('i01').includes('Accept wording'));
@@ -127,7 +135,7 @@ assert.ok(cardOf('i03').includes('No finding behind this issue is placed on the 
 // A closed issue has no members and no rank, and shows the evidence that still stands.
 for (const text of ['title="Unverified: not raised again and not shown fixed">unverified</span>', '<h3>Issue i04</h3>',
                     'No editor ruled on it.', 'Rank in the prior round: 4', "The prior round's evidence still in the manuscript",
-                    '<blockquote>beta gamma</blockquote>']) {
+                    '<blockquote>beta gamma</blockquote><p><a href="#line-paper.2emd-1">Go to passage</a></p>']) {
   assert.ok(cardOf('i04').includes(text), text);
 }
 assert.ok(!cardOf('i04').includes('Raised by'));
@@ -149,7 +157,7 @@ assert.ok(!panel.includes('<script>'));
 // The model asked is never shown as the model that ran.
 assert.ok(!panel.includes('model ran claude-haiku-5-5'));
 
-// The run panel shows the hand-written fixture ledger as run_view.py hands it over.
+// The run panel shows the fixture ledger, which the engine's own ledger code wrote, as run_view.py hands it over.
 context.ledgerView = JSON.parse(fs.readFileSync('tests/fixtures/citations/view.json', 'utf8'));
 vm.runInContext('review.run.citations = ledgerView; cards();', context);
 assert.ok(html('#run-panel').includes(
@@ -229,13 +237,13 @@ assert.equal(vm.runInContext("runStatus({status:'complete-without-findings', qua
 
 // Every anchored member marks the manuscript, overlapping quotes included, each pinned with its issue's number.
 // The issue that is one edit shows its wording, and the unplaced member marks nothing.
-assert.equal(vm.runInContext('quoteMarkup(paper.blocks[0])', context),
+assert.equal(vm.runInContext("quoteMarkup('paper.md', 1)", context),
   '<span class="anchor" id="anchor-i01-2"></span><mark class="question-mark anchor" id="anchor-i01-1">alpha</mark>'
   + '<a class="pin" href="#note-i01" aria-label="Comment 1">1</a><mark class="question-mark"> beta</mark>'
   + '<a class="pin" href="#note-i01" aria-label="Comment 1">1</a> <span class="before anchor" id="anchor-i02-1">gamma</span>'
   + ' <span class="after">delta</span><a class="pin" href="#note-i02" aria-label="Comment 2">2</a>');
 // Accepting the edit issue applies its one member's wording.
-assert.equal(vm.runInContext("decisions = {items:{i02:'accepted'}}; acceptedText(paper.blocks[0])", context), 'alpha beta delta');
+assert.equal(vm.runInContext("decisions = {items:{i02:'accepted'}}; acceptedText('paper.md', 1)", context), 'alpha beta delta');
 vm.runInContext('decisions = {items:{}};', context);
 
 // Each run filter keeps its own cards.
@@ -265,10 +273,10 @@ assert.equal(elements.get('#finding-count').textContent, 'No findings');
 // A run with no issues shows its recorded findings under their own heading.
 vm.runInContext(`review.run.findings_source = 'ledger';
 review.findings = [{id:'aa11', source_id:'aa11', number:1, group:'ledger', title:'Recorded finding', comment:'Comment',
-  severity:'major', category:null, status:null, raised_by:1, kind:'issue', block_id:'b1', quote:'beta', start:6, end:10,
-  placement:'anchored', evidence_blocks:[], audits:[], surviving_quotes:[],
-  members:[{finding_uid:'aa11', slot:'core-1', title:'Recorded finding', comment:'Comment', quote:'beta', block_id:'b1',
-            start:6, end:10, placement:'anchored', evidence_blocks:[]}]}];
+  severity:'major', category:null, status:null, raised_by:1, kind:'issue', document:'paper.md', line:1, end_line:1,
+  quote:'beta', start:6, end:10, placement:'anchored', evidence:[], audits:[], surviving_quotes:[],
+  members:[{finding_uid:'aa11', slot:'core-1', title:'Recorded finding', comment:'Comment', quote:'beta',
+            document:'paper.md', line:1, end_line:1, start:6, end:10, placement:'anchored', evidence_lines:[]}]}];
 cards();`, context);
 assert.ok(html('#comments').includes('<h3 class="issue-group">Findings recorded before any issues were written (1)</h3>'));
 assert.ok(html('#comments').includes('It has no review to show.') === false);
@@ -280,15 +288,16 @@ assert.equal(html('#comments').split('Recorded finding').length - 1, 1);
 // under its number is neither shown nor applied, and it is counted with the other stale ones.
 vm.runInContext(`review.findings = [{id:'run-1', source_id:'not a uid', number:1, group:'ledger', decidable:false,
   title:'Recorded edit', comment:'Comment', severity:'minor', category:null, status:null, raised_by:1, kind:'edit',
-  replacement:'delta', block_id:'b1', quote:'gamma', start:11, end:16, placement:'anchored', evidence_blocks:[],
-  audits:[], surviving_quotes:[], members:[{finding_uid:'not a uid', slot:'core-1', title:'Recorded edit', comment:'Comment',
-  kind:'edit', replacement:'delta', quote:'gamma', block_id:'b1', start:11, end:16, placement:'anchored', evidence_blocks:[]}]}];
+  replacement:'delta', document:'paper.md', line:1, end_line:1, quote:'gamma', start:11, end:16, placement:'anchored',
+  evidence:[], audits:[], surviving_quotes:[], members:[{finding_uid:'not a uid', slot:'core-1', title:'Recorded edit',
+  comment:'Comment', kind:'edit', replacement:'delta', quote:'gamma', document:'paper.md', line:1, end_line:1, start:11,
+  end:16, placement:'anchored', evidence_lines:[]}]}];
 decisions = {items:{'run-1':'accepted'}, annotations:{'run-1':{author_comment:'Saved on another card', issue_status:'open', rationale:''}}};
 cards();`, context);
 const placed = html('#comments');
 assert.ok(placed.includes('<p class="muted no-engine-id" role="note">This card has no engine id, so a decision on it could land on another card. Re-run the review to decide on it.</p>'));
 for (const text of ['data-action', 'author-response', 'Saved on another card', '>accepted<']) assert.ok(!placed.includes(text), text);
-assert.equal(vm.runInContext('acceptedText(paper.blocks[0])', context), 'alpha beta gamma');
+assert.equal(vm.runInContext("acceptedText('paper.md', 1)", context), 'alpha beta gamma');
 assert.ok(placed.startsWith('<p class="stale-decisions muted" role="note">1 saved decision no longer matches a card in this review. '
   + 'The decisions file is left as it is.</p>'));
 
@@ -310,7 +319,7 @@ assert.ok(!html('#comments').includes('stale-decisions'));
 
 // Two members of one issue quoting the same span are one mark and one pin, and the card lists both,
 // each linking to that one mark.
-assert.equal(vm.runInContext('quoteMarkup(paper.blocks[0])', context),
+assert.equal(vm.runInContext("quoteMarkup('paper.md', 1)", context),
   '<mark class="question-mark anchor" id="anchor-i05-1">alpha</mark><a class="pin" href="#note-i05" aria-label="Comment 1">1</a> beta gamma');
 const twice = html('#comments');
 for (const text of ['core-1 · core track · issue · major', 'core-2 · core track · issue · major', 'Evidence: 2 findings']) {
@@ -318,4 +327,18 @@ for (const text of ['core-1 · core track · issue · major', 'core-2 · core tr
 }
 assert.equal(twice.split('href="#anchor-i05-1">Go to passage').length - 1, 2);
 assert.ok(!twice.includes('anchor-i05-2'));
+
+// A quote across a line break marks the end of its first line and the start of its last. Its wording
+// and its pin go on the last line, and accepting it leaves both lines in place with their numbers.
+vm.runInContext(`paper = {id:'p', main:'paper.md', documents:{'paper.md':['alpha beta', 'gamma delta']}, pieces:[], assets:[]};
+review = {id:'workspace', findings:[{id:'w-1', kind:'edit', document:'paper.md', line:1, end_line:2, start:6, end:5,
+  placement:'anchored', quote:'beta gamma', replacement:'beta, gamma'}]};
+decisions = {items:{}};`, context);
+assert.equal(vm.runInContext("quoteMarkup('paper.md', 1)", context), 'alpha <span class="before anchor" id="anchor-w-1">beta</span>');
+assert.equal(vm.runInContext("quoteMarkup('paper.md', 2)", context),
+  '<span class="before">gamma</span> <span class="after">beta, gamma</span><a class="pin" href="#note-w-1" aria-label="Comment 1">1</a> delta');
+assert.equal(vm.runInContext("decisions = {items:{'w-1':'accepted'}}; acceptedText('paper.md', 1) + '|' + acceptedText('paper.md', 2)", context),
+  'alpha beta, gamma| delta');
+// A span that ends before it starts marks nothing.
+assert.equal(vm.runInContext("review.findings[0].end_line = 1; review.findings[0].end = 2; quoteMarkup('paper.md', 1)", context), 'alpha beta');
 console.log('Review rendering checks passed');
