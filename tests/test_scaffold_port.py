@@ -16,10 +16,11 @@ LITERAL = 'A citation [1] and #include "bad.typ" are literal text.'
 TABLE = [['Group', 'Count'], ['Control', '12']]
 
 
-def source_manuscript(folder, results=()):
+def source_manuscript(folder, results=(), ai_model=''):
     """A PDF import's workspace: an abstract, results that cite, a reference list and a supplement table.
 
-    ``results`` is further pieces at the end of the results, such as the pieces a model read.
+    ``results`` is further pieces at the end of the results, such as the pieces a model read, and
+    ``ai_model`` is the model that wrote them.
     """
     folder = Path(folder)
     (folder / 'original').mkdir(parents=True)
@@ -39,7 +40,8 @@ def source_manuscript(folder, results=()):
     supplement = [{'kind': 'table', 'text': 'Group Count Control 12', 'table': TABLE, 'section': 'Supplement S1'}]
     return manuscripts.build(folder, [], title='Real source test', extra=pieces,
                              documents={'S1.md': supplement},
-                             references=[{'id': 'ref1', 'label': '1', 'raw': 'Reference text'}])
+                             references=[{'id': 'ref1', 'label': '1', 'raw': 'Reference text'}],
+                             ai_model=ai_model)
 
 
 class ScaffoldPort(unittest.TestCase):
@@ -82,19 +84,24 @@ class ScaffoldPort(unittest.TestCase):
     def test_the_pieces_a_model_read_keep_whose_they_are_and_stay_out_of_the_source(self):
         # An equation the model read again keeps the converter's reading, and a figure description
         # is the model's own words. The port keeps both as the engine wrote them, and the description
-        # is never written into the Typst source the manuscript is built from.
-        equation = {'kind': 'equation', 'latex': 'x = 1', 'text': 'x = 1', 'section': 'Results', 'page': 1,
+        # is never written into the Typst source the manuscript is built from. The port writes those
+        # pieces again, so the ported manifest names the same model, and says no page was read in the port.
+        equation ={'kind': 'equation', 'latex': 'x = 1', 'text': 'x = 1', 'section': 'Results', 'page': 1,
                     'bbox': list(BOX), 'source': 'ai-reconstructed',
                     'original': {'latex': 'x - 1', 'number': None, 'text': 'x - 1'}}
         description = {'kind': 'figure-description', 'text': 'A bar chart of two groups.', 'section': 'Results',
                        'page': 1, 'source': 'ai', 'original': {}}
         with tempfile.TemporaryDirectory() as folder:
             root = Path(folder)
-            base = source_manuscript(root / 'original', results=[equation, description])
+            base = source_manuscript(root / 'original', results=[equation, description],
+                                     ai_model='claude-sonnet-5-5')
             output = root / 'ported'
             port_workspace(root / 'original', output)
             ported = verify_workspace(output)
             self.assertEqual(ported.documents, base.documents)
+            read = ported.manifest['ai_read']
+            self.assertEqual((read['read'], read['ai_model'], read['ai_pieces'], read['lost_pages']),
+                             (False, 'claude-sonnet-5-5', 2, []))
             read = [(row['kind'], row['source'], row.get('original')) for row in ported.rows
                     if row['source'] != 'text']
             self.assertEqual(read, [('equation', 'ai-reconstructed', equation['original']),

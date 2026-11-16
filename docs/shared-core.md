@@ -1,6 +1,6 @@
 # Engine contract
 
-PeerReviewAgents 0.10.0 runs the review. Paper Workbench starts one and reads the run folder it writes. This page lists what the app depends on, so an engine change that breaks the app can be found before it ships. The app is tested against PeerReviewAgents main at commit e7c8b65.
+PeerReviewAgents 0.10.0 runs the review. Paper Workbench starts one and reads the run folder it writes. This page lists what the app depends on, so an engine change that breaks the app can be found before it ships. The app is tested against PeerReviewAgents main at commit 5244583.
 
 ## Ownership
 
@@ -16,12 +16,12 @@ Every review, report and run-reading call goes through the engine's public surfa
 | --- | --- | --- |
 | `peerreviewagents.review_main(argv, prog='paper-workbench review')` | `paper-workbench review` | Yes |
 | `peerreviewagents.report_main(argv, prog='paper-workbench report')` | `paper-workbench report` | No |
-| `peerreviewagents.read_run(path)` | `run_view.run_review` | No |
+| `peerreviewagents.read_run(path)` | `run_view.run_review` and `run_view.locate` | No |
 | `peerreviewagents.read_citation_ledger(review, source_text=False)` | `run_view.citation_view` | No |
 | `peerreviewagents.locate_run` and `NotARunFolder` | `run_view.locate` | No |
 | `peerreviewagents.MANUSCRIPT_DIRECTORY` | `run_view.locate` | No |
 | `peerreviewagents.import_paper(pdf, workspace, xml, ...)` | `paper-workbench import` | No |
-| `peerreviewagents.write_manuscript(folder, documents, ...)` | `paper-workbench import-scaffold` | No |
+| `peerreviewagents.write_manuscript(folder, documents, ..., ai_model=...)` | `paper-workbench import-scaffold` | No |
 | `peerreviewagents.verify_workspace` and `export_draft` | `verify`, the viewer, revisions and exports | No |
 | `peerreviewagents.cited_text(base, citation)` | `run_view.span_holds` | No |
 | `peerreviewagents.citation_uses(base, references)` | the test that the citation fixture's uses are the engine's anchored rows | No |
@@ -52,8 +52,9 @@ The engine writes every manuscript as one base: `paper.md` and any supplement do
 3. The viewer gets the base from `/api/paper` with each document as its list of lines and each piece as `document`, `lines`, `kind`, `section`, `page` and `bbox`. A link to a line in another document names that document.
 4. `paper-workbench import-scaffold` cuts a Typst tree into pieces and writes them with `write_manuscript`, so a Scaffold manuscript is the same base a PDF import writes. A map row keeps only the fields the engine knows, so where each piece sits in the Typst source is kept beside it in `scaffold-spans.json`, one entry per map row, which the manifest digests.
 5. `export_draft` returns `original_documents` and `proposed_documents`, each a document name to its text. A revision checks the draft it rebuilt against `proposed_documents`.
-6. Each map row says whose text it is in `source`. `text` is the converter's. `ai-reconstructed` is an equation or table the reader read again from the page image, with the converter's reading kept in `original`. `ai` is a piece the model wrote, such as a `figure-description` or text off a page the converter returned nothing from. `/api/paper` passes `source` and `original` on each piece and the manifest's `ai_read` beside them, and the viewer labels every piece a model wrote, names the model from `ai_read.reader_model`, shows the converter's reading under a closed toggle, and says above the manuscript which pages in `ai_read.lost_pages` came only from the model.
-7. `paper-workbench import` calls `import_paper`, which seals the converter's pieces with no reader. The manifest then says the paper was not AI-read, and a PDF with a page the converter returned no text from is refused by that page. `port-scaffold` keeps each row's `source` and `original`, and keeps a figure description in the reading copy only, never in the Typst source.
+6. Each map row says whose text it is in `source`. `text` is the converter's. `ai-reconstructed` is an equation or table the reader read again from the page image, with the converter's reading kept in `original`. `ai` is a piece the model wrote, such as a `figure-description` or text off a page the converter returned nothing from. `/api/paper` passes `source` and `original` on each piece and the manifest's `ai_read` beside them. The viewer labels every piece a model wrote and shows the reading it replaced under a closed toggle. When a model read the pages it names `ai_read.reader_model` and says which page each piece was read from. Each page in `ai_read.lost_pages` is named above the manuscript and linked to the first of the lines its `added` entries name, and a piece inside those lines says it came from a page the converter returned no text from. When no page was read, it names `ai_read.ai_model`, the model the writer named, and says there is no page image to compare the piece with.
+7. `paper-workbench import` calls `import_paper`, which seals the converter's pieces with no reader. The manifest then says the paper was not AI-read, and a PDF with a page the converter returned no text from is refused by that page. `port-scaffold` keeps each row's `source` and `original`, and keeps a figure description in the reading copy only, never in the Typst source. The port writes those pieces again with `write_manuscript`, which refuses a model's piece unless `ai_model=` names the model. The port records the source's reader, or the model its writer named, as `ai_model` in `pra-port.json`, and `import-scaffold` passes it on. The ported manifest then says `read` is false and names that model in `ai_model`, because no page image is read in a port.
+8. `verify_workspace` refuses a manuscript whose manifest has no `schema_version`, and `serve` prints that refusal as a plain message.
 
 ## What the app reads from a run
 
@@ -66,6 +67,7 @@ The engine writes every manuscript as one base: `paper.md` and any supplement do
 | `findings_source` | `issues`, `ledger` or `none`, for the count line and the summary of a run that has not written its issues |
 | `issues_source` | the run panel line saying whether the editor or the server wrote the issues |
 | `prior_round` | the run panel line with the prior file, the issues carried and this round's tally by status, and whether cards show their status |
+| `manuscript.sealed`, `manuscript.state` | whether the run has lines to show. An unsealed `draft` is a run whose Read stage started and never sealed, and `absent` is one that stopped before the import. `serve` names which, with the run's status and cause |
 | `identity.paper_id`, `identity.source_sha256`, the `fingerprint` of each finding and issue member | the check that the run reviewed this manuscript version. A fingerprint must be the one on the map row at its finding's line |
 | `status`, `complete`, `cause`, `note`, `problems`, `publishable` | the run panel's status and warnings, and the summary of a run with no issues |
 | `not_publishable_reasons` | one line per reason, above the comments, when `publishable` is false. A run with nothing to show says it has no review rather than looking empty |
@@ -83,7 +85,7 @@ The engine writes every manuscript as one base: `paper.md` and any supplement do
 | `citations.counts` | one line for the references and one for the uses. `resolved`, `not_found`, `not_located`, `could_not_check` and `unresolved` each keep their own count and are never added together. Empty `counts` with a ledger means the ledger could not be read, and the panel shows no rows |
 | `citations.complete`, `citations.problems` | a line saying the check did not finish, and each problem line once, in the citation section. The engine puts those lines in `problems` as well, and the run panel leaves them out there |
 
-The engine writes `protocol.json` and `manifest.json` only when the run finishes or is marked blocked. A run the starter stopped early, from a token ceiling, a timeout, a rate limit or a session error, has neither. The viewer still opens it with its status, its cause and the findings in the ledger. Each finding's `fingerprint` then pins the manuscript version. Its arm and reviewer count are empty, because `read_run` takes them only from `protocol.json` or the plan. A run blocked at startup, or stopped before the Read stage sealed its manuscript, has nothing to show, so `serve` prints its status and cause and exits 1.
+The engine writes `protocol.json` and `manifest.json` only when the run finishes or is marked blocked. A run the starter stopped early, from a token ceiling, a timeout, a rate limit or a session error, has neither. The viewer still opens it with its status, its cause and the findings in the ledger. Each finding's `fingerprint` then pins the manuscript version. Its arm and reviewer count are empty, because `read_run` takes them only from `protocol.json` or the plan. A run blocked at startup or before its import, or stopped before the Read stage sealed its manuscript, has nothing to show. `read_run`'s `manuscript.state` says which, so `serve` names it with the status and cause and exits 1. The app never looks for the engine's draft file.
 
 A run written before engine commit bfc8aae recorded no model asked per slot, so each of its agent lines shows "model asked not recorded" and its `models_unverified` is empty. A slot that ran a different model family than it was asked is in `problems` and `not_publishable_reasons`, and the run panel shows it there. A `cite-N` citation worker holds no review, so its mismatch is a `problems` line only and the run stays publishable.
 

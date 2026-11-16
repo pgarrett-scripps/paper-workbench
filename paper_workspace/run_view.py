@@ -166,9 +166,10 @@ def locate(path):
     A run folder, or the review folder inside it, gives both. A workspace
     gives itself, and the review folder is ``None``. A path that is neither,
     or a run that stopped before its manuscript was sealed, raises
-    :class:`RunError` with a plain message. The engine writes ``map.json`` only
-    at the seal, after the Read stage, so a run that stopped in the import or
-    in the Read stage has no lines to show.
+    :class:`RunError` with a plain message. ``read_run``'s ``manuscript`` says
+    which: a ``draft`` is a paper the Read stage started on and never sealed,
+    so it has no line numbers, and ``absent`` is a run that stopped before the
+    import. Neither has lines to show.
     """
     path = Path(path).resolve()
     try:
@@ -179,12 +180,13 @@ def locate(path):
         return path, None
     except ValueError as exc:
         raise RunError(str(exc)) from None
-    manuscript = root / MANUSCRIPT_DIRECTORY
-    if not (manuscript / 'map.json').is_file():
-        run = recorded(review)
-        raise RunError(f'The run in {root} stopped before the Read stage sealed its manuscript, so there '
-                       f'is nothing to show. Status: {run["status"]}. Cause: {run["cause"] or "not recorded"}')
-    return manuscript, review
+    run = recorded(review)
+    if not run['manuscript']['sealed']:
+        stopped = ('before the Read stage sealed its manuscript' if run['manuscript']['state'] == 'draft'
+                   else 'before it imported its manuscript')
+        raise RunError(f'The run in {root} stopped {stopped}, so there is nothing to show. '
+                       f'Status: {run["status"]}. Cause: {run["cause"] or "not recorded"}')
+    return root / MANUSCRIPT_DIRECTORY, review
 
 
 def main_document(base):

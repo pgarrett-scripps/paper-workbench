@@ -126,6 +126,19 @@ def supplements_of(manifest):
     return found
 
 
+def piece_model(manifest):
+    """The model that wrote the source's pieces whose ``source`` is not ``text``, or ``''``.
+
+    The Read stage's model where one read the pages, and otherwise the model the
+    writer of the manifest named for its own pieces. The port writes those pieces
+    again, and the engine writes a model's piece only with the model's name. No
+    page is read in a port, so the ported manifest says the pieces were written by
+    that model and not that it read them.
+    """
+    read = manifest.get('ai_read') or {}
+    return str((read.get('reader_model') if read.get('read') else '') or read.get('ai_model') or '')
+
+
 def port_workspace(source, output):
     """Write a Scaffold project from a manuscript workspace and import it as a new workspace."""
     source, output = Path(source).resolve(), Path(output).resolve()
@@ -161,7 +174,8 @@ def port_workspace(source, output):
             'source_sha256': (manifest.get('source') or {}).get('sha256'),
             'source_url': manifest.get('source_url'), 'references': read_json(source / 'references.json'),
             'pages': manifest.get('pages') or [], 'box_convention': manifest.get('box_convention'),
-            'supplements': supplements_of(manifest), 'limitations': LIMITATIONS, 'records': records})
+            'supplements': supplements_of(manifest), 'limitations': LIMITATIONS,
+            'ai_model': piece_model(manifest), 'records': records})
         for name, sha in manifest['files'].items():
             if not name.startswith(('original/', 'supplements/')):
                 continue
@@ -235,6 +249,8 @@ def ported_items(root, found, hashes):
     if not (isinstance(port.get('supplements'), dict)
             and all(isinstance(name, str) for name in port['supplements'].values())):
         raise ValueError(f'{PORT} does not name the file of each supplement document')
+    if not isinstance(port.get('ai_model'), str):
+        raise ValueError(f'{PORT} does not name the model that wrote its ai pieces')
     by_file = {}
     for segment in found:
         by_file.setdefault(segment['file'], []).append(segment)

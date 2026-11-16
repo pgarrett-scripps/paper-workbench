@@ -56,18 +56,21 @@ class ServerHttpTests(unittest.TestCase):
 
     def test_the_served_paper_says_which_pieces_a_model_wrote(self):
         # The engine's writer keeps whose text each piece is, and a model's reading keeps the converter's.
-        # The viewer gets the rows as written and the manifest's account of the Read stage.
+        # The viewer gets the rows as written and the manifest's account of the Read stage. No page was
+        # read here, so the manifest names the model the writer said wrote those pieces, not a reader.
         equation = {'kind': 'equation', 'latex': 'x = 1', 'text': 'x = 1', 'page': 1, 'bbox': list(manuscripts.BOX),
                     'source': 'ai-reconstructed', 'original': {'latex': 'x - 1', 'number': None, 'text': 'x - 1'}}
         description = {'kind': 'figure-description', 'text': 'A bar chart.', 'page': 1, 'source': 'ai',
                        'original': {}}
-        base = manuscripts.build(self.root / 'read', ['Converted.'], extra=[equation, description])
+        base = manuscripts.build(self.root / 'read', ['Converted.'], extra=[equation, description],
+                                 ai_model='claude-sonnet-5-5')
         paper = paper_view(base)
         self.assertEqual([(row['kind'], row['source'], row.get('original')) for row in paper['pieces']],
                          [('title', 'text', None), ('paragraph', 'text', None),
                           ('equation', 'ai-reconstructed', equation['original']), ('figure-description', 'ai', {})])
         self.assertEqual(paper['ai_read'], base.manifest['ai_read'])
-        self.assertIs(paper['ai_read']['read'], False)
+        self.assertEqual((paper['ai_read']['read'], paper['ai_read']['ai_model'], paper['ai_read']['lost_pages']),
+                         (False, 'claude-sonnet-5-5', []))
 
     def test_missing_host_is_rejected(self):
         for path in ('/', '/api/paper', '/pages/1.png'):

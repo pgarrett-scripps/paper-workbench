@@ -15,7 +15,7 @@ import unittest
 from pathlib import Path
 from unittest.mock import patch
 
-from peerreviewagents import CLI_COMMANDS, export_draft, verify_workspace
+from peerreviewagents import CLI_COMMANDS, MANUSCRIPT_STATES, export_draft, verify_workspace
 from peerreviewagents.workspace import save_review
 
 import manuscripts
@@ -175,6 +175,11 @@ class EngineOutputContractTest(unittest.TestCase):
         self.assertEqual(exported['proposed_documents'], {'paper.md': '# QA\n\nA claim with 12 donors.\n'})
         self.assertEqual(exported['original_documents'], paper.documents)
         self.assertEqual([f['issue_status'] for f in exported['findings']], ['open', 'open'])
+
+    def test_the_manuscript_state_the_viewer_names(self):
+        # run_view tells a run whose Read stage never sealed from one that never imported by the
+        # draft state of read_run's manuscript key, so a rename of that state fails here.
+        self.assertIn('draft', MANUSCRIPT_STATES)
 
 
 class PublicSurfaceTest(unittest.TestCase):

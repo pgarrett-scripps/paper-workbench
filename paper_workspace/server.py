@@ -23,7 +23,8 @@ from peerreviewagents import export_draft, verify_workspace
 from peerreviewagents.workspace import digest, read_json, write_json
 
 from .revisions import checkout, create_revision, head, snapshot, source_spans, valid_id
-from .run_view import NO_ENGINE_ID, RUN_REVIEW_ID, applicable, locate, main_document, run_review, source_sha256
+from .run_view import (NO_ENGINE_ID, RUN_REVIEW_ID, RunError, applicable, locate, main_document, run_review,
+                       source_sha256)
 
 
 LOCK = threading.Lock()
@@ -82,7 +83,12 @@ def clear_stale_renders(folder):
 
 def make_server(root, port=38744):
     root, run = locate(root)
-    original = verify_workspace(root)
+    try:
+        original = verify_workspace(root)
+    except ValueError as exc:
+        # The engine refuses a manuscript that does not say which shape it is, or no longer matches its
+        # manifest, by name. serve prints that refusal as it is, not as a traceback.
+        raise RunError(str(exc)) from None
     if run:
         # Read the run once before serving, so a run the viewer cannot open fails here in plain words.
         run_review(run, original)

@@ -344,14 +344,17 @@ assert.equal(vm.runInContext("review.findings[0].end_line = 1; review.findings[0
 
 // Each piece a model wrote says so, with the model the engine's Read stage names. A piece read again
 // from the page image keeps the converter's reading beside it, a figure description is not the
-// authors' words, and a page the converter returned nothing from is named above the manuscript.
+// authors' words, and a page the converter returned nothing from is named above the manuscript and
+// linked to the first line the engine says its transcription became. The figure description on that
+// page is the model's too, but it is not the page's transcription, so the link skips it.
 vm.runInContext(`review = {id:'none', findings:[]}; decisions = {items:{}};
 document.querySelector('#search').value = '';
 paper = {id:'p', main:'paper.md', assets:[], documents:{'paper.md':['Converted text.', '$$x = 1$$', 'Figure description: A bar chart.', 'Added text.']},
-  ai_read:{read:true, reader_model:'claude-sonnet-5-5', lost_pages:[{page:3, words:0, rotation:0, added:['p0211']}]},
+  ai_read:{read:true, reader_model:'claude-sonnet-5-5',
+    lost_pages:[{page:3, words:0, rotation:0, added:[{piece:'p0211', document:'paper.md', lines:[4, 4]}]}]},
   pieces:[{document:'paper.md', lines:[1, 1], kind:'paragraph', source:'text', page:1},
     {document:'paper.md', lines:[2, 2], kind:'equation', source:'ai-reconstructed', page:2, original:{latex:'x - 1', number:null, text:'x - 1'}},
-    {document:'paper.md', lines:[3, 3], kind:'figure-description', source:'ai', page:2, original:{}},
+    {document:'paper.md', lines:[3, 3], kind:'figure-description', source:'ai', page:3, original:{}},
     {document:'paper.md', lines:[4, 4], kind:'paragraph', source:'ai', page:3, original:{}}]};
 manuscript();`, context);
 const read = html('#manuscript');
@@ -364,9 +367,16 @@ assert.ok(blocks[1].includes("<summary>The converter's reading</summary><pre>x -
 assert.ok(blocks[2].includes("AI description of the figure image by claude-sonnet-5-5, not the authors' words"));
 assert.ok(blocks[3].includes('Written by claude-sonnet-5-5 from the image of page 3, a page the converter returned no text from'));
 assert.ok(read.startsWith('<p class="lost-pages" role="note">Page <a href="#line-paper.2emd-4">3</a> came only from claude-sonnet-5-5.'));
-// A manuscript no model read has no notice, and a piece marked as the model's names no model it cannot know.
-vm.runInContext(`paper.ai_read = {read:false, reason:'written from an application source'};
-paper.pieces[3].page = 4; manuscript();`, context);
-assert.ok(!html('#manuscript').includes('lost-pages'));
-assert.ok(html('#manuscript').includes('Written by a model from the image of page 4, because the converter missed it'));
+// A manuscript no model read the pages of names the model the application said wrote its pieces, and
+// claims no page image: the engine records that model as ai_model and lost no page.
+vm.runInContext(`paper.ai_read = {read:false, reason:'written from an application source', ai_model:'claude-opus-5-5',
+  ai_pieces:3, lost_pages:[]}; manuscript();`, context);
+const written = html('#manuscript');
+const writtenBlocks = written.split('<section').slice(1);
+assert.ok(!written.includes('lost-pages') && !written.includes('Read from the image') && !written.includes('from the image of'));
+for (const block of [writtenBlocks[1], writtenBlocks[3]]) {
+  assert.ok(block.includes('Written by claude-opus-5-5. No page image was read here, so there is no page to compare it with'));
+}
+assert.ok(writtenBlocks[1].includes('<summary>The text it replaced</summary><pre>x - 1</pre>'));
+assert.ok(writtenBlocks[2].includes("AI description of the figure image by claude-opus-5-5, not the authors' words"));
 console.log('Review rendering checks passed');

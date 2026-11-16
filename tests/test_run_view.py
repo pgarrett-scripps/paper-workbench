@@ -9,6 +9,7 @@ import tempfile
 import threading
 import unittest
 from pathlib import Path
+from unittest.mock import patch
 
 from peerreviewagents import FINDING_SCHEMA_VERSION, ISSUES_SCHEMA_VERSION, citation_uses, read_manuscript, read_run
 from peerreviewagents.issues import ISSUE_FIELDS, MEMBER_FIELDS
@@ -196,11 +197,37 @@ class RunReviewTests(unittest.TestCase):
         self.assertEqual(locate(self.root), (self.manuscript, self.review))
         self.assertEqual(locate(self.review), (self.manuscript, self.review))
         self.assertEqual(locate(self.manuscript), (self.manuscript, None))
-        # The engine writes map.json only when the Read stage seals the manuscript. A run that stopped
-        # in the import or in the Read stage leaves the import's draft and no lines to show.
-        (self.manuscript / 'map.json').unlink()
-        with self.assertRaisesRegex(RunError, 'stopped before the Read stage sealed its manuscript'):
+
+    def test_a_run_says_whether_its_read_stage_stopped_or_it_never_imported(self):
+        # read_run's manuscript state tells a Read stage that stopped, leaving a draft with no line
+        # numbers, from a run that stopped before the import. The app reads that state and no file
+        # of the engine's own. The engine has no public way to write a draft, so this one is the
+        # engine's reading of the run with only its state changed.
+        real = read_run
+
+        def drafted(path):
+            run = real(path)
+            return {**run, 'manuscript': {**run['manuscript'], 'state': 'draft', 'sealed': False}}
+
+        with patch('paper_workspace.run_view.read_run', drafted):
+            with self.assertRaisesRegex(RunError, 'stopped before the Read stage sealed its manuscript'):
+                locate(self.root)
+        shutil.rmtree(self.manuscript)
+        self.assertEqual(read_run(self.review)['manuscript']['state'], 'absent')
+        with self.assertRaisesRegex(RunError, 'stopped before it imported its manuscript, so there is nothing '
+                                              'to show. Status: complete'):
             locate(self.root)
+
+    def test_a_manuscript_that_does_not_say_its_shape_is_refused_in_plain_words(self):
+        # The engine refuses a manifest with no schema_version by name. serve prints that refusal
+        # rather than a traceback.
+        manifest = json.loads((self.manuscript / 'manifest.json').read_text())
+        del manifest['schema_version']
+        write_json(self.manuscript / 'manifest.json', manifest)
+        status, output, message = run_quietly(['serve', str(self.root)])
+        self.assertEqual((status, output), (1, ''))
+        self.assertIn('has no schema_version in its manifest', message)
+        self.assertNotIn('Traceback', message)
 
     def test_a_folder_that_is_neither_a_workspace_nor_a_run_is_a_plain_error(self):
         (self.root / 'empty').mkdir()
@@ -815,7 +842,7 @@ class StoppedRunTests(unittest.TestCase):
             'blocked_reason': 'the start-up probe failed: claude is not installed'})
         status, _, message = run_quietly(['serve', str(run)])
         self.assertEqual(status, 1)
-        self.assertIn('stopped before the Read stage sealed its manuscript', message)
+        self.assertIn('stopped before it imported its manuscript', message)
         self.assertIn('claude is not installed', message)
         self.assertNotIn('Traceback', message)
         status, output, _ = run_quietly(['report', str(run)])

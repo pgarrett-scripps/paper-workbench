@@ -61,19 +61,22 @@ def pieces(texts, title=TITLE, boxed=True):
 
 
 def build(folder, texts, title=TITLE, paper_id=PAPER_ID, source_sha256=SOURCE_SHA256, boxed=True,
-          documents=None, references=None, extra=(), assets=None):
+          documents=None, references=None, extra=(), assets=None, ai_model=''):
     """Write a manuscript of ``texts`` into ``folder`` and return it as the engine reads it.
 
     ``extra`` is further pieces at the end of paper.md, and ``documents`` adds
     further documents after it, each a name and its pieces. ``references`` is
     the reference list the import read, and ``assets`` the source files it recorded.
+    ``ai_model`` names the model that wrote any piece whose source is ``ai`` or
+    ``ai-reconstructed``, which the engine refuses to write without one.
     """
     folder = Path(folder)
     main = pieces(texts, title, boxed) + list(extra)
     write_manuscript(folder, {MAIN_DOCUMENT: main, **(documents or {})},
                      title=title, paper_id=paper_id, parser='test',
                      source={'file': 'original/original.pdf', 'sha256': source_sha256, 'pages': 1},
-                     pages=[PAGE] if boxed else None, references=references, assets=assets)
+                     pages=[PAGE] if boxed else None, references=references, assets=assets,
+                     ai_model=ai_model)
     return read_manuscript(folder)
 
 

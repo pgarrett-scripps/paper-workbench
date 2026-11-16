@@ -381,8 +381,11 @@ def _documents(root: Path, title: str):
              "port": {key: port[key] for key in ("source_paper_id", "source_sha256", "source_url")}
              if port else None}
     tree = digest(json.dumps(hashes, sort_keys=True, separators=(",", ":")))
+    # A port keeps the pieces a model wrote with their source, and the engine writes them only
+    # with the name of that model. A Scaffold project of the authors' own has none.
     return documents, spans, {"references": references, "warnings": warnings, "pages": pages,
-                              "tree": tree, "source_url": port.get("source_url") if port else ""}
+                              "tree": tree, "source_url": port.get("source_url") if port else "",
+                              "ai_model": port["ai_model"] if port else ""}
 
 
 def import_scaffold(source, output, title=None, prepare=None, check=None):
@@ -424,7 +427,8 @@ def import_scaffold(source, output, title=None, prepare=None, check=None):
             temporary, documents, title=name, paper_id=about["tree"][:16],
             source={"file": SOURCE_FILE, "sha256": about["tree"]}, parser=PARSER,
             source_url=about["source_url"], references=about["references"],
-            assets=_inventory_assets(copied), warnings=about["warnings"], pages=about["pages"])
+            assets=_inventory_assets(copied), warnings=about["warnings"], pages=about["pages"],
+            ai_model=about["ai_model"])
         base = verify_workspace(temporary)
         scaffold_spans(temporary, base)
         if check:

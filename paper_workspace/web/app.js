@@ -100,33 +100,37 @@ function tableMarkup(piece,name,lines){
 // row's source says whose text the piece is: the converter's (text), read again from the page image
 // because the converter garbled it (ai-reconstructed, which keeps the converter's reading in original),
 // or written by the model (ai). A figure description is the model's account of the image. A page the
-// converter returned no text from is one of the lost pages, and every piece on it is the model's.
-const readerModel=()=>paper.ai_read?.read&&paper.ai_read.reader_model?paper.ai_read.reader_model:'a model';
-const lostPages=()=>(paper.ai_read?.lost_pages||[]).map(row=>row.page).filter(Number.isInteger);
+// converter returned no text from is one of the lost pages, and the engine names the document and
+// lines its transcription became. In a manuscript no model read the pages of, such as an application's
+// own source, the model that wrote those pieces is the one the application named, and no page image
+// stands behind them.
+const wasRead=()=>Boolean(paper.ai_read?.read);
+const pieceModel=()=>(wasRead()&&paper.ai_read.reader_model)||paper.ai_read?.ai_model||'a model';
+const lostPages=()=>(paper.ai_read?.lost_pages||[]).filter(row=>Number.isInteger(row.page));
+const fromLostPage=piece=>lostPages().some(row=>(row.added||[]).some(added=>added.document===(piece.document||paper.main)
+ &&added.lines?.[0]<=piece.lines[0]&&piece.lines[1]<=added.lines?.[1]));
 const modelWritten=piece=>piece.kind==='figure-description'||piece.source==='ai'||piece.source==='ai-reconstructed';
 function provenanceMarkup(piece){
  if(!modelWritten(piece))return '';
- const by=esc(readerModel());
+ const by=esc(pieceModel());
  const page=Number.isInteger(piece.page)&&piece.page>0?`page ${piece.page}`:'its page';
  if(piece.kind==='figure-description')return `<p class="provenance">AI description of the figure image by ${by}, not the authors' words</p>`;
- if(piece.source==='ai-reconstructed'){
-  const reading=piece.original?.latex||piece.original?.text||'';
-  return `<p class="provenance">Read from the image of ${page} by ${by}, because the converter garbled it</p>`
-   +(reading?`<details class="converter-reading"><summary>The converter's reading</summary><pre>${esc(reading)}</pre></details>`:'');
- }
- const lost=lostPages().includes(piece.page);
- return `<p class="provenance">Written by ${by} from the image of ${page}, ${lost?'a page the converter returned no text from':'because the converter missed it'}</p>`;
+ const reading=piece.source==='ai-reconstructed'?piece.original?.latex||piece.original?.text||'':'';
+ const replaced=reading?`<details class="converter-reading"><summary>${wasRead()?"The converter's reading":'The text it replaced'}</summary><pre>${esc(reading)}</pre></details>`:'';
+ if(!wasRead())return `<p class="provenance">Written by ${by}. No page image was read here, so there is no page to compare it with</p>`+replaced;
+ if(piece.source==='ai-reconstructed')return `<p class="provenance">Read from the image of ${page} by ${by}, because the converter garbled it</p>`+replaced;
+ return `<p class="provenance">Written by ${by} from the image of ${page}, ${fromLostPage(piece)?'a page the converter returned no text from':'because the converter missed it'}</p>`;
 }
-// The pages of the main document that came only from the model, each linked to its first line.
+// The pages that came only from the model, each linked to the first line its transcription became.
 function lostPagesMarkup(){
  const pages=lostPages();
  if(!pages.length)return '';
- const links=pages.map(page=>{
-  const first=paper.pieces.filter(row=>(row.document||paper.main)===paper.main&&row.page===page&&row.source==='ai').map(row=>row.lines[0]).sort((a,b)=>a-b)[0];
-  return first===undefined?String(page):lineLink(paper.main,first,String(page));
+ const links=pages.map(row=>{
+  const first=(row.added||[]).find(added=>Number.isInteger(added.lines?.[0]));
+  return first?lineLink(first.document,first.lines[0],String(row.page)):String(row.page);
  });
  const one=pages.length===1;
- return `<p class="lost-pages" role="note">${one?'Page':'Pages'} ${links.join(', ')} came only from ${esc(readerModel())}. The converter returned no text from ${one?'it':'them'}, so every line shown for ${one?'it':'them'} was written by the model from the page image.</p>`;
+ return `<p class="lost-pages" role="note">${one?'Page':'Pages'} ${links.join(', ')} came only from ${esc(pieceModel())}. The converter returned no text from ${one?'it':'them'}, so every line shown for ${one?'it':'them'} was written by the model from the page image.</p>`;
 }
 function pieceMarkup(piece,name,newSection){
  const [first,last]=piece.lines;
@@ -505,7 +509,7 @@ async function start(){
   paper=await api(withDraft('/api/paper'));ledger=await api(withDraft('/api/ledger'));
   $('#source-title').textContent=paper.title;document.title='Review · '+paper.title;
   const written=paper.pieces.filter(modelWritten).length;
-  $('#summary-counts').textContent=`${state.native?'Native source':paper.statistics.pdf_pages+' pages'} · ${paper.statistics.reference_entries} references · ${plural(paper.pieces.length,'passage')}${written?` · ${written} written or read again by ${readerModel()}`:''}`;
+  $('#summary-counts').textContent=`${state.native?'Native source':paper.statistics.pdf_pages+' pages'} · ${paper.statistics.reference_entries} references · ${plural(paper.pieces.length,'passage')}${written?` · ${written} ${wasRead()?'written or read again':'written'} by ${pieceModel()}`:''}`;
   $('#source-details').textContent=(paper.warnings||[]).join(' ')+' '+(paper.statistics.convention||'')+' Source fingerprint: '+paper.source_sha256.slice(0,16);
   $('#draft-select').innerHTML=state.revisions.map(item=>`<option value="${esc(item.id)}" ${item.id===state.selected?'selected':''}>${esc(item.id)}</option>`).join('');
   $('#revision-tools').hidden=!state.native;$('#head-state').textContent=`Active draft: ${state.head.revision_id} · pointer version ${state.head.version}`;
