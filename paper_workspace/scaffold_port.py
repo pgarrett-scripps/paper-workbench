@@ -25,9 +25,11 @@ SPECIAL = re.compile(r'[#*$@_<>\[\]{}\\`]|//|/\*|\*/')
 EQUATION = re.compile(r'\$\$ (.*?)(?: \\tag\{([^{}]+)\})? \$\$')
 LITERAL_HEADING = re.compile(r'#heading\(level: (\d+)\)\[(#text\("(?:[^"\\]|\\.)*"\))\]', re.S)
 ABSTRACT = re.compile(r'(?m)^#let paper-abstract = \[\n(.*?)\n\]\n', re.S)
-#: The fields of a record that are a piece's own, passed to the engine as they stand.
+#: The fields of a record that are a piece's own, passed to the engine as they stand. ``source`` and
+#: ``original`` say whether a model wrote the piece and keep the converter's reading of one it read again.
 PIECE_FIELDS = ('kind', 'text', 'level', 'latex', 'number', 'table', 'section', 'page', 'bbox',
-                'citations', 'confidence', 'source')
+                'citations', 'confidence', 'source', 'original')
+DESCRIPTION = 'Figure description: '
 LIMITATIONS = ['This is an extracted reading copy, not the original manuscript layout.',
                'Tables and captions are preserved as text. Original figures and formatting remain in the source PDF.',
                'Citation text is preserved. BibTeX citation keys are not reconstructed.']
@@ -63,7 +65,9 @@ def recovered(kind, lines):
         for prefix in ('Figure: ', 'Caption: '):
             if first.startswith(prefix):
                 return {'text': first[len(prefix):]}
-    if kind in ('title', 'heading', 'equation', 'figure', 'caption'):
+    if kind == 'figure-description' and first.startswith(DESCRIPTION):
+        return {'text': first[len(DESCRIPTION):]}
+    if kind in ('title', 'heading', 'equation', 'figure', 'caption', 'figure-description'):
         raise ValueError(f'A {kind} line is not in the form the engine renders: {first}')
     return {'text': first}
 
@@ -93,10 +97,14 @@ def _records(base):
             record = {'document': document, 'kind': row['kind'], 'section': row.get('section'),
                       'page': row.get('page'), 'bbox': row.get('bbox'),
                       'citations': row.get('citations') or [], 'source': row.get('source'),
-                      'confidence': row.get('confidence'), **recovered(row['kind'], lines),
-                      'origin': {'document': document, 'lines': row['lines']}}
+                      'original': row.get('original'), 'confidence': row.get('confidence'),
+                      **recovered(row['kind'], lines), 'origin': {'document': document, 'lines': row['lines']}}
             main = document == MAIN_DOCUMENT
             if main and index == 0 and row['kind'] == 'title':
+                record['file'] = None
+            elif row['kind'] == 'figure-description':
+                # A model's description of a figure image is not the authors' words, so it stays in the
+                # reading copy and is never written into the Typst source the manuscript is built from.
                 record['file'] = None
             elif main and row['kind'] == 'heading' and record['text'].strip() == 'Abstract':
                 record['file'] = None

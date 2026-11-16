@@ -10,12 +10,12 @@ import threading
 import unittest
 from pathlib import Path
 
-from peerreviewagents import FINDING_SCHEMA_VERSION, ISSUES_SCHEMA_VERSION, read_manuscript, read_run
+from peerreviewagents import FINDING_SCHEMA_VERSION, ISSUES_SCHEMA_VERSION, citation_uses, read_manuscript, read_run
 from peerreviewagents.issues import ISSUE_FIELDS, MEMBER_FIELDS
 from peerreviewagents.workspace import write_json
 
 import manuscripts
-from manuscripts import BOX, PAPER_ID, SOURCE_SHA256, TEXT
+from manuscripts import BOX, PAPER_ID, REFERENCES, SOURCE_SHA256, TEXT
 from paper_workspace.__main__ import main
 from paper_workspace.run_view import NO_ENGINE_ID, RunError, locate, run_review
 from paper_workspace.server import make_server
@@ -196,8 +196,10 @@ class RunReviewTests(unittest.TestCase):
         self.assertEqual(locate(self.root), (self.manuscript, self.review))
         self.assertEqual(locate(self.review), (self.manuscript, self.review))
         self.assertEqual(locate(self.manuscript), (self.manuscript, None))
+        # The engine writes map.json only when the Read stage seals the manuscript. A run that stopped
+        # in the import or in the Read stage leaves the import's draft and no lines to show.
         (self.manuscript / 'map.json').unlink()
-        with self.assertRaisesRegex(RunError, 'stopped before it imported the manuscript'):
+        with self.assertRaisesRegex(RunError, 'stopped before the Read stage sealed its manuscript'):
             locate(self.root)
 
     def test_a_folder_that_is_neither_a_workspace_nor_a_run_is_a_plain_error(self):
@@ -371,6 +373,20 @@ class RunReviewTests(unittest.TestCase):
         self.assertEqual([(f['id'], f['group'], f['number'], f['kind']) for f in findings],
                          [('i01', 'required', 1, 'issue'), ('cc33', 'ledger', 2, 'edit')])
         self.assertEqual([m['finding_uid'] for m in findings[1]['members']], ['cc33'])
+
+    def test_the_rebuttal_is_in_the_document_the_issue_names(self):
+        # The editor quoted the rebuttal from a supplement, and the engine names that document on the issue.
+        # An issue that names none has its rebuttal in paper.md.
+        shutil.rmtree(self.manuscript)
+        base = manuscripts.build(self.manuscript, [TEXT, *manuscripts.CITING], references=manuscripts.REFERENCES,
+                                 documents={'S1.md': [{'kind': 'paragraph', 'text': 'The draws were random.'}]})
+        rows = json.loads(json.dumps(ISSUES))
+        rows[0].update(rebuttal_quote='lowered VPS35', rebuttal_line=LINE)
+        rows[1].update(rebuttal_quote='The draws were random.', rebuttal_line=1, rebuttal_document='S1.md')
+        self.write_issues(rows)
+        cards = run_review(self.review, base)['findings']
+        self.assertEqual([(card['id'], card['rebuttal_document'], card['rebuttal_line']) for card in cards],
+                         [('i01', 'paper.md', LINE), ('i02', 'S1.md', 1)])
 
     def test_a_member_without_its_ledger_row_is_placed_by_its_own_span(self):
         # With an empty ledger the engine rebuilds the findings from the members, which carry the span.
@@ -599,6 +615,17 @@ class CitationLedgerTests(unittest.TestCase):
     def rows(self):
         return [json.loads(line) for line in self.ledger.read_text().splitlines()]
 
+    def test_each_use_in_the_fixture_is_anchored_by_the_engine_s_own_rule(self):
+        # The engine owns the rule that turns a citation into an anchored sentence, and citation_uses is
+        # that rule. The app has no anchor rule of its own, so the fixture's uses must be the engine's rows.
+        anchor = ('row_id', 'document', 'line', 'end_line', 'start', 'end', 'sentence', 'piece_lines', 'reference_id')
+        engine = [{key: row[key] for key in anchor} for row in citation_uses(self.base, REFERENCES)]
+        first = {}
+        for row in self.rows():
+            if row['kind'] == 'use':
+                first.setdefault(row['row_id'], {key: row.get(key) for key in anchor})
+        self.assertEqual(list(first.values()), engine)
+
     def test_the_panel_shows_the_ledger_the_engine_wrote(self):
         run = self.view()
         citations = run['citations']
@@ -788,7 +815,7 @@ class StoppedRunTests(unittest.TestCase):
             'blocked_reason': 'the start-up probe failed: claude is not installed'})
         status, _, message = run_quietly(['serve', str(run)])
         self.assertEqual(status, 1)
-        self.assertIn('stopped before it imported the manuscript', message)
+        self.assertIn('stopped before the Read stage sealed its manuscript', message)
         self.assertIn('claude is not installed', message)
         self.assertNotIn('Traceback', message)
         status, output, _ = run_quietly(['report', str(run)])

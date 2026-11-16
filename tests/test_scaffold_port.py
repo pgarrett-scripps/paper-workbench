@@ -16,8 +16,11 @@ LITERAL = 'A citation [1] and #include "bad.typ" are literal text.'
 TABLE = [['Group', 'Count'], ['Control', '12']]
 
 
-def source_manuscript(folder):
-    """A PDF import's workspace: an abstract, results that cite, a reference list and a supplement table."""
+def source_manuscript(folder, results=()):
+    """A PDF import's workspace: an abstract, results that cite, a reference list and a supplement table.
+
+    ``results`` is further pieces at the end of the results, such as the pieces a model read.
+    """
     folder = Path(folder)
     (folder / 'original').mkdir(parents=True)
     # The engine digests the folder as it stands, so the PDF is written first and the manifest covers it.
@@ -29,6 +32,7 @@ def source_manuscript(folder):
         {'kind': 'heading', 'level': 1, 'text': 'Results', 'section': 'Results'},
         {'kind': 'paragraph', 'text': 'There were 12 samples.', 'section': 'Results', **placed},
         {'kind': 'paragraph', 'text': LITERAL, 'section': 'Results', 'citations': ['ref1'], **placed},
+        *results,
         {'kind': 'heading', 'level': 1, 'text': 'References', 'section': 'References'},
         {'kind': 'reference', 'text': '1 Reference text', 'section': 'References'},
     ]
@@ -74,6 +78,32 @@ class ScaffoldPort(unittest.TestCase):
             self.assertGreater(ported.manifest['statistics']['reference_words'], 0)
             with self.assertRaisesRegex(ValueError, 'already exists'):
                 port_workspace(source, output)
+
+    def test_the_pieces_a_model_read_keep_whose_they_are_and_stay_out_of_the_source(self):
+        # An equation the model read again keeps the converter's reading, and a figure description
+        # is the model's own words. The port keeps both as the engine wrote them, and the description
+        # is never written into the Typst source the manuscript is built from.
+        equation = {'kind': 'equation', 'latex': 'x = 1', 'text': 'x = 1', 'section': 'Results', 'page': 1,
+                    'bbox': list(BOX), 'source': 'ai-reconstructed',
+                    'original': {'latex': 'x - 1', 'number': None, 'text': 'x - 1'}}
+        description = {'kind': 'figure-description', 'text': 'A bar chart of two groups.', 'section': 'Results',
+                       'page': 1, 'source': 'ai', 'original': {}}
+        with tempfile.TemporaryDirectory() as folder:
+            root = Path(folder)
+            base = source_manuscript(root / 'original', results=[equation, description])
+            output = root / 'ported'
+            port_workspace(root / 'original', output)
+            ported = verify_workspace(output)
+            self.assertEqual(ported.documents, base.documents)
+            read = [(row['kind'], row['source'], row.get('original')) for row in ported.rows
+                    if row['source'] != 'text']
+            self.assertEqual(read, [('equation', 'ai-reconstructed', equation['original']),
+                                    ('figure-description', 'ai', {})])
+            spans = scaffold_spans(output, ported)
+            entry = span_at(spans, 'paper.md', line_of(ported, 'Figure description: A bar chart'))
+            self.assertEqual((entry['file'], entry['editable']), (None, False))
+            typst = ''.join(path.read_text() for path in (output / 'scaffold').rglob('*.typ'))
+            self.assertNotIn('A bar chart', typst)
 
 
 if __name__ == '__main__':

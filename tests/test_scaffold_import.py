@@ -131,10 +131,9 @@ class ScaffoldImportTests(unittest.TestCase):
         self.assertEqual(copied[entry["start"]:entry["end"]], entry["text"])
         self.assertIn("\r\n", copied)
 
-    @unittest.expectedFailure
     def test_a_manifest_inside_the_source_tree_is_hashed(self):
-        # The engine's file_digests skips every file named manifest.json, at any depth, while
-        # verify_workspace counts every file under scaffold/. A tree that holds one never verifies.
+        # The engine's file_digests covers every file but the workspace's own manifest.json, so a
+        # manifest.json inside the Typst tree is hashed and verify_workspace counts it like any other file.
         self.write_paper("Plain prose.")
         vendor = self.source / "vendor"
         vendor.mkdir()

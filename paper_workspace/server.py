@@ -42,6 +42,10 @@ def paper_view(base):
     a page image. It is empty when the sizes were not recorded, and the viewer then draws no box.
     A piece of a Scaffold draft also carries ``native``: the source file it was read from, whether
     that source can be edited in place, and the Word geometry of a table when its source had one.
+    ``ai_read`` is the engine's account of its Read stage: whether a model read the page images, which
+    model, and ``lost_pages``, the pages the converter returned nothing from. Each map row's ``source``
+    says whether its text is the converter's (``text``), read again from the page image by that model
+    (``ai-reconstructed``, with the converter's reading in ``original``) or written by it (``ai``).
     """
     manifest = base.manifest
     native = {(document, tuple(entry["lines"])): entry
@@ -57,7 +61,7 @@ def paper_view(base):
             "statistics": manifest.get("statistics") or {}, "warnings": manifest.get("warnings") or [],
             "assets": manifest.get("assets") or [], "main": main_document(base),
             "documents": {name: base.lines[name] for name in base.document_names()},
-            "pieces": pieces, "pages": manifest.get("pages") or []}
+            "pieces": pieces, "pages": manifest.get("pages") or [], "ai_read": manifest.get("ai_read") or {}}
 
 
 def pdf_pages(base):

@@ -96,11 +96,43 @@ function tableMarkup(piece,name,lines){
  const marked=mode==='markup'&&review.findings.some(item=>anchorsOf(item).some(mark=>mark.document===name&&mark.line<=last&&first<=mark.end_line));
  return `<div class="table-scroll"><table class="source-table"><colgroup>${columns}</colgroup><tbody>${rows}</tbody></table></div><details class="table-source"${marked?' open':''}><summary>${marked?'Exact source text with comment anchors':'Exact source text'}</summary>${lines}</details>`;
 }
+// Which lines a model wrote. The engine's Read stage has a model read every page image, and each map
+// row's source says whose text the piece is: the converter's (text), read again from the page image
+// because the converter garbled it (ai-reconstructed, which keeps the converter's reading in original),
+// or written by the model (ai). A figure description is the model's account of the image. A page the
+// converter returned no text from is one of the lost pages, and every piece on it is the model's.
+const readerModel=()=>paper.ai_read?.read&&paper.ai_read.reader_model?paper.ai_read.reader_model:'a model';
+const lostPages=()=>(paper.ai_read?.lost_pages||[]).map(row=>row.page).filter(Number.isInteger);
+const modelWritten=piece=>piece.kind==='figure-description'||piece.source==='ai'||piece.source==='ai-reconstructed';
+function provenanceMarkup(piece){
+ if(!modelWritten(piece))return '';
+ const by=esc(readerModel());
+ const page=Number.isInteger(piece.page)&&piece.page>0?`page ${piece.page}`:'its page';
+ if(piece.kind==='figure-description')return `<p class="provenance">AI description of the figure image by ${by}, not the authors' words</p>`;
+ if(piece.source==='ai-reconstructed'){
+  const reading=piece.original?.latex||piece.original?.text||'';
+  return `<p class="provenance">Read from the image of ${page} by ${by}, because the converter garbled it</p>`
+   +(reading?`<details class="converter-reading"><summary>The converter's reading</summary><pre>${esc(reading)}</pre></details>`:'');
+ }
+ const lost=lostPages().includes(piece.page);
+ return `<p class="provenance">Written by ${by} from the image of ${page}, ${lost?'a page the converter returned no text from':'because the converter missed it'}</p>`;
+}
+// The pages of the main document that came only from the model, each linked to its first line.
+function lostPagesMarkup(){
+ const pages=lostPages();
+ if(!pages.length)return '';
+ const links=pages.map(page=>{
+  const first=paper.pieces.filter(row=>(row.document||paper.main)===paper.main&&row.page===page&&row.source==='ai').map(row=>row.lines[0]).sort((a,b)=>a-b)[0];
+  return first===undefined?String(page):lineLink(paper.main,first,String(page));
+ });
+ const one=pages.length===1;
+ return `<p class="lost-pages" role="note">${one?'Page':'Pages'} ${links.join(', ')} came only from ${esc(readerModel())}. The converter returned no text from ${one?'it':'them'}, so every line shown for ${one?'it':'them'} was written by the model from the page image.</p>`;
+}
 function pieceMarkup(piece,name,newSection){
  const [first,last]=piece.lines;
  const numbers=Array.from({length:last-first+1},(_,k)=>first+k);
  const line=(number,skip=0)=>`<span class="line" id="${esc(lineId(name,number))}">${shownLine(name,number,skip)}</span>`;
- if(piece.kind==='heading')return `<section class="source-block"><h2>${numbers.map(number=>line(number,Array.from(lineText(name,number).match(HEADING)?.[0]||'').length)).join(' ')}</h2></section>`;
+ if(piece.kind==='heading')return `<section class="source-block${modelWritten(piece)?' model-written':''}"><h2>${numbers.map(number=>line(number,Array.from(lineText(name,number).match(HEADING)?.[0]||'').length)).join(' ')}</h2>${provenanceMarkup(piece)}</section>`;
  // A piece of a Scaffold draft says whether its source can be edited in place.
  const native=piece.native?(piece.native.editable&&piece.native.file?`Editable source · ${esc(piece.native.file)}`:'Protected source region'):'';
  const page=Number.isInteger(piece.page)&&piece.page>0?`<button class="page-preview" data-page-document="${esc(name)}" data-page-line="${first}">Original page ${piece.page}</button>${native?' · '+native:''}`
@@ -109,11 +141,11 @@ function pieceMarkup(piece,name,newSection){
  const tableLines=()=>`<p class="table-text">${numbers.map(number=>line(number)).join('\n')}</p>`;
  const content=piece.kind==='table'?tableMarkup(piece,name,tableLines())||tableLines()
   :`<p class="${piece.kind==='reference'?'refs':''}">${numbers.map(number=>line(number)).join('<br>')}</p>`;
- return `<section class="source-block">${newSection&&piece.section?`<h2>${esc(piece.section)}</h2>`:''}<div class="source-link">${page} <span class="muted">· ${esc(where)}</span></div>${content}</section>`;
+ return `<section class="source-block${modelWritten(piece)?' model-written':''}">${newSection&&piece.section?`<h2>${esc(piece.section)}</h2>`:''}<div class="source-link">${page} <span class="muted">· ${esc(where)}</span></div>${provenanceMarkup(piece)}${content}</section>`;
 }
 // The main document first, then each supplement under its own title, with a link to its file.
 function manuscript(){
- const nav=[],parts=[];
+ const nav=[],parts=[lostPagesMarkup()];
  for(const name of Object.keys(paper.documents)){
   if(name!==paper.main){
    const asset=paper.assets.find(item=>item.document===name&&item.path);
@@ -472,7 +504,8 @@ async function start(){
   state=await api(requestedDraft()?'/api/revisions?draft='+encodeURIComponent(requestedDraft()):'/api/revisions');
   paper=await api(withDraft('/api/paper'));ledger=await api(withDraft('/api/ledger'));
   $('#source-title').textContent=paper.title;document.title='Review · '+paper.title;
-  $('#summary-counts').textContent=`${state.native?'Native source':paper.statistics.pdf_pages+' pages'} · ${paper.statistics.reference_entries} references · ${plural(paper.pieces.length,'passage')}`;
+  const written=paper.pieces.filter(modelWritten).length;
+  $('#summary-counts').textContent=`${state.native?'Native source':paper.statistics.pdf_pages+' pages'} · ${paper.statistics.reference_entries} references · ${plural(paper.pieces.length,'passage')}${written?` · ${written} written or read again by ${readerModel()}`:''}`;
   $('#source-details').textContent=(paper.warnings||[]).join(' ')+' '+(paper.statistics.convention||'')+' Source fingerprint: '+paper.source_sha256.slice(0,16);
   $('#draft-select').innerHTML=state.revisions.map(item=>`<option value="${esc(item.id)}" ${item.id===state.selected?'selected':''}>${esc(item.id)}</option>`).join('');
   $('#revision-tools').hidden=!state.native;$('#head-state').textContent=`Active draft: ${state.head.revision_id} · pointer version ${state.head.version}`;

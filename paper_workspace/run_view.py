@@ -37,7 +37,7 @@ OLDER_ENGINE = ('This review was made by an older engine, re-run it. Its review 
 # The types the viewer reads from each issue in issues.json. A value of another
 # type is a malformed file, and the run is refused with each such value named.
 ISSUE_TEXT = ('id', 'name', 'statement', 'severity', 'category', 'status', 'status_reason',
-              'text_unchanged_reason', 'rebuttal_quote', 'prior_id')
+              'text_unchanged_reason', 'rebuttal_document', 'rebuttal_quote', 'prior_id')
 ISSUE_NUMBERS = ('rank', 'prior_rank', 'raised_by', 'rebuttal_line')
 MEMBER_TEXT = ('finding_uid', 'slot', 'track', 'severity', 'kind', 'basis', 'title', 'quote', 'anchor_text',
                'document', 'fingerprint')
@@ -165,8 +165,10 @@ def locate(path):
 
     A run folder, or the review folder inside it, gives both. A workspace
     gives itself, and the review folder is ``None``. A path that is neither,
-    or a run that stopped before it imported the manuscript, raises
-    :class:`RunError` with a plain message.
+    or a run that stopped before its manuscript was sealed, raises
+    :class:`RunError` with a plain message. The engine writes ``map.json`` only
+    at the seal, after the Read stage, so a run that stopped in the import or
+    in the Read stage has no lines to show.
     """
     path = Path(path).resolve()
     try:
@@ -180,8 +182,8 @@ def locate(path):
     manuscript = root / MANUSCRIPT_DIRECTORY
     if not (manuscript / 'map.json').is_file():
         run = recorded(review)
-        raise RunError(f'The run in {root} stopped before it imported the manuscript, so there is '
-                       f'nothing to show. Status: {run["status"]}. Cause: {run["cause"] or "not recorded"}')
+        raise RunError(f'The run in {root} stopped before the Read stage sealed its manuscript, so there '
+                       f'is nothing to show. Status: {run["status"]}. Cause: {run["cause"] or "not recorded"}')
     return manuscript, review
 
 
@@ -413,12 +415,6 @@ def evidence_of(members):
     return [{'document': document, 'line': line} for document, line in seen]
 
 
-def rebuttal_document(members, base):
-    """The document a rebuttal quote is on: the computed member's, as the engine places it."""
-    computed = next((member for member in members if member.get('basis') == 'computed'), None)
-    return (computed or {}).get('document') or main_document(base)
-
-
 def issue_card(issue, group, ledger, base):
     """One issue as one card and one author decision.
 
@@ -426,6 +422,8 @@ def issue_card(issue, group, ledger, base):
     the span and the suggested wording, then placed on the manuscript. The card
     is an edit only when its one member is an anchored edit with wording, so
     accepting it applies exactly that wording. Any other issue takes a note.
+    The rebuttal quote is on the issue's own ``rebuttal_document``, and an empty
+    one names the main document, as the engine reads it.
     """
     members = []
     for member in issue.get('members') or []:
@@ -440,7 +438,7 @@ def issue_card(issue, group, ledger, base):
     return {**issue, 'group': group, 'source_id': issue.get('id'), 'number': issue.get('rank'),
             'title': issue.get('name'), 'comment': issue.get('statement'), 'members': members,
             'kind': 'edit' if edit else 'issue', 'escalate': any(m.get('escalate') is True for m in members),
-            'evidence': evidence_of(members), 'rebuttal_document': rebuttal_document(members, base),
+            'evidence': evidence_of(members), 'rebuttal_document': issue.get('rebuttal_document') or main_document(base),
             **{key: anchor.get(key) for key in ANCHOR},
             'placement': anchor.get('placement', 'unplaced'), 'replacement': anchor.get('replacement') if edit else None}
 
