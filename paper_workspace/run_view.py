@@ -22,7 +22,6 @@ from peerreviewagents import MANUSCRIPT_DIRECTORY, cited_text, read_citation_led
 from peerreviewagents import locate_run, NotARunFolder
 from peerreviewagents.issues import (ISSUE_FIELDS, by_category, closed_issues, is_issue_id, required_issues,
                                      suggestion_issues)
-from peerreviewagents.workspace import read_json
 
 RUN_REVIEW_ID = 'run'
 AUDIT_LIMIT = 400_000
@@ -71,18 +70,11 @@ class RunError(ValueError):
 
 
 def recorded(review):
-    """The engine's reading of a run. A symlinked run file is refused in plain words.
-
-    The engine's reader trusts the shape of each issue's member list, and one
-    that is not a list of objects stops it with an AttributeError. That run is
-    refused in plain words too, with the values named from issues.json itself.
-    """
+    """The engine's reading of a run. A symlinked run file is refused in plain words."""
     try:
         return read_run(review)
     except ValueError as exc:
         raise RunError(str(exc)) from None
-    except (AttributeError, TypeError):
-        raise RunError(malformed(review)) from None
 
 
 def is_text(value):
@@ -149,22 +141,6 @@ def wrong_types(problems):
         lines.append(f'{len(problems) - TYPE_PROBLEMS_SHOWN} more are not listed')
     return ("This run's review/issues.json holds values of the wrong type, so the viewer cannot show it. "
             + '. '.join(lines) + '. Re-run the review.')
-
-
-def malformed(review):
-    """Why the engine's reader stopped on a run, read from issues.json where the cause is there."""
-    path = Path(review) / 'issues.json'
-    document = None
-    if path.is_file() and not path.is_symlink():
-        try:
-            document = read_json(path)
-        except (ValueError, OSError):
-            document = None
-    rows = document.get('issues') if isinstance(document, dict) else None
-    problems = issue_problems(rows) if isinstance(rows, list) else []
-    if problems:
-        return wrong_types(problems)
-    return 'The engine could not read this run folder, because a run file holds a value of the wrong type. Re-run the review.'
 
 
 def check_issues(rows):
