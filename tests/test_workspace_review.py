@@ -214,25 +214,29 @@ class WorkspaceReviewTest(unittest.TestCase):
                 expected = [self.pdf, 'reviews/r1'] + (['--code', str(self.workspace)] if len(typed) == 2 else [])
                 self.assertEqual(engine_argv(typed)[0], expected, typed)
 
-    def test_an_arm_that_reviews_no_code_needs_no_code(self):
+    def test_an_arm_that_reviews_no_code_is_handed_none_unless_the_author_names_some(self):
+        other = self.root / 'other'
+        other.mkdir()
         for arm in (name for name, row in review_arms().items() if not row['code']):
-            out = self.root / f'run-{arm}'
-            status, stdout, stderr = quietly(main, ['review', str(self.workspace), str(out), '--arm', arm])
-            self.assertEqual((status, stdout), (2, ''), arm)
-            self.assertIn(f'The {arm} arm reviews no code, so it cannot be handed the code in {self.workspace}. '
-                          'Give --no-code to review the paper alone, or pick an arm that reviews code: '
-                          'draft-check or full-two-track.', stderr)
-            self.assertFalse(out.exists(), arm)
-            argv, note = engine_argv([str(self.workspace), str(out), '--arm', arm, '--no-code'])
-            self.assertEqual(argv, [self.pdf, str(out), '--arm', arm], arm)
-            self.assertEqual(note, f'paper-workbench review: reviewing {self.pdf} with no code.')
+            # The author never asked for the code, so the paper is reviewed alone and the line says why.
+            argv, note = engine_argv([str(self.workspace), self.run, '--arm', arm])
+            self.assertEqual(argv, [self.pdf, self.run, '--arm', arm], arm)
+            self.assertEqual(note, f'paper-workbench review: reviewing {self.pdf} with no code, because the {arm} '
+                                   'arm reviews no code. The draft-check and full-two-track arms would review it '
+                                   f'with the code in {self.workspace}.')
+            argv, note = engine_argv([str(self.workspace), self.run, '--arm', arm, '--no-code'])
+            self.assertEqual((argv, note), ([self.pdf, self.run, '--arm', arm],
+                                            f'paper-workbench review: reviewing {self.pdf} with no code.'))
+            # Code the author named passes through, for the engine to refuse.
+            argv, _ = engine_argv([str(self.workspace), self.run, '--arm', arm, '--code', str(other)])
+            self.assertEqual(argv, [self.pdf, self.run, '--arm', arm, '--code', str(other)], arm)
 
     def test_review_help_names_the_arms_that_review_code(self):
         help_text = ' '.join(parser().format_help().split())
         self.assertIn('the manuscript PDF, or a Paper Scaffold workspace folder', help_text)
         self.assertIn('A run folder inside it is fine', help_text)
-        self.assertIn('Only the draft-check and full-two-track arms review code, so a workspace review on any '
-                      'other arm needs --no-code.', help_text)
+        self.assertIn('Only the draft-check and full-two-track arms review code, so on any other arm a workspace '
+                      'is reviewed without it.', help_text)
 
 
 if __name__ == '__main__':

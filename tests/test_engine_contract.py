@@ -159,6 +159,36 @@ class EngineCommandTest(unittest.TestCase):
             self.assertEqual((identity['pdf'], identity['source_sha256']),
                              (str(pdf), hashlib.sha256(pdf.read_bytes()).hexdigest()), extra)
 
+    def test_a_workspace_review_on_an_arm_with_no_code_reviews_the_paper_alone(self):
+        from test_workspace_review import make_workspace
+        workspace = make_workspace(self.root / 'paper')
+        pdf = workspace / 'paper.pdf'
+        other = self.root / 'paper-repo'
+        other.mkdir()
+        empty = self.root / 'bin'
+        empty.mkdir()
+        for arm in (name for name, row in review_arms().items() if not row['code']):
+            # The app picked the code, so the arm runs without it and the line on stderr says so.
+            out = self.root / f'run-{arm}'
+            stderr = io.StringIO()
+            with patch.dict(os.environ, {'PATH': str(empty)}), contextlib.redirect_stderr(stderr):
+                status, summary = run_main(['review', str(workspace), str(out), '--arm', arm])
+            self.assertEqual((status, summary['status'], summary['stage'], summary['arm']),
+                             (2, 'blocked', 'startup', arm))
+            self.assertNotIn('spec-code', summary['models_requested'], arm)
+            self.assertIn(f'reviewing {pdf} with no code, because the {arm} arm reviews no code. The draft-check '
+                          'and full-two-track arms would review it', stderr.getvalue())
+            self.assertFalse((out / 'code').exists(), arm)
+            # Code the author named on such an arm is the engine's to refuse, before anything is written.
+            out = self.root / f'named-{arm}'
+            stderr, stdout = io.StringIO(), io.StringIO()
+            with patch.dict(os.environ, {'PATH': str(empty)}), contextlib.redirect_stderr(stderr), \
+                    contextlib.redirect_stdout(stdout):
+                status = main(['review', str(workspace), str(out), '--arm', arm, '--code', str(other)])
+            self.assertEqual((status, stdout.getvalue()), (2, ''), arm)
+            self.assertIn('runs no specialists', stderr.getvalue(), arm)
+            self.assertFalse((out / 'code').exists(), arm)
+
     def test_review_arms_says_which_arms_the_engine_hands_code(self):
         # A workspace review hands its code only to an arm whose row says code, so the row must be what review does.
         code = self.root / 'paper-repo'

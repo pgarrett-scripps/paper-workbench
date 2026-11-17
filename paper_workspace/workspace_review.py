@@ -20,7 +20,9 @@ A workspace review hands the engine two things the author did not have to name.
   figures, dependencies and files that may hold secrets among it. ``--code``
   names other code and ``--no-code`` reviews the paper alone. Only an arm
   whose row in the engine's ``review_arms`` says it reviews code is handed
-  it, so a workspace review on any other arm needs ``--no-code``.
+  it. On any other arm the paper is reviewed alone and the line says so,
+  because the author never asked for the code. A ``--code`` the author gives
+  on such an arm reaches the engine, which refuses it.
 
 A run folder inside that code is fine, because the engine leaves every run
 folder out of the code it copies. Nothing in the workspace is executed here,
@@ -64,8 +66,8 @@ def parser(prog='paper-workbench review'):
                     'repository the workspace is in, or the workspace itself outside git. A run folder '
                     'inside it is fine, as the engine leaves run folders out of the code it copies. '
                     '--code FOLDER_OR_URL names other code, and --no-code reviews the paper alone. Only '
-                    f'the {listed(code_arms(), "and")} arms review code, so a workspace review on any other '
-                    'arm needs --no-code.')
+                    f'the {listed(code_arms(), "and")} arms review code, so on any other arm a workspace is '
+                    'reviewed without it.')
     # The engine's parser offers no public way to change a positional's help, so the action is found by name.
     for action in built._actions:
         if action.dest == 'workspace':
@@ -80,7 +82,8 @@ def engine_argv(argv):
 
     A PDF review passes through as typed, without ``--no-code``. A workspace
     review has the folder replaced by its built PDF and, unless the author
-    gave ``--code`` or ``--no-code``, ``--code`` with the repository added.
+    gave ``--code`` or ``--no-code``, ``--code`` with the repository added
+    when the arm reviews code.
     The line is ``None`` for a PDF. Raises :class:`WorkspaceRefused` when the
     folder cannot be reviewed, and exits as argparse does on ``-h`` or a usage
     error.
@@ -104,9 +107,8 @@ def engine_argv(argv):
         return kept, f'paper-workbench review: reviewing {pdf} with {given}.'
     code = code_root(workspace)
     if not review_arms()[args.arm]['code']:
-        raise WorkspaceRefused(f'The {args.arm} arm reviews no code, so it cannot be handed the code in {code}. '
-                               'Give --no-code to review the paper alone, or pick an arm that reviews code: '
-                               f'{listed(code_arms(), "or")}.')
+        return kept, (f'paper-workbench review: reviewing {pdf} with no code, because the {args.arm} arm reviews '
+                      f'no code. The {listed(code_arms(), "and")} arms would review it with the code in {code}.')
     return [*kept, '--code', str(code)], (f'paper-workbench review: reviewing {pdf} with the code in {code}. '
                                           'Give --no-code to review the paper alone.')
 
