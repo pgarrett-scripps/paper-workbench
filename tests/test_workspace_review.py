@@ -14,8 +14,10 @@ import tempfile
 import unittest
 from pathlib import Path
 
+from peerreviewagents import review_arms
+
 from paper_workspace.__main__ import main
-from paper_workspace.workspace_review import code_root, engine_argv
+from paper_workspace.workspace_review import code_root, engine_argv, parser
 
 
 def sha(data):
@@ -136,9 +138,6 @@ class WorkspaceReviewTest(unittest.TestCase):
             argv, note = engine_argv(typed)
             self.assertEqual(argv, [self.pdf, self.run], typed)
             self.assertEqual(note, f'paper-workbench review: reviewing {self.pdf} with no code.')
-        # A run inside the workspace is fine when no code is handed over.
-        inside = str(self.workspace / 'runs' / 'first')
-        self.assertEqual(engine_argv([str(self.workspace), inside, '--no-code'])[0], [self.pdf, inside])
         stderr = io.StringIO()
         with contextlib.redirect_stderr(stderr), self.assertRaises(SystemExit) as stop:
             engine_argv([str(self.workspace), self.run, '--code', str(other), '--no-code'])
@@ -208,13 +207,32 @@ class WorkspaceReviewTest(unittest.TestCase):
             self.assertIn(message, stderr, label)
             self.assertFalse(out.exists(), label)
 
-    def test_a_run_inside_the_code_it_would_hand_over_is_refused(self):
-        for out in (self.workspace / 'runs' / 'first', self.workspace):
-            status, stdout, stderr = quietly(main, ['review', str(self.workspace), str(out)])
-            self.assertEqual((status, stdout), (2, ''))
-            self.assertIn(f'The code this review hands over, {self.workspace}, holds the run folder {out}, so '
-                          "the code snapshot would hold the run's own files.", stderr)
-        self.assertFalse((self.workspace / 'runs').exists())
+    def test_a_run_folder_inside_the_code_it_hands_over_is_fine(self):
+        # The engine leaves the run folder out of the code it copies, so a run lives in the workspace.
+        with contextlib.chdir(self.workspace):
+            for typed in (['.', 'reviews/r1'], ['.', 'reviews/r1', '--no-code']):
+                expected = [self.pdf, 'reviews/r1'] + (['--code', str(self.workspace)] if len(typed) == 2 else [])
+                self.assertEqual(engine_argv(typed)[0], expected, typed)
+
+    def test_an_arm_that_reviews_no_code_needs_no_code(self):
+        for arm in (name for name, row in review_arms().items() if not row['code']):
+            out = self.root / f'run-{arm}'
+            status, stdout, stderr = quietly(main, ['review', str(self.workspace), str(out), '--arm', arm])
+            self.assertEqual((status, stdout), (2, ''), arm)
+            self.assertIn(f'The {arm} arm reviews no code, so it cannot be handed the code in {self.workspace}. '
+                          'Give --no-code to review the paper alone, or pick an arm that reviews code: '
+                          'draft-check or full-two-track.', stderr)
+            self.assertFalse(out.exists(), arm)
+            argv, note = engine_argv([str(self.workspace), str(out), '--arm', arm, '--no-code'])
+            self.assertEqual(argv, [self.pdf, str(out), '--arm', arm], arm)
+            self.assertEqual(note, f'paper-workbench review: reviewing {self.pdf} with no code.')
+
+    def test_review_help_names_the_arms_that_review_code(self):
+        help_text = ' '.join(parser().format_help().split())
+        self.assertIn('the manuscript PDF, or a Paper Scaffold workspace folder', help_text)
+        self.assertIn('A run folder inside it is fine', help_text)
+        self.assertIn('Only the draft-check and full-two-track arms review code, so a workspace review on any '
+                      'other arm needs --no-code.', help_text)
 
 
 if __name__ == '__main__':

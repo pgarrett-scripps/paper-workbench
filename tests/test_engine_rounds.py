@@ -8,7 +8,9 @@ code whose code lane files one code-checked finding, and drives the viewer from
 them, so the hand-written fixture in test_run_view.py is checked against what
 the engine writes. The third run's code is what a workspace review hands over
 for a Paper Scaffold workspace, so the snapshot of it shows what the engine
-takes from one and what it leaves out.
+takes from one and what it leaves out. Round one and the third run are written
+inside that workspace, as ``paper-workbench review . reviews/NAME`` writes them,
+so the snapshot also shows that no run's files are copied in as code.
 """
 import http.client
 import json
@@ -154,7 +156,9 @@ class EngineRoundsTests(unittest.TestCase):
     def setUpClass(cls):
         cls.temporary = tempfile.TemporaryDirectory()
         cls.root = Path(cls.temporary.name).resolve()
-        cls.first, cls.second, cls.coded = cls.root / 'first', cls.root / 'second', cls.root / 'coded'
+        cls.workspace = make_workspace(cls.root / 'workspace')
+        cls.first, cls.second = cls.workspace / 'reviews' / 'first', cls.root / 'second'
+        cls.coded = cls.workspace / 'reviews' / 'coded'
         environment = {key: value for key, value in os.environ.items() if key not in CREDENTIALS}
         with mock.patch.dict(os.environ, environment, clear=True):
             plugin_root = engine.STATE.get('plugin_root')
@@ -176,8 +180,7 @@ class EngineRoundsTests(unittest.TestCase):
                                     'reason': 'The sample now spans four donors.'},
                                    {'prior_id': 'i03', 'status': 'unverified',
                                     'reason': 'Nobody raised it again.'}])
-                # The code is what `paper-workbench review WORKSPACE RUN` hands the engine.
-                cls.workspace = make_workspace(cls.root / 'workspace')
+                # The code is what `paper-workbench review WORKSPACE RUN` hands the engine, with RUN inside it.
                 argv, _ = engine_argv([str(cls.workspace), str(cls.coded), '--arm', 'draft-check'])
                 code_round(cls.coded, Path(argv[argv.index('--code') + 1]))
             finally:
@@ -266,6 +269,10 @@ class EngineRoundsTests(unittest.TestCase):
             self.assertFalse([path for path in copied if path.startswith(folder + '/')], copied)
         self.assertEqual(skipped['.env'], 'may hold secrets')
         self.assertIn('paper.pdf', skipped)
+        # The run is written inside the code, beside round one's run, and no file of either is copied in.
+        self.assertEqual(skipped['reviews/coded'], 'not looked at: the run folder this review is being written into')
+        self.assertEqual(skipped['reviews/first'], 'not looked at: a PeerReviewAgents run folder')
+        self.assertFalse([path for path in copied if path.startswith('reviews/')], copied)
         self.assertEqual(code['files_skipped'], len(skipped))
 
     def test_a_run_given_no_code_says_so(self):

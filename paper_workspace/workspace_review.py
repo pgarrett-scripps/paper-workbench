@@ -18,11 +18,13 @@ A workspace review hands the engine two things the author did not have to name.
   above it that holds ``.git``, or the workspace itself outside git. The engine
   copies only its text source and lists what it left out, data, results,
   figures, dependencies and files that may hold secrets among it. ``--code``
-  names other code and ``--no-code`` reviews the paper alone.
+  names other code and ``--no-code`` reviews the paper alone. Only an arm
+  whose row in the engine's ``review_arms`` says it reviews code is handed
+  it, so a workspace review on any other arm needs ``--no-code``.
 
-The run folder must be outside the code this module picks, because the
-engine's snapshot would otherwise copy the run's own manuscript in as code.
-Nothing in the workspace is executed here, and a refusal writes nothing.
+A run folder inside that code is fine, because the engine leaves every run
+folder out of the code it copies. Nothing in the workspace is executed here,
+and a refusal writes nothing.
 """
 
 import contextlib
@@ -30,10 +32,10 @@ import io
 import json
 from pathlib import Path
 
-from peerreviewagents import review_parser
+from peerreviewagents import review_arms, review_parser
 from peerreviewagents.workspace import digest
 
-__all__ = ['BUILD_RECORD', 'WorkspaceRefused', 'built_pdf', 'code_root', 'engine_argv', 'parser']
+__all__ = ['BUILD_RECORD', 'WorkspaceRefused', 'built_pdf', 'code_arms', 'code_root', 'engine_argv', 'parser']
 
 #: Paper Scaffold's record of the last ``just paper`` build, relative to the workspace.
 BUILD_RECORD = Path('.build-state') / 'paper.pdf.json'
@@ -59,9 +61,12 @@ def parser(prog='paper-workbench review'):
                          'The manuscript is a PDF, or a Paper Scaffold workspace folder.')
     built.epilog = ('A workspace folder, such as ".", is reviewed from its built paper.pdf, which must '
                     'match the source as `just paper` last recorded it. The code reviewer is handed the '
-                    'repository the workspace is in, or the workspace itself outside git, and the run '
-                    'folder has to be outside that code. --code FOLDER_OR_URL names other code, and '
-                    '--no-code reviews the paper alone, as an arm that runs no specialists needs.')
+                    'repository the workspace is in, or the workspace itself outside git. A run folder '
+                    'inside it is fine, as the engine leaves run folders out of the code it copies. '
+                    '--code FOLDER_OR_URL names other code, and --no-code reviews the paper alone. Only '
+                    f'the {listed(code_arms(), "and")} arms review code, so a workspace review on any other '
+                    'arm needs --no-code.')
+    # The engine's parser offers no public way to change a positional's help, so the action is found by name.
     for action in built._actions:
         if action.dest == 'workspace':
             action.help = 'the manuscript PDF, or a Paper Scaffold workspace folder'
@@ -98,13 +103,22 @@ def engine_argv(argv):
         given = f'the code in {args.code}' if args.code else 'no code'
         return kept, f'paper-workbench review: reviewing {pdf} with {given}.'
     code = code_root(workspace)
-    run = Path(args.output).expanduser().resolve()
-    if run == code or code in run.parents:
-        raise WorkspaceRefused(f'The code this review hands over, {code}, holds the run folder {run}, so the '
-                               'code snapshot would hold the run\'s own files. Write the run outside it, or '
-                               'give --code or --no-code.')
+    if not review_arms()[args.arm]['code']:
+        raise WorkspaceRefused(f'The {args.arm} arm reviews no code, so it cannot be handed the code in {code}. '
+                               'Give --no-code to review the paper alone, or pick an arm that reviews code: '
+                               f'{listed(code_arms(), "or")}.')
     return [*kept, '--code', str(code)], (f'paper-workbench review: reviewing {pdf} with the code in {code}. '
                                           'Give --no-code to review the paper alone.')
+
+
+def code_arms():
+    """The arms that review code, in name order, as the engine's ``review_arms`` says."""
+    return [name for name, arm in review_arms().items() if arm['code']]
+
+
+def listed(names, word):
+    """*names* in prose, the last two joined by *word*."""
+    return f' {word} '.join([', '.join(names[:-1]), names[-1]] if len(names) > 1 else names)
 
 
 def is_no_code(token):

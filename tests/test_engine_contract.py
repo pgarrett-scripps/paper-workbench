@@ -16,7 +16,7 @@ import unittest
 from pathlib import Path
 from unittest.mock import patch
 
-from peerreviewagents import CLI_COMMANDS, MANUSCRIPT_STATES, export_draft, verify_workspace
+from peerreviewagents import CLI_COMMANDS, MANUSCRIPT_STATES, export_draft, review_arms, verify_workspace
 from peerreviewagents.workspace import save_review
 
 import manuscripts
@@ -159,18 +159,28 @@ class EngineCommandTest(unittest.TestCase):
             self.assertEqual((identity['pdf'], identity['source_sha256']),
                              (str(pdf), hashlib.sha256(pdf.read_bytes()).hexdigest()), extra)
 
-    def test_a_workspace_review_on_an_arm_with_no_specialists_says_how_to_leave_the_code_out(self):
-        from test_workspace_review import make_workspace
-        workspace = make_workspace(self.root / 'paper')
-        out = self.root / 'run'
-        stderr, stdout = io.StringIO(), io.StringIO()
-        with contextlib.redirect_stderr(stderr), contextlib.redirect_stdout(stdout):
-            status = main(['review', str(workspace), str(out), '--arm', 'single'])
-        # The engine refuses code for that arm, and the app's line above its message names --no-code.
-        self.assertEqual((status, stdout.getvalue()), (2, ''))
-        self.assertIn('Give --no-code to review the paper alone.', stderr.getvalue())
-        self.assertIn('runs no specialists', stderr.getvalue())
-        self.assertFalse((out / 'code').exists())
+    def test_review_arms_says_which_arms_the_engine_hands_code(self):
+        # A workspace review hands its code only to an arm whose row says code, so the row must be what review does.
+        code = self.root / 'paper-repo'
+        (code / 'analysis').mkdir(parents=True)
+        (code / 'analysis' / 'pipeline.py').write_text('FDR_THRESHOLD = 0.05\n')
+        empty = self.root / 'bin'
+        empty.mkdir()
+        for arm, row in review_arms().items():
+            out = self.root / f'run-{arm}'
+            stderr, stdout = io.StringIO(), io.StringIO()
+            with patch.dict(os.environ, {'PATH': str(empty)}), contextlib.redirect_stderr(stderr), \
+                    contextlib.redirect_stdout(stdout):
+                status = main(['review', str(self.pdf), str(out), '--arm', arm, '--code', str(code)])
+            self.assertEqual(status, 2, arm)
+            if row['code']:
+                summary = json.loads(stdout.getvalue())
+                self.assertEqual((summary['status'], summary['stage']), ('blocked', 'startup'), arm)
+                self.assertIn('spec-code', summary['models_requested'], arm)
+            else:
+                self.assertEqual(stdout.getvalue(), '', arm)
+                self.assertIn('runs no specialists', stderr.getvalue(), arm)
+                self.assertFalse((out / 'code').exists(), arm)
 
     def test_review_refuses_code_it_cannot_review(self):
         code = self.root / 'paper-repo'
