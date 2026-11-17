@@ -110,16 +110,43 @@ const lostPages=()=>(paper.ai_read?.lost_pages||[]).filter(row=>Number.isInteger
 const fromLostPage=piece=>lostPages().some(row=>(row.added||[]).some(added=>added.document===(piece.document||paper.main)
  &&added.lines?.[0]<=piece.lines[0]&&piece.lines[1]<=added.lines?.[1]));
 const modelWritten=piece=>piece.kind==='figure-description'||piece.source==='ai'||piece.source==='ai-reconstructed';
+// A piece the reader read again as several keeps the converter's whole reading in each, with which part
+// it is. Prose is never typed by the reader: a prose part is a slice of the converter's own characters
+// that the engine cut where the reader said.
+const PROSE_KINDS=['paragraph','footnote','heading','title'];
+const rereadPart=piece=>Number.isInteger(piece.original?.part)&&Number.isInteger(piece.original?.of)?piece.original:null;
+const cutProse=piece=>piece.source==='ai-reconstructed'&&PROSE_KINDS.includes(piece.kind)&&Boolean(rereadPart(piece));
+// Debris the converter read as pieces of their own leaves the document when the reader folds it into
+// the piece it is part of, and each one's whole reading is kept on that piece.
+function absorbedMarkup(piece){
+ const rows=Array.isArray(piece.original?.absorbed)?piece.original.absorbed:[];
+ if(!rows.length)return '';
+ const one=rows.length===1;
+ return `<details class="converter-reading"><summary>${one?'One piece':`${rows.length} pieces`} the converter read separately, folded into this one</summary>${rows.map(row=>`<pre>${esc(row.text)}</pre>`).join('')}</details>`;
+}
 function provenanceMarkup(piece){
  if(!modelWritten(piece))return '';
  const by=esc(pieceModel());
  const page=Number.isInteger(piece.page)&&piece.page>0?`page ${piece.page}`:'its page';
- if(piece.kind==='figure-description')return `<p class="provenance">AI description of the figure image by ${by}, not the authors' words</p>`;
+ const folded=absorbedMarkup(piece);
+ if(piece.kind==='figure-description')return `<p class="provenance">AI description of the figure image by ${by}, not the authors' words</p>`+folded;
+ const part=rereadPart(piece);
+ const split=part&&part.of>1?`. It is part ${part.part} of ${part.of} of what the converter read as one ${esc(part.kind)}`:'';
  const reading=piece.source==='ai-reconstructed'?piece.original?.latex||piece.original?.text||'':'';
- const replaced=reading?`<details class="converter-reading"><summary>${wasRead()?"The converter's reading":'The text it replaced'}</summary><pre>${esc(reading)}</pre></details>`:'';
- if(!wasRead())return `<p class="provenance">Written by ${by}. No page image was read here, so there is no page to compare it with</p>`+replaced;
- if(piece.source==='ai-reconstructed')return `<p class="provenance">Read from the image of ${page} by ${by}, because the converter garbled it</p>`+replaced;
- return `<p class="provenance">Written by ${by} from the image of ${page}, ${fromLostPage(piece)?'a page the converter returned no text from':'because the converter missed it'}</p>`;
+ const label=wasRead()?"The converter's reading":'The text it replaced';
+ const parts=part&&part.of>1?`${label}, ${part.of===2?'both parts':`all ${part.of} parts`}`:label;
+ const replaced=reading?`<details class="converter-reading"><summary>${parts}</summary><pre>${esc(reading)}</pre></details>`:'';
+ if(cutProse(piece))return `<p class="provenance">The converter's text, cut by ${by}${wasRead()?` after reading the image of ${page}`:''}. Every character in it is the converter's${split}</p>`+replaced+folded;
+ if(!wasRead())return `<p class="provenance">Written by ${by}. No page image was read here, so there is no page to compare it with${split}</p>`+replaced+folded;
+ if(piece.source==='ai-reconstructed')return `<p class="provenance">Read from the image of ${page} by ${by}, because the converter garbled it${split}</p>`+replaced+folded;
+ return `<p class="provenance">Written by ${by} from the image of ${page}, ${fromLostPage(piece)?'a page the converter returned no text from':'because the converter missed it'}</p>`+folded;
+}
+// What the model that read the pages left for whoever reads the manuscript, such as a table the
+// converter dropped. It is that model's own account, so it is shown as such and never as the paper.
+function readerNoteMarkup(){
+ const note=wasRead()&&typeof paper.ai_read.note==='string'?paper.ai_read.note.trim():'';
+ if(!note)return '';
+ return `<aside class="reader-note" role="note"><p><strong>A note from ${esc(pieceModel())}, the model that read the pages.</strong> It is that model's account of what it found, not the authors' text and not a review finding.</p><blockquote>${esc(note)}</blockquote></aside>`;
 }
 // The pages that came only from the model, each linked to the first line its transcription became.
 function lostPagesMarkup(){
@@ -149,7 +176,7 @@ function pieceMarkup(piece,name,newSection){
 }
 // The main document first, then each supplement under its own title, with a link to its file.
 function manuscript(){
- const nav=[],parts=[lostPagesMarkup()];
+ const nav=[],parts=[readerNoteMarkup(),lostPagesMarkup()];
  for(const name of Object.keys(paper.documents)){
   if(name!==paper.main){
    const asset=paper.assets.find(item=>item.document===name&&item.path);

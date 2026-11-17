@@ -347,36 +347,61 @@ assert.equal(vm.runInContext("review.findings[0].end_line = 1; review.findings[0
 // authors' words, and a page the converter returned nothing from is named above the manuscript and
 // linked to the first line the engine says its transcription became. The figure description on that
 // page is the model's too, but it is not the page's transcription, so the link skips it.
+// The reader's note is shown first, as that model's account and escaped as text. A piece the reader
+// read again as two says which part it is and keeps the converter's whole reading, a prose part is the
+// converter's text with spans cut out, and debris folded into a piece is kept under it as the converter
+// read it. The engine writes the same original, absorbed list included, on every part of one re-read.
 vm.runInContext(`review = {id:'none', findings:[]}; decisions = {items:{}};
 document.querySelector('#search').value = '';
-paper = {id:'p', main:'paper.md', assets:[], documents:{'paper.md':['Converted text.', '$$x = 1$$', 'Figure description: A bar chart.', 'Added text.']},
-  ai_read:{read:true, reader_model:'claude-sonnet-5-5',
+const reread = {kind:'paragraph', text:'Kept prose. with { | a | b |', piece:'p0010', of:2,
+  absorbed:[{piece:'p0011', kind:'heading', text:'qn,s,d else'}]};
+paper = {id:'p', main:'paper.md', assets:[], documents:{'paper.md':['Converted text.', '$$x = 1$$', 'Figure description: A bar chart.', 'Added text.', 'Kept prose.', '| a | b |']},
+  ai_read:{read:true, reader_model:'claude-sonnet-5-5', note:'Table 4 was inside Table 3.\\nThe <b>axis</b> of Figure 2 is unreadable.',
     lost_pages:[{page:3, words:0, rotation:0, added:[{piece:'p0211', document:'paper.md', lines:[4, 4]}]}]},
   pieces:[{document:'paper.md', lines:[1, 1], kind:'paragraph', source:'text', page:1},
     {document:'paper.md', lines:[2, 2], kind:'equation', source:'ai-reconstructed', page:2, original:{latex:'x - 1', number:null, text:'x - 1'}},
-    {document:'paper.md', lines:[3, 3], kind:'figure-description', source:'ai', page:3, original:{}},
-    {document:'paper.md', lines:[4, 4], kind:'paragraph', source:'ai', page:3, original:{}}]};
+    {document:'paper.md', lines:[3, 3], kind:'figure-description', source:'ai', page:3,
+      original:{absorbed:[{piece:'p0009', kind:'paragraph', text:'120 100 80'}]}},
+    {document:'paper.md', lines:[4, 4], kind:'paragraph', source:'ai', page:3, original:{}},
+    {document:'paper.md', lines:[5, 5], kind:'paragraph', source:'ai-reconstructed', page:2, original:{...reread, part:1}},
+    {document:'paper.md', lines:[6, 6], kind:'table', source:'ai-reconstructed', page:2, original:{...reread, part:2}}]};
 manuscript();`, context);
 const read = html('#manuscript');
 const blocks = read.split('<section').slice(1);
-assert.equal(blocks.length, 4);
+assert.equal(blocks.length, 6);
 assert.ok(!blocks[0].includes('model-written') && !blocks[0].includes('provenance'));
 assert.ok(blocks[1].includes('model-written') && blocks[1].includes(
-  'Read from the image of page 2 by claude-sonnet-5-5, because the converter garbled it'));
+  'Read from the image of page 2 by claude-sonnet-5-5, because the converter garbled it</p>'));
 assert.ok(blocks[1].includes("<summary>The converter's reading</summary><pre>x - 1</pre>"));
 assert.ok(blocks[2].includes("AI description of the figure image by claude-sonnet-5-5, not the authors' words"));
+assert.ok(blocks[2].includes('<summary>One piece the converter read separately, folded into this one</summary><pre>120 100 80</pre>'));
 assert.ok(blocks[3].includes('Written by claude-sonnet-5-5 from the image of page 3, a page the converter returned no text from'));
-assert.ok(read.startsWith('<p class="lost-pages" role="note">Page <a href="#line-paper.2emd-4">3</a> came only from claude-sonnet-5-5.'));
+assert.ok(!blocks[1].includes('folded into') && !blocks[3].includes('folded into'));
+assert.ok(blocks[4].includes("The converter's text, cut by claude-sonnet-5-5 after reading the image of page 2. Every character in it is the converter's. It is part 1 of 2 of what the converter read as one paragraph</p>"));
+assert.ok(blocks[4].includes("<summary>The converter's reading, both parts</summary><pre>Kept prose. with { | a | b |</pre>"));
+assert.ok(blocks[5].includes('Read from the image of page 2 by claude-sonnet-5-5, because the converter garbled it. It is part 2 of 2 of what the converter read as one paragraph</p>'));
+for (const block of [blocks[4], blocks[5]]) {
+  assert.ok(block.includes('<summary>One piece the converter read separately, folded into this one</summary><pre>qn,s,d else</pre>'));
+}
+assert.ok(read.startsWith('<aside class="reader-note" role="note"><p><strong>A note from claude-sonnet-5-5, the model that read the pages.</strong> '
+  + "It is that model's account of what it found, not the authors' text and not a review finding.</p>"
+  + '<blockquote>Table 4 was inside Table 3.\nThe &lt;b&gt;axis&lt;/b&gt; of Figure 2 is unreadable.</blockquote></aside>'
+  + '<p class="lost-pages" role="note">Page <a href="#line-paper.2emd-4">3</a> came only from claude-sonnet-5-5.'));
 // A manuscript no model read the pages of names the model the application said wrote its pieces, and
-// claims no page image: the engine records that model as ai_model and lost no page.
+// claims no page image: the engine records that model as ai_model and lost no page. A note is the
+// reader's, so none is shown where no model read the pages.
 vm.runInContext(`paper.ai_read = {read:false, reason:'written from an application source', ai_model:'claude-opus-5-5',
-  ai_pieces:3, lost_pages:[]}; manuscript();`, context);
+  ai_pieces:3, lost_pages:[], note:'Not a reader.'}; manuscript();`, context);
 const written = html('#manuscript');
 const writtenBlocks = written.split('<section').slice(1);
 assert.ok(!written.includes('lost-pages') && !written.includes('Read from the image') && !written.includes('from the image of'));
+assert.ok(!written.includes('reader-note') && !written.includes('Not a reader.'));
 for (const block of [writtenBlocks[1], writtenBlocks[3]]) {
-  assert.ok(block.includes('Written by claude-opus-5-5. No page image was read here, so there is no page to compare it with'));
+  assert.ok(block.includes('Written by claude-opus-5-5. No page image was read here, so there is no page to compare it with</p>'));
 }
 assert.ok(writtenBlocks[1].includes('<summary>The text it replaced</summary><pre>x - 1</pre>'));
 assert.ok(writtenBlocks[2].includes("AI description of the figure image by claude-opus-5-5, not the authors' words"));
+assert.ok(writtenBlocks[4].includes("The converter's text, cut by claude-opus-5-5. Every character in it is the converter's. It is part 1 of 2"));
+assert.ok(writtenBlocks[4].includes('<summary>The text it replaced, both parts</summary>'));
+assert.ok(writtenBlocks[5].includes('Written by claude-opus-5-5. No page image was read here, so there is no page to compare it with. It is part 2 of 2'));
 console.log('Review rendering checks passed');

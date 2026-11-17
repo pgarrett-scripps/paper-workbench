@@ -86,11 +86,14 @@ class ScaffoldPort(unittest.TestCase):
         # is the model's own words. The port keeps both as the engine wrote them, and the description
         # is never written into the Typst source the manuscript is built from. The port writes those
         # pieces again, so the ported manifest names the same model, and says no page was read in the port.
+        # A part of a re-read keeps which part it is, and debris folded into a piece stays under it, so
+        # the port keeps original whole and the debris never reaches the Typst source.
         equation ={'kind': 'equation', 'latex': 'x = 1', 'text': 'x = 1', 'section': 'Results', 'page': 1,
                     'bbox': list(BOX), 'source': 'ai-reconstructed',
-                    'original': {'latex': 'x - 1', 'number': None, 'text': 'x - 1'}}
+                    'original': {'kind': 'paragraph', 'text': 'x - 1 and more', 'piece': 'p0003', 'part': 1, 'of': 2}}
         description = {'kind': 'figure-description', 'text': 'A bar chart of two groups.', 'section': 'Results',
-                       'page': 1, 'source': 'ai', 'original': {}}
+                       'page': 1, 'source': 'ai',
+                       'original': {'absorbed': [{'piece': 'p0009', 'kind': 'paragraph', 'text': '120 100 80'}]}}
         with tempfile.TemporaryDirectory() as folder:
             root = Path(folder)
             base = source_manuscript(root / 'original', results=[equation, description],
@@ -105,12 +108,13 @@ class ScaffoldPort(unittest.TestCase):
             read = [(row['kind'], row['source'], row.get('original')) for row in ported.rows
                     if row['source'] != 'text']
             self.assertEqual(read, [('equation', 'ai-reconstructed', equation['original']),
-                                    ('figure-description', 'ai', {})])
+                                    ('figure-description', 'ai', description['original'])])
             spans = scaffold_spans(output, ported)
             entry = span_at(spans, 'paper.md', line_of(ported, 'Figure description: A bar chart'))
             self.assertEqual((entry['file'], entry['editable']), (None, False))
             typst = ''.join(path.read_text() for path in (output / 'scaffold').rglob('*.typ'))
             self.assertNotIn('A bar chart', typst)
+            self.assertNotIn('120 100 80', typst)
 
 
 if __name__ == '__main__':
