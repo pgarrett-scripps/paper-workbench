@@ -6,6 +6,7 @@ web/app.js read. No test starts a model session, and none patches the engine.
 """
 import ast
 import contextlib
+import hashlib
 import io
 import json
 import os
@@ -136,6 +137,40 @@ class EngineCommandTest(unittest.TestCase):
                                         '--code', str(code)])
         self.assertEqual((status, summary['status'], summary['stage']), (2, 'blocked', 'startup'))
         self.assertIn('spec-code', summary['models_requested'])
+
+    def test_review_of_a_workspace_reviews_its_built_pdf_with_its_code(self):
+        from test_workspace_review import make_workspace
+        workspace = make_workspace(self.root / 'paper')
+        pdf = workspace / 'paper.pdf'
+        empty = self.root / 'bin'
+        empty.mkdir()
+        for extra, code in (([], True), (['--no-code'], False)):
+            out = self.root / f'run-{len(extra)}'
+            stderr = io.StringIO()
+            with patch.dict(os.environ, {'PATH': str(empty)}), contextlib.redirect_stderr(stderr):
+                status, summary = run_main(['review', str(workspace), str(out), '--arm', 'draft-check', *extra])
+            self.assertEqual((status, summary['status'], summary['stage']), (2, 'blocked', 'startup'), extra)
+            # The workspace's code reaches the plan as the code lane, and --no-code keeps it out.
+            self.assertEqual('spec-code' in summary['models_requested'], code, extra)
+            self.assertIn(f'reviewing {pdf} with ' + (f'the code in {workspace}.' if code else 'no code.'),
+                          stderr.getvalue())
+            # The run records the built PDF as the manuscript it was asked to review.
+            identity = json.loads((out / 'review' / 'manifest.json').read_text())
+            self.assertEqual((identity['pdf'], identity['source_sha256']),
+                             (str(pdf), hashlib.sha256(pdf.read_bytes()).hexdigest()), extra)
+
+    def test_a_workspace_review_on_an_arm_with_no_specialists_says_how_to_leave_the_code_out(self):
+        from test_workspace_review import make_workspace
+        workspace = make_workspace(self.root / 'paper')
+        out = self.root / 'run'
+        stderr, stdout = io.StringIO(), io.StringIO()
+        with contextlib.redirect_stderr(stderr), contextlib.redirect_stdout(stdout):
+            status = main(['review', str(workspace), str(out), '--arm', 'single'])
+        # The engine refuses code for that arm, and the app's line above its message names --no-code.
+        self.assertEqual((status, stdout.getvalue()), (2, ''))
+        self.assertIn('Give --no-code to review the paper alone.', stderr.getvalue())
+        self.assertIn('runs no specialists', stderr.getvalue())
+        self.assertFalse((out / 'code').exists())
 
     def test_review_refuses_code_it_cannot_review(self):
         code = self.root / 'paper-repo'

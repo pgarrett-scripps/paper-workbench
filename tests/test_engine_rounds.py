@@ -6,7 +6,9 @@ do the grouping in Python, so no model is started and nothing reaches the
 network. This file builds two rounds that way, and a third run given analysis
 code whose code lane files one code-checked finding, and drives the viewer from
 them, so the hand-written fixture in test_run_view.py is checked against what
-the engine writes.
+the engine writes. The third run's code is what a workspace review hands over
+for a Paper Scaffold workspace, so the snapshot of it shows what the engine
+takes from one and what it leaves out.
 """
 import http.client
 import json
@@ -18,14 +20,16 @@ from contextlib import contextmanager
 from pathlib import Path
 from unittest import mock
 
-from peerreviewagents import read_manuscript
+from peerreviewagents import read_manuscript, read_run
 from peerreviewagents.plugin import server as engine
 from peerreviewagents.workspace import digest
 
 import manuscripts
 from paper_workspace.run_view import run_review
 from paper_workspace.server import make_server
+from paper_workspace.workspace_review import engine_argv
 from test_run_view import CODE_EVIDENCE, PIPELINE, finding, issue
+from test_workspace_review import make_workspace
 
 FIRST =['Knockdown lowered VPS35 in twelve samples drawn from one donor.',
          'The authors conclude that VPS35 controls retromer assembly in all tissues.',
@@ -48,6 +52,8 @@ def one_round(root, texts, source, quotes, issues, prior='', **ruling):
                            prior_issues=prior)
     assert 'request_rejected' not in opened, opened
     codes = {row['slot']: row['claim_code'] for row in opened['claim_codes']}
+    # The manuscript is sealed before ingest, so the engine plans no Read stage.
+    assert opened['reader'] is None and 'reader' not in codes, opened
     run = engine.current()
 
     def token(slot):
@@ -82,16 +88,17 @@ def code_round(root, code):
     """A draft-check run given ``code``: the code lane files one code-checked finding, the numbers lane none.
 
     The arm runs specialists and no editor, so the server writes one issue per
-    finding. The manuscript is sealed before ingest, so no reader is claimed.
+    finding. The manuscript is sealed before ingest, so the engine plans no reader.
     """
     engine.STATE['run'] = None
-    (code / 'analysis').mkdir(parents=True)
+    (code / 'analysis').mkdir(parents=True, exist_ok=True)
     (code / CODE_EVIDENCE['path']).write_text(PIPELINE)
     manuscripts.build(root / 'manuscript', CODE_TEXTS, source_sha256=digest('source-code'))
     opened = engine.ingest(str(root / 'manuscript.pdf'), str(root), arm='draft-check', reviewers=0,
                            tracks=['numbers'], code=str(code))
     assert 'request_rejected' not in opened, opened
     codes = {row['slot']: row['claim_code'] for row in opened['claim_codes']}
+    assert opened['reader'] is None and 'reader' not in codes, opened
     run = engine.current()
 
     def token(slot):
@@ -169,7 +176,10 @@ class EngineRoundsTests(unittest.TestCase):
                                     'reason': 'The sample now spans four donors.'},
                                    {'prior_id': 'i03', 'status': 'unverified',
                                     'reason': 'Nobody raised it again.'}])
-                code_round(cls.coded, cls.root / 'analysis-code')
+                # The code is what `paper-workbench review WORKSPACE RUN` hands the engine.
+                cls.workspace = make_workspace(cls.root / 'workspace')
+                argv, _ = engine_argv([str(cls.workspace), str(cls.coded), '--arm', 'draft-check'])
+                code_round(cls.coded, Path(argv[argv.index('--code') + 1]))
             finally:
                 engine.STATE['run'] = None
                 engine.STATE['plugin_root'] = plugin_root
@@ -242,6 +252,21 @@ class EngineRoundsTests(unittest.TestCase):
         self.assertEqual((code['reviewed'], code['kind'], code['files_opened'], code['opened']),
                          (True, 'folder', [CODE_EVIDENCE['path']], 1))
         self.assertNotIn('manifest', code)
+
+    def test_a_workspace_review_hands_over_its_code_and_the_engine_leaves_out_its_data(self):
+        code = read_run(self.coded)['code']
+        self.assertEqual((code['reviewed'], code['kind'], code['source'], code['commit']),
+                         (True, 'folder', str(self.workspace), ''))
+        copied = [row['path'] for row in code['manifest']['files']]
+        skipped = {row['path']: row['reason'] for row in code['manifest']['skipped']}
+        self.assertIn(CODE_EVIDENCE['path'], copied)
+        # Data, results and figures are folders the engine never walks into, and .env may hold secrets.
+        for folder in ('data', 'results', 'figures'):
+            self.assertTrue(skipped[folder].startswith('not looked at'), skipped)
+            self.assertFalse([path for path in copied if path.startswith(folder + '/')], copied)
+        self.assertEqual(skipped['.env'], 'may hold secrets')
+        self.assertIn('paper.pdf', skipped)
+        self.assertEqual(code['files_skipped'], len(skipped))
 
     def test_a_run_given_no_code_says_so(self):
         code = self.view(self.first)['run']['code']

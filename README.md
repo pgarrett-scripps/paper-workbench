@@ -10,7 +10,7 @@ Start with [the team handoff](HANDOFF.md) for the current architecture, setup an
 
 ## Install
 
-Requires Python 3.11 or newer. The app pins `peerreviewagents` 0.10.0, which is not on PyPI yet, and is tested against its main branch at commit 4aae006, which reads manuscripts by line, has a model read each page image before every PDF review and can check the paper against its analysis code. Until it is published, install the engine from its main branch first, then this app:
+Requires Python 3.11 or newer. The app pins `peerreviewagents` 0.10.0, which is not on PyPI yet, and is tested against its main branch at commit e88914d, which reads manuscripts by line, has a model read each page image before every PDF review and can check the paper against its analysis code. Until it is published, install the engine from its main branch first, then this app:
 
 ```bash
 python -m pip install 'peerreviewagents @ git+https://github.com/pgarrett-scripps/PeerReviewAgents@main'
@@ -34,6 +34,16 @@ paper-workbench serve runs/example --port 38744
 ```bash
 paper-workbench review manuscript.pdf runs/example --code ../my-paper/analysis
 ```
+
+A Paper Scaffold workspace folder can stand where the PDF does, so a workspace is reviewed from inside it:
+
+```bash
+cd my-paper
+just paper
+paper-workbench review . ../runs/my-paper-1
+```
+
+The review reads the workspace's built `paper.pdf`. It stops with a plain message, and writes nothing, when that PDF is missing or does not match the source as `just paper` last recorded it in `.build-state/paper.pdf.json`. The code reviewer is handed the repository the workspace is in, or the workspace itself outside git. The engine copies only its text source and lists what it left out, such as data, results, figures, dependencies and files that may hold secrets. `--code FOLDER_OR_URL` names other code and `--no-code` reviews the paper alone, which an arm with no specialists needs. The run folder has to be outside the code handed over, so the snapshot never holds the run's own files.
 
 A review is model inference. It needs the `claude` CLI on `PATH`, signed in to a Claude subscription. It never uses an API key, and it records its own token use in `runtime.json`. How much a run may spend is the operator's own setting. Without `claude`, the run is blocked at startup and launches nothing.
 

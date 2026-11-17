@@ -2,7 +2,8 @@
 
 ``review`` runs one PeerReviewAgents review of a manuscript PDF and ``report``
 renders the reports of a run, finished or stopped, exactly as ``peerreview
-review`` and ``peerreview report`` do. ``serve RUN`` opens that run in the viewer. ``import`` and
+review`` and ``peerreview report`` do. ``review`` also takes a Paper Scaffold
+workspace folder in place of the PDF, and reviews its built PDF with its code. ``serve RUN`` opens that run in the viewer. ``import`` and
 ``verify`` make and check a manuscript workspace without a model call, and the
 remaining commands revise and export a workspace.
 """
@@ -80,7 +81,8 @@ def build_parser(prog='paper-workbench'):
     sub=parser.add_subparsers(dest='command',required=True)
     # Each engine command parses its own options, so its help comes from the engine.
     sub.add_parser('review',add_help=False,
-        help='Review one manuscript PDF into a run folder (paper-workbench review -h for its options)')
+        help='Review one manuscript PDF, or a Paper Scaffold workspace with its code, into a run folder '
+             '(paper-workbench review -h for its options)')
     sub.add_parser('report',add_help=False,
         help='Render REVIEW.md and REVIEW.txt of a run, finished or stopped, with no model call')
     add_app_subcommands(sub)
@@ -91,9 +93,20 @@ def run_engine(command,argv):
     """Run an engine command through the engine's public entry and return its exit status.
 
     The engine parses the options, so a new engine option reaches the review.
+    A Paper Scaffold workspace stands where the PDF does, and
+    ``workspace_review`` turns it into the engine's arguments first.
     """
     if command=='review':
         from peerreviewagents import review_main
+        from .workspace_review import WorkspaceRefused, engine_argv
+        try:
+            argv,note=engine_argv(argv)
+        except WorkspaceRefused as exc:
+            # Nothing was written and no usage was spent, which is the engine's code 2.
+            print(f'paper-workbench review: {exc}',file=sys.stderr)
+            return 2
+        if note:
+            print(note,file=sys.stderr)
         return review_main(argv,prog='paper-workbench review')
     from peerreviewagents import report_main
     return report_main(argv,prog='paper-workbench report')
