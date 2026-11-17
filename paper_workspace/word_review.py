@@ -50,6 +50,25 @@ def passage(base, finding):
     return base.range_text(line, last, document)
 
 
+def code_cited(finding):
+    """The code each member of a run's card quotes from the run's code snapshot, as comment text.
+
+    A code-checked finding names a file of the snapshot, a line range in it and
+    the text the engine found there. Line numbers count lines of the snapshot file.
+    """
+    cited = []
+    for member in finding.get('members') or []:
+        code = member.get('code_evidence') if isinstance(member, dict) else None
+        if not (isinstance(code, dict) and isinstance(code.get('path'), str)
+                and type(code.get('start_line')) is int and type(code.get('end_line')) is int):
+            continue
+        first, last = code['start_line'], code['end_line']
+        lines = f'line {first}' if first == last else f'lines {first} to {last}'
+        text = code.get('text') if isinstance(code.get('text'), str) else ''
+        cited.append(f"Code checked: {code['path']}, {lines} of the run's code snapshot" + (f'\n{text}' if text else ''))
+    return '\n\n'.join(dict.fromkeys(cited))
+
+
 def patch_document(source, destination, parent, current, ledger, origin):
     """Write the review copy of one draft.
 
@@ -167,7 +186,7 @@ def patch_document(source, destination, parent, current, ledger, origin):
             '\n'.join(ref.get('quote', '') for ref in finding.get('source_evidence', [])
                       if ref.get('evidence_id') == card.get('evidence_id'))
             for card in source_cards.values())
-        text = '\n\n'.join(filter(None, [finding.get('title'), finding.get('comment'), evidence,
+        text = '\n\n'.join(filter(None, [finding.get('title'), finding.get('comment'), evidence, code_cited(finding),
             'Open scientific question. Origin: ' + entry.get('origin_revision', 'unknown') + '. Finding: ' + finding['id'] + '.']))
         if reason:
             unlocated.append({'finding_id': finding['id'], 'reason': reason, 'text': text, 'quote': quote})

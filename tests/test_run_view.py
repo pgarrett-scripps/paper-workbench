@@ -1,5 +1,6 @@
 """A PeerReviewAgents run folder in the viewer: the run's review, its decisions and its export."""
 import contextlib
+import hashlib
 import http.client
 import io
 import json
@@ -36,6 +37,13 @@ UNREADABLE = ('review/citations/ledger.jsonl is present and could not be read (P
 # A table the engine writes as three lines: the header, the delimiter and one row.
 TABLE = {'kind': 'table', 'text': 'Sample VPS35 A 12', 'table': [['Sample', 'VPS35'], ['A', '12']],
          'page': 1, 'bbox': list(BOX)}
+
+
+# The analysis code a code-checked finding quotes, and the code_evidence the engine stores for its
+# second line. test_engine_rounds.py files that finding through the engine and checks it is this.
+PIPELINE = '"""The analysis."""\nFDR_THRESHOLD = 0.05\n'
+CODE_EVIDENCE = {'path': 'analysis/pipeline.py', 'start_line': 2, 'end_line': 2, 'text': 'FDR_THRESHOLD = 0.05',
+                 'sha256': hashlib.sha256(PIPELINE.encode()).hexdigest()}
 
 
 def finding(uid, quote, slot='core-1', track='core', **extra):

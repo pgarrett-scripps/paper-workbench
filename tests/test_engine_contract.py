@@ -52,8 +52,10 @@ class AppCommandTest(unittest.TestCase):
         with contextlib.redirect_stdout(output), self.assertRaises(SystemExit):
             main(['review', '-h'])
         for flag in ('--reviewer-models', '--specialist-model', '--editor-model', '--recorder-model',
-                     '--citation-workers', '--citation-worker-model', '--reader-model', '--no-ai-read'):
+                     '--citation-workers', '--citation-worker-model', '--reader-model', '--code'):
             self.assertIn(flag, output.getvalue())
+        # The reader always runs on a PDF review, so there is no switch to turn it off.
+        self.assertNotIn('--no-ai-read', output.getvalue())
 
     def test_review_help_lists_the_prior_issues_option(self):
         # A second round passes the first round's issues.json, so its issue ids carry over.
@@ -122,6 +124,32 @@ class EngineCommandTest(unittest.TestCase):
             main(['review', str(self.pdf), str(self.root / 'other'), '--citation-workers', '13'])
         self.assertIn('--citation-workers', stderr.getvalue())
         self.assertFalse((self.root / 'other').exists())
+
+    def test_review_hands_the_analysis_code_to_the_code_lane(self):
+        code = self.root / 'paper-repo'
+        (code / 'analysis').mkdir(parents=True)
+        (code / 'analysis' / 'pipeline.py').write_text('FDR_THRESHOLD = 0.05\n')
+        empty = self.root / 'bin'
+        empty.mkdir()
+        with patch.dict(os.environ, {'PATH': str(empty)}):
+            status, summary = run_main(['review', str(self.pdf), str(self.root / 'run'), '--arm', 'draft-check',
+                                        '--code', str(code)])
+        self.assertEqual((status, summary['status'], summary['stage']), (2, 'blocked', 'startup'))
+        self.assertIn('spec-code', summary['models_requested'])
+
+    def test_review_refuses_code_it_cannot_review(self):
+        code = self.root / 'paper-repo'
+        code.mkdir()
+        cases = [(['--code', str(self.root / 'missing')], 'No code folder at'),
+                 (['--arm', 'single', '--code', str(code)], 'runs no specialists')]
+        for extra, message in cases:
+            out = self.root / f'run-{len(extra)}'
+            stderr, stdout = io.StringIO(), io.StringIO()
+            with contextlib.redirect_stderr(stderr), contextlib.redirect_stdout(stdout):
+                status = main(['review', str(self.pdf), str(out), *extra])
+            self.assertEqual(status, 2, extra)
+            self.assertIn(message, stderr.getvalue())
+            self.assertFalse((out / 'code').exists(), extra)
 
     def test_report_renders_a_finished_run_from_the_run_folder(self):
         from test_run_view import make_run

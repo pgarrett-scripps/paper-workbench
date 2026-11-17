@@ -289,6 +289,14 @@ function issueNotes(item){
   (item.audits||[]).length&&`<p class="muted">Specialist reports: ${item.audits.map(esc).join(', ')}</p>`].filter(Boolean);
  return notes.length?`<div class="cross-check">${notes.join('')}</div>`:'';
 }
+// A code-checked finding quotes the run's code snapshot as well as the paper: the file, its lines
+// and the text the engine found there. Line numbers count lines of the snapshot file.
+function codeEvidence(member){
+ const code=member.code_evidence;
+ if(!code||typeof code.path!=='string'||!Number.isInteger(code.start_line)||!Number.isInteger(code.end_line))return '';
+ const lines=code.start_line===code.end_line?`line ${code.start_line}`:`lines ${code.start_line} to ${code.end_line}`;
+ return `<div class="cross-check code-evidence"><p><strong>Code checked</strong><br><code>${esc(code.path)}</code>, ${lines} of the run's code snapshot</p>${typeof code.text==='string'?`<pre>${esc(code.text)}</pre>`:''}</div>`;
+}
 // Each member is a reviewer's finding behind the issue, with its own passage on the manuscript.
 function memberItem(item,member,index){
  const ruling=(review.run.escalation_rulings||[]).find(row=>row.finding_uid===member.finding_uid);
@@ -301,7 +309,7 @@ function memberItem(item,member,index){
  const shared=isMarked(member)?item.members.findIndex(other=>isMarked(other)&&spanKey(other)===spanKey(member)):index;
  const where=member.placement==='anchored'?`<a href="#anchor-${esc(item.id)}-${shared+1}">Go to passage</a>`:'Unplaced: the quote is not found once in its passage';
  const evidence=evidenceLinks(evidenceRows(member));
- return `<li class="member"><p class="muted">${facts}</p>${badges?`<div class="run-badges">${badges}</div>`:''}${member.basis_reason?`<p class="muted">${esc(member.basis_reason)}</p>`:''}${member.title&&member.title!==item.title?`<p><strong>${esc(member.title)}</strong></p>`:''}${member.comment&&member.comment!==item.comment?`<p class="comment-text">${esc(member.comment)}</p>`:''}${member.quote?`<blockquote>${esc(member.quote)}</blockquote>`:''}${wording}${member.counterevidence?`<div class="cross-check"><p><strong>Counterevidence checked</strong><br>${esc(member.counterevidence)}</p></div>`:''}${ruling?`<div class="cross-check ruling"><p><strong>Escalation ruling</strong><br>${esc(ruling.ruling)}</p></div>`:''}${links?`<p class="muted">Sources cited: ${links}</p>`:''}<div class="evidence">${where}${pageButton(member,item.id,index)}${evidence?`<br>Evidence: ${evidence}`:''}</div></li>`;
+ return `<li class="member"><p class="muted">${facts}</p>${badges?`<div class="run-badges">${badges}</div>`:''}${member.basis_reason?`<p class="muted">${esc(member.basis_reason)}</p>`:''}${member.title&&member.title!==item.title?`<p><strong>${esc(member.title)}</strong></p>`:''}${member.comment&&member.comment!==item.comment?`<p class="comment-text">${esc(member.comment)}</p>`:''}${member.quote?`<blockquote>${esc(member.quote)}</blockquote>`:''}${codeEvidence(member)}${wording}${member.counterevidence?`<div class="cross-check"><p><strong>Counterevidence checked</strong><br>${esc(member.counterevidence)}</p></div>`:''}${ruling?`<div class="cross-check ruling"><p><strong>Escalation ruling</strong><br>${esc(ruling.ruling)}</p></div>`:''}${links?`<p class="muted">Sources cited: ${links}</p>`:''}<div class="evidence">${where}${pageButton(member,item.id,index)}${evidence?`<br>Evidence: ${evidence}`:''}</div></li>`;
 }
 function memberList(item){
  if(!item.members.length)return '';
@@ -388,6 +396,19 @@ function citationPanel(citations){
  return `<details class="citations"${citations.complete&&!citations.problems.length?'':' open'}><summary>${esc(title)}</summary>${shown?citationCounts(counts).map(text=>`<p class="count">${esc(text)}</p>`).join(''):''}${lines.map(text=>`<p class="error">${esc(text)}</p>`).join('')}${references||uses?'<p class="muted">Indexed records and source passages were fetched from the internet, and the notes were written by a citation worker. The panel shows them as quoted text.</p>':''}${references}${uses}</details>`;
 }
 const RUN_FILTERS=['required','suggestions','escalated'],WORKSPACE_FILTERS=['scientific','copyedit','questions'];
+// Which code the run was reviewed against and how much of it a reviewer opened. A run given no
+// code says nothing about it, as REVIEW.md does. A local folder is named by its own name, as
+// REVIEW.md names it, and a repository URL is shown whole.
+function codeReviewed(code){
+ if(!code||code.reviewed!==true)return '';
+ const source=typeof code.source==='string'&&code.source?(code.kind==='folder'?code.source.split(/[\\/]/).filter(Boolean).pop()||'':code.source):'';
+ const commit=typeof code.commit==='string'&&code.commit?` at ${code.commit.slice(0,12)}${code.dirty===true?' with uncommitted changes':''}`:'';
+ const counts=[Number.isInteger(code.opened)&&Number.isInteger(code.files_in_snapshot)&&`${code.opened} of ${plural(code.files_in_snapshot,'file')} opened`,
+  code.searches>0&&`${code.searches} ${code.searches===1?'search':'searches'}`,code.files_skipped>0&&`${plural(code.files_skipped,'path')} left out of the snapshot`,
+  code.truncated&&`the snapshot stopped early: ${code.truncated}`].filter(Boolean);
+ const opened=(code.files_opened||[]).filter(path=>typeof path==='string');
+ return `<div class="code-reviewed"><p><strong>Code reviewed</strong><br><code>${esc(source||'the code this run was given')}</code>${esc(commit)}${counts.length?`<br>${esc(counts.join(', '))}`:''}</p>${opened.length?`<details><summary>Files opened (${opened.length})</summary><ul>${opened.map(path=>`<li><code>${esc(path)}</code></li>`).join('')}</ul></details>`:''}</div>`;
+}
 function runPanel(){
  const run=review.run;
  $('#run-panel').hidden=!run;
@@ -414,7 +435,7 @@ function runPanel(){
  const auditHtml=audits.length?`<details><summary>Specialist reports (${audits.length})</summary>${audits.map(([track,text])=>`<details class="audit"><summary>${esc(track)}</summary><pre>${esc(text)}</pre></details>`).join('')}</details>`:'';
  const reviewers=run.agents||[],tracks=Object.entries(run.findings_by_track||{});
  const reviewerHtml=reviewers.length||tracks.length?`<details><summary>Agents (${reviewers.length})</summary><ul>${reviewers.map(row=>`<li>${agentFacts(row)}</li>`).join('')}</ul>${tracks.length?`<p class="muted">Findings by track: ${tracks.map(([track,count])=>`${esc(track)} ${esc(count)}`).join(' · ')}</p>`:''}</details>`:'';
- $('#run-panel').innerHTML=`<p class="count">${facts.map(esc).join(' · ')}</p>${warnings.map(text=>`<p class="error">${esc(text)}</p>`).join('')}${unverified?`<p class="unverified">${esc(unverified)}</p>`:''}${verdictHtml}${citationPanel(run.citations)}${auditHtml}${reviewerHtml}${(run.limitations||[]).map(text=>`<p class="muted">${esc(text)}</p>`).join('')}`;
+ $('#run-panel').innerHTML=`<p class="count">${facts.map(esc).join(' · ')}</p>${warnings.map(text=>`<p class="error">${esc(text)}</p>`).join('')}${unverified?`<p class="unverified">${esc(unverified)}</p>`:''}${verdictHtml}${codeReviewed(run.code)}${citationPanel(run.citations)}${auditHtml}${reviewerHtml}${(run.limitations||[]).map(text=>`<p class="muted">${esc(text)}</p>`).join('')}`;
 }
 // A run card with no engine id is numbered by its place, so it takes no decision. The server refuses one too.
 const NO_ENGINE_ID='This card has no engine id, so a decision on it could land on another card. Re-run the review to decide on it.';

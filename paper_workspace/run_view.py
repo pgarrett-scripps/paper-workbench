@@ -44,9 +44,15 @@ MEMBER_TEXT = ('finding_uid', 'slot', 'track', 'severity', 'kind', 'basis', 'tit
 MEMBER_NUMBERS = ('line', 'end_line', 'start', 'end')
 TYPE_PROBLEMS_SHOWN = 8
 # An issue's members carry the quote and where the engine placed it. Their ledger
-# rows, joined by finding_uid, carry the comment, the span and the suggested wording.
+# rows, joined by finding_uid, carry the comment, the span, the suggested wording
+# and, on a code-checked finding, the file, lines and text the engine found in the
+# run's code snapshot.
 FROM_LEDGER = ('comment', 'start', 'end', 'anchor_text', 'placement', 'replacement', 'basis_reason',
-               'counterevidence', 'source_urls')
+               'counterevidence', 'source_urls', 'code_evidence')
+# What the run panel says about the code a run was reviewed against. The snapshot's
+# own manifest, which names every file, stays in the run folder.
+CODE_VIEW = ('reviewed', 'kind', 'source', 'commit', 'branch', 'dirty', 'snapshot', 'files_in_snapshot',
+             'files_skipped', 'truncated', 'files_opened', 'opened', 'searches')
 # Where a finding sits in the manuscript.
 SPAN = ('document', 'line', 'end_line', 'start', 'end', 'anchor_text')
 # What a card copies from the member it is anchored to.
@@ -529,6 +535,8 @@ def run_review(review, base):
         'limitations': run['limitations'],
         'audits': audit_texts(run['reports']['audits']),
         'citations': citations,
+        # `reviewed` is false for a run given no code, and every other key is then empty.
+        'code': {key: run['code'][key] for key in CODE_VIEW},
         'tokens_total': run['runtime']['tokens_total'],
         'wall_seconds': run['runtime']['wall_seconds'],
     }

@@ -125,6 +125,23 @@ class WordReviewTests(unittest.TestCase):
             self.assertEqual(comments.count('Curated annotation'), 1)
             self.assertEqual(comments.count('Second exact excerpt'), 1)
 
+    def test_a_code_checked_member_names_its_file_and_lines_in_the_comment(self):
+        from test_run_view import CODE_EVIDENCE
+        text = 'Peptides were filtered at a false discovery rate of one percent.'
+        paper = self.draft(text)
+        ledger = self.question(paper, text)
+        # A run's card is one issue, and only its code-checked member carries code_evidence.
+        ledger[0]['finding']['members'] = [{'basis': 'judgement'}, {'basis': 'code-checked', 'code_evidence': CODE_EVIDENCE},
+                                           {'basis': 'code-checked', 'code_evidence': {**CODE_EVIDENCE, 'end_line': 4}}]
+        out = self.folder / 'review.docx'
+        self.patch(self.fixture([text]), out, paper, paper, ledger)
+        with zipfile.ZipFile(out) as archive:
+            comments = visible(ET.fromstring(archive.read('word/comments.xml')))
+        for expected in ("Code checked: analysis/pipeline.py, line 2 of the run's code snapshot",
+                         "Code checked: analysis/pipeline.py, lines 2 to 4 of the run's code snapshot",
+                         'FDR_THRESHOLD = 0.05'):
+            self.assertIn(expected, comments)
+
     def test_ambiguous_changed_paragraph_fails(self):
         parent, current = self.draft('Old text'), self.draft('New text')
         source = self.fixture(['New text', 'New text'])

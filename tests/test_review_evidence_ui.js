@@ -60,7 +60,9 @@ review = {id:'run', summary:'Editor summary', raw_response:undefined, findings:[
     end:16, replacement:'delta', members:[member('u3', {kind:'edit', severity:'minor', quote:'gamma', start:11, end:16,
                                                         replacement:'delta'})]}),
   issue('i03', 3, 'suggestion', {severity:'minor', category:'reproducibility', placement:'unplaced', start:null,
-    end:null, members:[member('u4', {severity:'minor', placement:'unplaced', start:null, end:null})]}),
+    end:null, members:[member('u4', {severity:'minor', placement:'unplaced', start:null, end:null, slot:'spec-code',
+      track:'code', basis:'code-checked', code_evidence:{path:'analysis/<fdr>.py', start_line:2, end_line:3,
+        text:'if q < 0.05:\\n    keep(<row>)', sha256:'fcc34629203ab7066790d8b5d78f005de4b936ea6c4fb30bb4147642ffba90df'}})]}),
   issue('i04', null, 'closed', {status:'unverified', status_reason:'No editor ruled on it.', prior_id:'i04',
     prior_rank:4, raised_by:0, document:null, line:null, end_line:null, quote:null, start:null, end:null,
     placement:'unplaced', evidence:[],
@@ -81,6 +83,9 @@ review = {id:'run', summary:'Editor summary', raw_response:undefined, findings:[
           {slot:'recorder', role:'recorder', track:'ingest', assigned_model:'claude-haiku-5-5', model:null, attempt:1, tool_calls:4,
            session_calls:12, tokens:42000, state:'completed', findings:0, none_found:false, labels:['ingest', 'write review']}],
   models_unverified:['recorder'],
+  code:{reviewed:true, kind:'folder', source:'/home/someone/paper-repo', commit:'0123456789abcdef0123', branch:'main',
+        dirty:true, snapshot:'/home/someone/run/code', files_in_snapshot:3, files_skipped:1,
+        truncated:'more than 400 files of text source', files_opened:['analysis/<fdr>.py'], opened:1, searches:2},
   findings_by_track:{field:1, core:1}, wall_seconds:600, tokens_total:1234}};
 cards();
 `, context);
@@ -132,6 +137,18 @@ for (const text of ['Minor · Presentation', 'Accept wording', 'Decline wording'
 }
 assert.ok(cardOf('i03').includes('Unplaced: the quote is not found once in its passage'));
 assert.ok(cardOf('i03').includes('No finding behind this issue is placed on the manuscript text'));
+// A code-checked finding names its file and lines in the code snapshot and quotes the code, escaped.
+for (const text of ['spec-code · code track', 'Basis: code-checked',
+                    '<div class="cross-check code-evidence"><p><strong>Code checked</strong><br><code>analysis/&lt;fdr&gt;.py</code>, lines 2 to 3 of the run\'s code snapshot</p>',
+                    '<pre>if q &lt; 0.05:\n    keep(&lt;row&gt;)</pre>']) {
+  assert.ok(cardOf('i03').includes(text), text);
+}
+assert.ok(!cardOf('i03').includes('<fdr>'));
+// A finding with no code_evidence shows no code block.
+for (const id of ['i01', 'i02', 'i04']) assert.ok(!cardOf(id).includes('Code checked'), id);
+assert.equal(vm.runInContext("codeEvidence({code_evidence:{path:'a.py', start_line:4, end_line:4, text:'x = 1'}})", context),
+  '<div class="cross-check code-evidence"><p><strong>Code checked</strong><br><code>a.py</code>, line 4 of the run\'s code snapshot</p><pre>x = 1</pre></div>');
+assert.equal(vm.runInContext("codeEvidence({code_evidence:{path:'a.py', start_line:'4', end_line:4}})", context), '');
 // A closed issue has no members and no rank, and shows the evidence that still stands.
 for (const text of ['title="Unverified: not raised again and not shown fixed">unverified</span>', '<h3>Issue i04</h3>',
                     'No editor ruled on it.', 'Rank in the prior round: 4', "The prior round's evidence still in the manuscript",
@@ -154,6 +171,15 @@ for (const text of ['Arm full-two-track', '3 reviewers', 'Status complete', 'Iss
   assert.ok(panel.includes(text), text);
 }
 assert.ok(!panel.includes('<script>'));
+// The panel says which code the run was reviewed against, naming a local folder by its own name only.
+assert.ok(panel.includes('<div class="code-reviewed"><p><strong>Code reviewed</strong><br><code>paper-repo</code> at 0123456789ab with uncommitted changes'
+  + '<br>1 of 3 files opened, 2 searches, 1 path left out of the snapshot, the snapshot stopped early: more than 400 files of text source</p>'
+  + '<details><summary>Files opened (1)</summary><ul><li><code>analysis/&lt;fdr&gt;.py</code></li></ul></details></div>'));
+assert.ok(!panel.includes('/home/someone'));
+// A run given no code says nothing about code, as REVIEW.md does.
+assert.equal(vm.runInContext("codeReviewed({reviewed:false, kind:'', source:'', files_opened:[]}) + codeReviewed(undefined)", context), '');
+assert.ok(vm.runInContext("codeReviewed({reviewed:true, kind:'git-clone', source:'https://github.com/lab/paper', commit:'', opened:0, files_in_snapshot:1, files_opened:[]})", context)
+  .includes('<code>https://github.com/lab/paper</code><br>0 of 1 file opened</p></div>'));
 // The model asked is never shown as the model that ran.
 assert.ok(!panel.includes('model ran claude-haiku-5-5'));
 

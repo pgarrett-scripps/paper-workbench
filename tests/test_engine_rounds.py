@@ -3,9 +3,10 @@
 The engine has no public way to build a run folder without a model. Its own
 tests submit the findings through its server as the reviewer slots would and
 do the grouping in Python, so no model is started and nothing reaches the
-network. This file builds two rounds that way and drives the viewer from them,
-so the hand-written fixture in test_run_view.py is checked against what the
-engine writes.
+network. This file builds two rounds that way, and a third run given analysis
+code whose code lane files one code-checked finding, and drives the viewer from
+them, so the hand-written fixture in test_run_view.py is checked against what
+the engine writes.
 """
 import http.client
 import json
@@ -24,12 +25,13 @@ from peerreviewagents.workspace import digest
 import manuscripts
 from paper_workspace.run_view import run_review
 from paper_workspace.server import make_server
-from test_run_view import finding, issue
+from test_run_view import CODE_EVIDENCE, PIPELINE, finding, issue
 
-FIRST = ['Knockdown lowered VPS35 in twelve samples drawn from one donor.',
+FIRST =['Knockdown lowered VPS35 in twelve samples drawn from one donor.',
          'The authors conclude that VPS35 controls retromer assembly in all tissues.',
          'Each assay was repeated three times and the mean is reported in the figure.']
 SECOND = ['Knockdown lowered VPS35 in twelve samples drawn from four donors.', FIRST[1], FIRST[2]]
+CODE_TEXTS = ['Peptides were filtered at a false discovery rate of one percent.', FIRST[2]]
 CREDENTIALS = ('ANTHROPIC_API_KEY', 'ANTHROPIC_AUTH_TOKEN', 'OPENAI_API_KEY')
 
 
@@ -76,6 +78,42 @@ def one_round(root, texts, source, quotes, issues, prior='', **ruling):
     engine.STATE['run'] = None
 
 
+def code_round(root, code):
+    """A draft-check run given ``code``: the code lane files one code-checked finding, the numbers lane none.
+
+    The arm runs specialists and no editor, so the server writes one issue per
+    finding. The manuscript is sealed before ingest, so no reader is claimed.
+    """
+    engine.STATE['run'] = None
+    (code / 'analysis').mkdir(parents=True)
+    (code / CODE_EVIDENCE['path']).write_text(PIPELINE)
+    manuscripts.build(root / 'manuscript', CODE_TEXTS, source_sha256=digest('source-code'))
+    opened = engine.ingest(str(root / 'manuscript.pdf'), str(root), arm='draft-check', reviewers=0,
+                           tracks=['numbers'], code=str(code))
+    assert 'request_rejected' not in opened, opened
+    codes = {row['slot']: row['claim_code'] for row in opened['claim_codes']}
+    run = engine.current()
+
+    def token(slot):
+        agent = engine.claim_agent(slot, codes.pop(slot))['agent_token']
+        engine.read_paper(agent)
+        return agent
+
+    lane = token('spec-code')
+    assert 'request_rejected' not in engine.read_code(lane, CODE_EVIDENCE['path'])
+    stored = engine.submit_finding(lane, title='The threshold in the methods is not the one in the code',
+                                   quote='a false discovery rate of one percent', severity='major',
+                                   comment='The methods say one percent and the pipeline filters at five.',
+                                   code_path=CODE_EVIDENCE['path'], code_start_line=CODE_EVIDENCE['start_line'],
+                                   code_end_line=CODE_EVIDENCE['end_line'], code_quote=CODE_EVIDENCE['text'])
+    assert stored.get('stored'), stored
+    assert engine.submit_report(lane, 'Checked.', model=run.models.get('spec-code'))['closed']
+    numbers = token('spec-numbers')
+    assert engine.submit_report(numbers, 'Nothing.', none_found=True, model=run.models.get('spec-numbers'))['closed']
+    engine.write_review(engine.claim_agent('recorder', codes.pop('recorder'))['agent_token'])
+    engine.STATE['run'] = None
+
+
 @contextmanager
 def served(root):
     """The viewer's server on one run folder, and a function that sends it a request."""
@@ -109,7 +147,7 @@ class EngineRoundsTests(unittest.TestCase):
     def setUpClass(cls):
         cls.temporary = tempfile.TemporaryDirectory()
         cls.root = Path(cls.temporary.name).resolve()
-        cls.first, cls.second = cls.root / 'first', cls.root / 'second'
+        cls.first, cls.second, cls.coded = cls.root / 'first', cls.root / 'second', cls.root / 'coded'
         environment = {key: value for key, value in os.environ.items() if key not in CREDENTIALS}
         with mock.patch.dict(os.environ, environment, clear=True):
             plugin_root = engine.STATE.get('plugin_root')
@@ -131,6 +169,7 @@ class EngineRoundsTests(unittest.TestCase):
                                     'reason': 'The sample now spans four donors.'},
                                    {'prior_id': 'i03', 'status': 'unverified',
                                     'reason': 'Nobody raised it again.'}])
+                code_round(cls.coded, cls.root / 'analysis-code')
             finally:
                 engine.STATE['run'] = None
                 engine.STATE['plugin_root'] = plugin_root
@@ -182,6 +221,33 @@ class EngineRoundsTests(unittest.TestCase):
                 'status': 'noted', 'revision': 0})
             self.assertEqual((status, decisions['items']), (200, {'i02': 'noted'}))
         self.assertTrue((self.first / 'manuscript' / 'decisions' / 'run.json').is_file())
+
+    def test_the_code_fixture_has_the_keys_the_engine_writes(self):
+        row = json.loads((self.coded / 'review' / 'findings.jsonl').read_text().splitlines()[0])
+        self.assertEqual(row['basis'], 'code-checked')
+        self.assertEqual(sorted(finding('aa11', 'x', basis='code-checked', code_evidence=CODE_EVIDENCE)), sorted(row))
+        self.assertEqual(row['code_evidence'], CODE_EVIDENCE)
+        # A finding with no code carries no code_evidence key at all.
+        plain = json.loads((self.first / 'review' / 'findings.jsonl').read_text().splitlines()[0])
+        self.assertNotIn('code_evidence', plain)
+
+    def test_a_code_checked_finding_shows_its_file_and_lines(self):
+        review = self.view(self.coded)
+        self.assertEqual([(f['group'], len(f['members'])) for f in review['findings']], [('required', 1)])
+        member = review['findings'][0]['members'][0]
+        self.assertEqual((member['slot'], member['basis'], member['code_evidence']),
+                         ('spec-code', 'code-checked', CODE_EVIDENCE))
+        self.assertTrue(member['basis_reason'].startswith(f"The code quoted is what {CODE_EVIDENCE['path']} holds"))
+        code = review['run']['code']
+        self.assertEqual((code['reviewed'], code['kind'], code['files_opened'], code['opened']),
+                         (True, 'folder', [CODE_EVIDENCE['path']], 1))
+        self.assertNotIn('manifest', code)
+
+    def test_a_run_given_no_code_says_so(self):
+        code = self.view(self.first)['run']['code']
+        self.assertIs(code['reviewed'], False)
+        self.assertEqual(code['files_opened'], [])
+        self.assertEqual(self.view(self.first)['findings'][0]['members'][0].get('code_evidence'), None)
 
 
 if __name__ == '__main__':
