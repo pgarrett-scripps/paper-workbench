@@ -1,0 +1,923 @@
+{
+ "read": {
+  "id": "4b2ab1ead0a5e4b3",
+  "title": "Widget Readings on a Level Bench",
+  "source_sha256": "25e1f36c8cb45c701ff13785ff35dcee15e3580de524c8c704db6422fad9393d",
+  "statistics": {
+   "total_words": 201,
+   "main_words": 195,
+   "reference_words": 0,
+   "reference_entries": 0,
+   "pieces": 15,
+   "pdf_pages": 3,
+   "lines": {
+    "paper.md": 32
+   },
+   "sections": {
+    "Front matter": {
+     "pieces": 1,
+     "words": 7
+    },
+    "Abstract": {
+     "pieces": 2,
+     "words": 36
+    },
+    "1 Methods": {
+     "pieces": 2,
+     "words": 25
+    },
+    "2 Results": {
+     "pieces": 10,
+     "words": 147
+    }
+   },
+   "convention": "Unicode words with internal apostrophes and hyphens. Includes captions, tables and equations. References reported separately. No quality inference from counts."
+  },
+  "warnings": [
+   "PDF-only references and structure are provisional. Check extraction against the original before review."
+  ],
+  "assets": [],
+  "main": "paper.md",
+  "documents": {
+   "paper.md": [
+    "# Widget Readings on a Level Bench",
+    "",
+    "## Abstract",
+    "",
+    "We describe repeated readings of small widgets on a level bench. The readings were taken under the same conditions on three days. This document is synthetic prose written for software tests and reports no real experiment.",
+    "",
+    "## 1 Methods",
+    "",
+    "Each widget was placed against the stop and read with the same instrument. The observer checked the scale against a reference block before every reading.",
+    "",
+    "## 2 Results",
+    "",
+    "The blue widgets read the same on every day. The green widgets differed by less than the smallest division of the scale.",
+    "",
+    "$$ E = m c^{2} \\tag{(1)} $$",
+    "",
+    "The current was logged every hour.",
+    "",
+    "| Hour | Current (mA) |",
+    "| --- | --- |",
+    "| 1 | 4.5 |",
+    "| 2 | 9.0 |",
+    "",
+    "Caption: Table 1: Current by hour.",
+    "",
+    "Figure: Figure 1: The bench, the instrument and the widgets.",
+    "",
+    "Figure description: A photograph of the bench with the instrument clamped at the left and three widgets in a row. The scale under them is marked from 0 to 40 mm.",
+    "",
+    "The readings held across the week and no widget moved.",
+    "",
+    "The stop block was checked against the reference block at the end of each day. No check moved the stop by more than the smallest division of the scale, so every reading was kept."
+   ]
+  },
+  "pieces": [
+   {
+    "lines": [
+     1,
+     1
+    ],
+    "kind": "title",
+    "section": "Front matter",
+    "page": 1,
+    "bbox": [
+     72.0,
+     58.95703,
+     353.14194,
+     75.73535
+    ],
+    "source": "text",
+    "fingerprint": "75df83987c9cddbca3d7c2de45ba9c8d0b7d3aed84dd7a8652cc511011a73262",
+    "document": "paper.md",
+    "page_mapping": "converter"
+   },
+   {
+    "lines": [
+     3,
+     3
+    ],
+    "kind": "heading",
+    "section": "Abstract",
+    "page": 1,
+    "bbox": [
+     72.0,
+     96.58008,
+     119.68399,
+     106.12695
+    ],
+    "source": "text",
+    "fingerprint": "266c21b810ae65751fa70f388a867e94d180e79fd15c69ed54dae7df1d29166b",
+    "document": "paper.md",
+    "page_mapping": "converter"
+   },
+   {
+    "lines": [
+     5,
+     5
+    ],
+    "kind": "paragraph",
+    "section": "Abstract",
+    "page": 1,
+    "bbox": [
+     72.0,
+     127.0293,
+     516.4769,
+     167.28271
+    ],
+    "source": "text",
+    "fingerprint": "5823e779d89c42dab9fccb23d49e36dfb4b174435e292c9026962346a7c5d4eb",
+    "document": "paper.md",
+    "page_mapping": "converter"
+   },
+   {
+    "lines": [
+     7,
+     7
+    ],
+    "kind": "heading",
+    "section": "1 Methods",
+    "page": 1,
+    "bbox": [
+     72.0,
+     182.58008,
+     132.69699,
+     192.12695
+    ],
+    "source": "text",
+    "fingerprint": "88cb30eb3c7e0bc3e7d9f952fd1507dc857737b1571bd3ca4551c5d6a2c7ced0",
+    "document": "paper.md",
+    "page_mapping": "converter"
+   },
+   {
+    "lines": [
+     9,
+     9
+    ],
+    "kind": "paragraph",
+    "section": "1 Methods",
+    "page": 1,
+    "bbox": [
+     72.0,
+     213.0293,
+     513.43005,
+     238.28271
+    ],
+    "source": "text",
+    "fingerprint": "a2c9fdba08d3c0e4e8279f5b7842c02363aa0778a59f56b559fa3d12ca48aa7b",
+    "document": "paper.md",
+    "page_mapping": "converter"
+   },
+   {
+    "lines": [
+     11,
+     11
+    ],
+    "kind": "heading",
+    "section": "2 Results",
+    "page": 2,
+    "bbox": [
+     72.0,
+     62.58008,
+     126.18399,
+     72.12695
+    ],
+    "source": "text",
+    "fingerprint": "188d0a44a3b390db0f0316a893f5726f78f78867f698587b8307b75df5a45ab0",
+    "document": "paper.md",
+    "page_mapping": "converter"
+   },
+   {
+    "lines": [
+     13,
+     13
+    ],
+    "kind": "paragraph",
+    "section": "2 Results",
+    "page": 2,
+    "bbox": [
+     72.0,
+     93.0293,
+     510.999,
+     116.10742
+    ],
+    "source": "text",
+    "fingerprint": "54cc530bf8c230ff402e0b975e9b8fcc16846cb8ff4ff55ae83db43afa0a7422",
+    "document": "paper.md",
+    "page_mapping": "converter"
+   },
+   {
+    "lines": [
+     15,
+     15
+    ],
+    "kind": "equation",
+    "section": "2 Results",
+    "page": 2,
+    "bbox": null,
+    "source": "ai-reconstructed",
+    "fingerprint": "6eead2cfcbe7d033b8fb17409169e5ce18c95b18152b784fbdda0888739a1d87",
+    "document": "paper.md",
+    "confidence": 1.0,
+    "page_mapping": "converter",
+    "original": {
+     "kind": "equation",
+     "text": "E = m c^{2",
+     "latex": "E = m c^{2",
+     "number": "(1)"
+    }
+   },
+   {
+    "lines": [
+     17,
+     17
+    ],
+    "kind": "paragraph",
+    "section": "2 Results",
+    "page": 2,
+    "bbox": null,
+    "source": "ai-reconstructed",
+    "fingerprint": "ae496fb1e654c02863874384732d4238cb49a4c4bc397304680f349076e5bdf3",
+    "document": "paper.md",
+    "original": {
+     "kind": "paragraph",
+     "text": "The current was logged every hour. Hour Current (mA) 1 4.5 2 9.0",
+     "piece": "p10",
+     "part": 1,
+     "of": 3
+    }
+   },
+   {
+    "lines": [
+     19,
+     22
+    ],
+    "kind": "table",
+    "section": "2 Results",
+    "page": 2,
+    "bbox": null,
+    "source": "ai-reconstructed",
+    "fingerprint": "d87c3911aea4a1d6578c27d5d50bbdc4f10ddf6cabe1e3f805a9d37b6df22005",
+    "document": "paper.md",
+    "original": {
+     "kind": "paragraph",
+     "text": "The current was logged every hour. Hour Current (mA) 1 4.5 2 9.0",
+     "piece": "p10",
+     "part": 2,
+     "of": 3,
+     "absorbed": [
+      {
+       "piece": "p9",
+       "kind": "heading",
+       "text": "with $\\{$"
+      }
+     ]
+    }
+   },
+   {
+    "lines": [
+     24,
+     24
+    ],
+    "kind": "caption",
+    "section": "2 Results",
+    "page": 2,
+    "bbox": null,
+    "source": "ai-reconstructed",
+    "fingerprint": "6b6a9147bb6bc3580f56bbfc5771f8761fa69f566fbe3a34316895ddc668d853",
+    "document": "paper.md",
+    "original": {
+     "kind": "paragraph",
+     "text": "The current was logged every hour. Hour Current (mA) 1 4.5 2 9.0",
+     "piece": "p10",
+     "part": 3,
+     "of": 3
+    }
+   },
+   {
+    "lines": [
+     26,
+     26
+    ],
+    "kind": "caption",
+    "section": "2 Results",
+    "page": 2,
+    "bbox": null,
+    "source": "text",
+    "fingerprint": "3585e9e4f3a9f2ca269700fe059f907cbba93a53b08d3be6e84ea9a2043e0d57",
+    "document": "paper.md",
+    "page_mapping": "converter"
+   },
+   {
+    "lines": [
+     28,
+     28
+    ],
+    "kind": "figure-description",
+    "section": "2 Results",
+    "page": 2,
+    "bbox": null,
+    "source": "ai",
+    "fingerprint": "77e052d9b0cbf20f3446a55154930499b538cf94f9ab214d90416370224894e2",
+    "document": "paper.md",
+    "original": {
+     "absorbed": [
+      {
+       "piece": "p11",
+       "kind": "paragraph",
+       "text": "0 10 20 30 40 mm"
+      }
+     ]
+    }
+   },
+   {
+    "lines": [
+     30,
+     30
+    ],
+    "kind": "paragraph",
+    "section": "2 Results",
+    "page": 2,
+    "bbox": null,
+    "source": "ai-reconstructed",
+    "fingerprint": "3deb96be43239c6b6e0af482c4f6c1482468483645e7f27f148f1ca4c8bdd347",
+    "document": "paper.md",
+    "original": {
+     "kind": "paragraph",
+     "text": "The readings held across the week qn,s,d else and no widget moved.",
+     "piece": "p13",
+     "part": 1,
+     "of": 1
+    }
+   },
+   {
+    "lines": [
+     32,
+     32
+    ],
+    "kind": "paragraph",
+    "section": "2 Results",
+    "page": 3,
+    "bbox": null,
+    "source": "ai",
+    "fingerprint": "1184d9aa2a50b76d7245c7c90eda5b910a61e412adbdfd9c60973c3219e19fd4",
+    "document": "paper.md",
+    "original": {}
+   }
+  ],
+  "pages": [
+   {
+    "page": 1,
+    "width": 612.0,
+    "height": 792.0,
+    "rotation": 0
+   },
+   {
+    "page": 2,
+    "width": 612.0,
+    "height": 792.0,
+    "rotation": 0
+   },
+   {
+    "page": 3,
+    "width": 612.0,
+    "height": 792.0,
+    "rotation": 90
+   }
+  ],
+  "ai_read": {
+   "read": true,
+   "reader_model": "claude-sonnet-5-5",
+   "reader_slot": "reader",
+   "attempt": 1,
+   "pages_viewed": 3,
+   "pages": 3,
+   "actions": {
+    "repaired": 1,
+    "reread": 4,
+    "described": 1,
+    "added": 1
+   },
+   "gone": {
+    "absorbed": 2
+   },
+   "tool_calls": 8,
+   "note": "Table 1 came back as a paragraph of run-together cells and is a table again. The <b>axis</b> numbers of Figure 1 were a paragraph of their own and are folded into its description.",
+   "lost_pages": [
+    {
+     "page": 3,
+     "words": 34,
+     "rotation": 90,
+     "added": [
+      {
+       "piece": "p19",
+       "document": "paper.md",
+       "lines": [
+        32,
+        32
+       ]
+      }
+     ]
+    }
+   ]
+  }
+ },
+ "ported": {
+  "id": "099eda267d0273d6",
+  "title": "Widget Readings on a Level Bench",
+  "source_sha256": "099eda267d0273d6ccaf83bd380bc6545dfa7f80995dff627e06276669b85f68",
+  "statistics": {
+   "total_words": 201,
+   "main_words": 195,
+   "reference_words": 0,
+   "reference_entries": 0,
+   "pieces": 15,
+   "pdf_pages": 3,
+   "lines": {
+    "paper.md": 32
+   },
+   "sections": {
+    "Front matter": {
+     "pieces": 1,
+     "words": 7
+    },
+    "Abstract": {
+     "pieces": 2,
+     "words": 36
+    },
+    "1 Methods": {
+     "pieces": 2,
+     "words": 25
+    },
+    "2 Results": {
+     "pieces": 10,
+     "words": 147
+    }
+   },
+   "convention": "Unicode words with internal apostrophes and hyphens. Includes captions, tables and equations. References reported separately. No quality inference from counts."
+  },
+  "warnings": [
+   "Scaffold source was imported without compilation. Plain BODY prose and verified ported string literals are editable. Citation markers are protected and other Typst syntax remains locked.",
+   "This is an extracted reading copy, not the original manuscript layout.",
+   "Tables and captions are preserved as text. Original figures and formatting remain in the source PDF.",
+   "Citation text is preserved. BibTeX citation keys are not reconstructed."
+  ],
+  "assets": [
+   {
+    "id": "asset-3f904bc8f30e",
+    "label": "pra-port.json",
+    "kind": "source-asset",
+    "path": "scaffold/pra-port.json",
+    "available": "file"
+   },
+   {
+    "id": "asset-02765c0b92b6",
+    "label": "original.pdf",
+    "kind": "source-asset",
+    "path": "scaffold/source/original/original.pdf",
+    "available": "file",
+    "preview": "scaffold/source/original/original.pdf"
+   }
+  ],
+  "main": "paper.md",
+  "documents": {
+   "paper.md": [
+    "# Widget Readings on a Level Bench",
+    "",
+    "## Abstract",
+    "",
+    "We describe repeated readings of small widgets on a level bench. The readings were taken under the same conditions on three days. This document is synthetic prose written for software tests and reports no real experiment.",
+    "",
+    "## 1 Methods",
+    "",
+    "Each widget was placed against the stop and read with the same instrument. The observer checked the scale against a reference block before every reading.",
+    "",
+    "## 2 Results",
+    "",
+    "The blue widgets read the same on every day. The green widgets differed by less than the smallest division of the scale.",
+    "",
+    "$$ E = m c^{2} \\tag{(1)} $$",
+    "",
+    "The current was logged every hour.",
+    "",
+    "| Hour | Current (mA) |",
+    "| --- | --- |",
+    "| 1 | 4.5 |",
+    "| 2 | 9.0 |",
+    "",
+    "Caption: Table 1: Current by hour.",
+    "",
+    "Figure: Figure 1: The bench, the instrument and the widgets.",
+    "",
+    "Figure description: A photograph of the bench with the instrument clamped at the left and three widgets in a row. The scale under them is marked from 0 to 40 mm.",
+    "",
+    "The readings held across the week and no widget moved.",
+    "",
+    "The stop block was checked against the reference block at the end of each day. No check moved the stop by more than the smallest division of the scale, so every reading was kept."
+   ]
+  },
+  "pieces": [
+   {
+    "lines": [
+     1,
+     1
+    ],
+    "kind": "title",
+    "section": "Front matter",
+    "page": 1,
+    "bbox": [
+     72.0,
+     58.95703,
+     353.14194,
+     75.73535
+    ],
+    "source": "text",
+    "fingerprint": "75df83987c9cddbca3d7c2de45ba9c8d0b7d3aed84dd7a8652cc511011a73262",
+    "document": "paper.md",
+    "page_mapping": "original_pdf",
+    "native": {
+     "file": null,
+     "editable": false,
+     "table_structure": null
+    }
+   },
+   {
+    "lines": [
+     3,
+     3
+    ],
+    "kind": "heading",
+    "section": "Abstract",
+    "page": 1,
+    "bbox": [
+     72.0,
+     96.58008,
+     119.68399,
+     106.12695
+    ],
+    "source": "text",
+    "fingerprint": "266c21b810ae65751fa70f388a867e94d180e79fd15c69ed54dae7df1d29166b",
+    "document": "paper.md",
+    "page_mapping": "original_pdf",
+    "native": {
+     "file": null,
+     "editable": false,
+     "table_structure": null
+    }
+   },
+   {
+    "lines": [
+     5,
+     5
+    ],
+    "kind": "paragraph",
+    "section": "Abstract",
+    "page": 1,
+    "bbox": [
+     72.0,
+     127.0293,
+     516.4769,
+     167.28271
+    ],
+    "source": "text",
+    "fingerprint": "5823e779d89c42dab9fccb23d49e36dfb4b174435e292c9026962346a7c5d4eb",
+    "document": "paper.md",
+    "page_mapping": "original_pdf",
+    "native": {
+     "file": "config.typ",
+     "editable": true,
+     "table_structure": null
+    }
+   },
+   {
+    "lines": [
+     7,
+     7
+    ],
+    "kind": "heading",
+    "section": "1 Methods",
+    "page": 1,
+    "bbox": [
+     72.0,
+     182.58008,
+     132.69699,
+     192.12695
+    ],
+    "source": "text",
+    "fingerprint": "88cb30eb3c7e0bc3e7d9f952fd1507dc857737b1571bd3ca4551c5d6a2c7ced0",
+    "document": "paper.md",
+    "page_mapping": "original_pdf",
+    "native": {
+     "file": "blocks/0004.typ",
+     "editable": false,
+     "table_structure": null
+    }
+   },
+   {
+    "lines": [
+     9,
+     9
+    ],
+    "kind": "paragraph",
+    "section": "1 Methods",
+    "page": 1,
+    "bbox": [
+     72.0,
+     213.0293,
+     513.43005,
+     238.28271
+    ],
+    "source": "text",
+    "fingerprint": "a2c9fdba08d3c0e4e8279f5b7842c02363aa0778a59f56b559fa3d12ca48aa7b",
+    "document": "paper.md",
+    "page_mapping": "original_pdf",
+    "native": {
+     "file": "blocks/0005.typ",
+     "editable": true,
+     "table_structure": null
+    }
+   },
+   {
+    "lines": [
+     11,
+     11
+    ],
+    "kind": "heading",
+    "section": "2 Results",
+    "page": 2,
+    "bbox": [
+     72.0,
+     62.58008,
+     126.18399,
+     72.12695
+    ],
+    "source": "text",
+    "fingerprint": "188d0a44a3b390db0f0316a893f5726f78f78867f698587b8307b75df5a45ab0",
+    "document": "paper.md",
+    "page_mapping": "original_pdf",
+    "native": {
+     "file": "blocks/0006.typ",
+     "editable": false,
+     "table_structure": null
+    }
+   },
+   {
+    "lines": [
+     13,
+     13
+    ],
+    "kind": "paragraph",
+    "section": "2 Results",
+    "page": 2,
+    "bbox": [
+     72.0,
+     93.0293,
+     510.999,
+     116.10742
+    ],
+    "source": "text",
+    "fingerprint": "54cc530bf8c230ff402e0b975e9b8fcc16846cb8ff4ff55ae83db43afa0a7422",
+    "document": "paper.md",
+    "page_mapping": "original_pdf",
+    "native": {
+     "file": "blocks/0007.typ",
+     "editable": true,
+     "table_structure": null
+    }
+   },
+   {
+    "lines": [
+     15,
+     15
+    ],
+    "kind": "equation",
+    "section": "2 Results",
+    "page": 2,
+    "bbox": null,
+    "source": "ai-reconstructed",
+    "fingerprint": "6eead2cfcbe7d033b8fb17409169e5ce18c95b18152b784fbdda0888739a1d87",
+    "document": "paper.md",
+    "confidence": 1.0,
+    "page_mapping": "original_pdf",
+    "original": {
+     "kind": "equation",
+     "text": "E = m c^{2",
+     "latex": "E = m c^{2",
+     "number": "(1)"
+    },
+    "native": {
+     "file": "blocks/0008.typ",
+     "editable": false,
+     "table_structure": null
+    }
+   },
+   {
+    "lines": [
+     17,
+     17
+    ],
+    "kind": "paragraph",
+    "section": "2 Results",
+    "page": 2,
+    "bbox": null,
+    "source": "ai-reconstructed",
+    "fingerprint": "ae496fb1e654c02863874384732d4238cb49a4c4bc397304680f349076e5bdf3",
+    "document": "paper.md",
+    "page_mapping": "original_pdf",
+    "original": {
+     "kind": "paragraph",
+     "text": "The current was logged every hour. Hour Current (mA) 1 4.5 2 9.0",
+     "piece": "p10",
+     "part": 1,
+     "of": 3
+    },
+    "native": {
+     "file": "blocks/0009.typ",
+     "editable": true,
+     "table_structure": null
+    }
+   },
+   {
+    "lines": [
+     19,
+     22
+    ],
+    "kind": "table",
+    "section": "2 Results",
+    "page": 2,
+    "bbox": null,
+    "source": "ai-reconstructed",
+    "fingerprint": "d87c3911aea4a1d6578c27d5d50bbdc4f10ddf6cabe1e3f805a9d37b6df22005",
+    "document": "paper.md",
+    "page_mapping": "original_pdf",
+    "original": {
+     "kind": "paragraph",
+     "text": "The current was logged every hour. Hour Current (mA) 1 4.5 2 9.0",
+     "piece": "p10",
+     "part": 2,
+     "of": 3,
+     "absorbed": [
+      {
+       "piece": "p9",
+       "kind": "heading",
+       "text": "with $\\{$"
+      }
+     ]
+    },
+    "native": {
+     "file": "blocks/0010.typ",
+     "editable": false,
+     "table_structure": null
+    }
+   },
+   {
+    "lines": [
+     24,
+     24
+    ],
+    "kind": "caption",
+    "section": "2 Results",
+    "page": 2,
+    "bbox": null,
+    "source": "ai-reconstructed",
+    "fingerprint": "6b6a9147bb6bc3580f56bbfc5771f8761fa69f566fbe3a34316895ddc668d853",
+    "document": "paper.md",
+    "page_mapping": "original_pdf",
+    "original": {
+     "kind": "paragraph",
+     "text": "The current was logged every hour. Hour Current (mA) 1 4.5 2 9.0",
+     "piece": "p10",
+     "part": 3,
+     "of": 3
+    },
+    "native": {
+     "file": "blocks/0011.typ",
+     "editable": false,
+     "table_structure": null
+    }
+   },
+   {
+    "lines": [
+     26,
+     26
+    ],
+    "kind": "caption",
+    "section": "2 Results",
+    "page": 2,
+    "bbox": null,
+    "source": "text",
+    "fingerprint": "3585e9e4f3a9f2ca269700fe059f907cbba93a53b08d3be6e84ea9a2043e0d57",
+    "document": "paper.md",
+    "page_mapping": "original_pdf",
+    "native": {
+     "file": "blocks/0012.typ",
+     "editable": false,
+     "table_structure": null
+    }
+   },
+   {
+    "lines": [
+     28,
+     28
+    ],
+    "kind": "figure-description",
+    "section": "2 Results",
+    "page": 2,
+    "bbox": null,
+    "source": "ai",
+    "fingerprint": "77e052d9b0cbf20f3446a55154930499b538cf94f9ab214d90416370224894e2",
+    "document": "paper.md",
+    "page_mapping": "original_pdf",
+    "original": {
+     "absorbed": [
+      {
+       "piece": "p11",
+       "kind": "paragraph",
+       "text": "0 10 20 30 40 mm"
+      }
+     ]
+    },
+    "native": {
+     "file": null,
+     "editable": false,
+     "table_structure": null
+    }
+   },
+   {
+    "lines": [
+     30,
+     30
+    ],
+    "kind": "paragraph",
+    "section": "2 Results",
+    "page": 2,
+    "bbox": null,
+    "source": "ai-reconstructed",
+    "fingerprint": "3deb96be43239c6b6e0af482c4f6c1482468483645e7f27f148f1ca4c8bdd347",
+    "document": "paper.md",
+    "page_mapping": "original_pdf",
+    "original": {
+     "kind": "paragraph",
+     "text": "The readings held across the week qn,s,d else and no widget moved.",
+     "piece": "p13",
+     "part": 1,
+     "of": 1
+    },
+    "native": {
+     "file": "blocks/0014.typ",
+     "editable": true,
+     "table_structure": null
+    }
+   },
+   {
+    "lines": [
+     32,
+     32
+    ],
+    "kind": "paragraph",
+    "section": "2 Results",
+    "page": 3,
+    "bbox": null,
+    "source": "ai",
+    "fingerprint": "1184d9aa2a50b76d7245c7c90eda5b910a61e412adbdfd9c60973c3219e19fd4",
+    "document": "paper.md",
+    "page_mapping": "original_pdf",
+    "original": {},
+    "native": {
+     "file": "blocks/0015.typ",
+     "editable": true,
+     "table_structure": null
+    }
+   }
+  ],
+  "pages": [
+   {
+    "page": 1,
+    "width": 612.0,
+    "height": 792.0,
+    "rotation": 0
+   },
+   {
+    "page": 2,
+    "width": 612.0,
+    "height": 792.0,
+    "rotation": 0
+   },
+   {
+    "page": 3,
+    "width": 612.0,
+    "height": 792.0,
+    "rotation": 90
+   }
+  ],
+  "ai_read": {
+   "read": false,
+   "reason": "written from an application's own source, which needs no reading: no stage here read the pages. 7 of its 15 pieces were written by claude-sonnet-5-5, which the caller named, and carry source \"ai\" or \"ai-reconstructed\"",
+   "ai_model": "claude-sonnet-5-5",
+   "ai_pieces": 7,
+   "lost_pages": []
+  }
+ }
+}

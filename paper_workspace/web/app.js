@@ -143,8 +143,10 @@ function provenanceMarkup(piece){
 }
 // What the model that read the pages left for whoever reads the manuscript, such as a table the
 // converter dropped. It is that model's own account, so it is shown as such and never as the paper.
+// The engine writes a note only when a read is sealed, with its whitespace folded to single spaces,
+// so it is shown as written.
 function readerNoteMarkup(){
- const note=wasRead()&&typeof paper.ai_read.note==='string'?paper.ai_read.note.trim():'';
+ const note=paper.ai_read?.note||'';
  if(!note)return '';
  return `<aside class="reader-note" role="note"><p><strong>A note from ${esc(pieceModel())}, the model that read the pages.</strong> It is that model's account of what it found, not the authors' text and not a review finding.</p><blockquote>${esc(note)}</blockquote></aside>`;
 }

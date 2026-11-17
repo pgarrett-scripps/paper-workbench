@@ -10,7 +10,7 @@ Start with [the team handoff](HANDOFF.md) for the current architecture, setup an
 
 ## Install
 
-Requires Python 3.11 or newer. The app pins `peerreviewagents` 0.10.0, which is not on PyPI yet, and is tested against its main branch at commit 3f475ca, which reads manuscripts by line and has a model read each page image before the review. Until it is published, install the engine from its main branch first, then this app:
+Requires Python 3.11 or newer. The app pins `peerreviewagents` 0.10.0, which is not on PyPI yet, and is tested against its main branch at commit 23cb205, which reads manuscripts by line and has a model read each page image before the review. Until it is published, install the engine from its main branch first, then this app:
 
 ```bash
 python -m pip install 'peerreviewagents @ git+https://github.com/pgarrett-scripps/PeerReviewAgents@main'
@@ -65,7 +65,7 @@ python -m unittest discover -s tests -p 'test_*.py'
 node tests/test_review_evidence_ui.js
 ```
 
-Tests use synthetic or local fixtures and never start a review. Some optional rendering checks require local document tooling.
+Tests use synthetic or local fixtures and never start a review. The read manuscript fixture is built by the engine's scripted reader with no model, which needs Poppler. Some optional rendering checks require local document tooling.
 
 ## Provenance
 

@@ -7,6 +7,7 @@ from peerreviewagents import verify_workspace
 from peerreviewagents.workspace import read_json
 
 import manuscripts
+import reader_fixture
 from manuscripts import BOX, line_of
 from paper_workspace.scaffold_import import scaffold_spans, span_at
 from paper_workspace.scaffold_port import port_workspace
@@ -16,12 +17,8 @@ LITERAL = 'A citation [1] and #include "bad.typ" are literal text.'
 TABLE = [['Group', 'Count'], ['Control', '12']]
 
 
-def source_manuscript(folder, results=(), ai_model=''):
-    """A PDF import's workspace: an abstract, results that cite, a reference list and a supplement table.
-
-    ``results`` is further pieces at the end of the results, such as the pieces a model read, and
-    ``ai_model`` is the model that wrote them.
-    """
+def source_manuscript(folder):
+    """A PDF import's workspace: an abstract, results that cite, a reference list and a supplement table."""
     folder = Path(folder)
     (folder / 'original').mkdir(parents=True)
     # The engine digests the folder as it stands, so the PDF is written first and the manifest covers it.
@@ -33,15 +30,13 @@ def source_manuscript(folder, results=(), ai_model=''):
         {'kind': 'heading', 'level': 1, 'text': 'Results', 'section': 'Results'},
         {'kind': 'paragraph', 'text': 'There were 12 samples.', 'section': 'Results', **placed},
         {'kind': 'paragraph', 'text': LITERAL, 'section': 'Results', 'citations': ['ref1'], **placed},
-        *results,
         {'kind': 'heading', 'level': 1, 'text': 'References', 'section': 'References'},
         {'kind': 'reference', 'text': '1 Reference text', 'section': 'References'},
     ]
     supplement = [{'kind': 'table', 'text': 'Group Count Control 12', 'table': TABLE, 'section': 'Supplement S1'}]
     return manuscripts.build(folder, [], title='Real source test', extra=pieces,
                              documents={'S1.md': supplement},
-                             references=[{'id': 'ref1', 'label': '1', 'raw': 'Reference text'}],
-                             ai_model=ai_model)
+                             references=[{'id': 'ref1', 'label': '1', 'raw': 'Reference text'}])
 
 
 class ScaffoldPort(unittest.TestCase):
@@ -82,39 +77,34 @@ class ScaffoldPort(unittest.TestCase):
                 port_workspace(source, output)
 
     def test_the_pieces_a_model_read_keep_whose_they_are_and_stay_out_of_the_source(self):
-        # An equation the model read again keeps the converter's reading, and a figure description
-        # is the model's own words. The port keeps both as the engine wrote them, and the description
-        # is never written into the Typst source the manuscript is built from. The port writes those
-        # pieces again, so the ported manifest names the same model, and says no page was read in the port.
-        # A part of a re-read keeps which part it is, and debris folded into a piece stays under it, so
-        # the port keeps original whole and the debris never reaches the Typst source.
-        equation ={'kind': 'equation', 'latex': 'x = 1', 'text': 'x = 1', 'section': 'Results', 'page': 1,
-                    'bbox': list(BOX), 'source': 'ai-reconstructed',
-                    'original': {'kind': 'paragraph', 'text': 'x - 1 and more', 'piece': 'p0003', 'part': 1, 'of': 2}}
-        description = {'kind': 'figure-description', 'text': 'A bar chart of two groups.', 'section': 'Results',
-                       'page': 1, 'source': 'ai',
-                       'original': {'absorbed': [{'piece': 'p0009', 'kind': 'paragraph', 'text': '120 100 80'}]}}
+        # The manuscript is one the engine's own Read stage wrote, through its scripted reader. A repaired
+        # equation keeps the converter's reading, a figure description is the model's own words, a re-read
+        # keeps which part each piece is, and debris folded into a piece stays under it. The port keeps
+        # every original whole, and neither the description nor any debris reaches the Typst source the
+        # manuscript is built from. The port writes those pieces again, so the ported manifest names the
+        # reader as the model that wrote them, and says no page was read in the port.
         with tempfile.TemporaryDirectory() as folder:
             root = Path(folder)
-            base = source_manuscript(root / 'original', results=[equation, description],
-                                     ai_model='claude-sonnet-5-5')
+            source = reader_fixture.read_paper(root)
+            base = verify_workspace(source)
             output = root / 'ported'
-            port_workspace(root / 'original', output)
+            port_workspace(source, output)
             ported = verify_workspace(output)
             self.assertEqual(ported.documents, base.documents)
+            written = [(row['kind'], row['source'], row['original']) for row in base.rows if row['source'] != 'text']
+            self.assertEqual([(row['kind'], row['source'], row['original']) for row in ported.rows
+                              if row['source'] != 'text'], written)
+            self.assertEqual([original['part'] for _, _, original in written if 'of' in original], [1, 2, 3, 1])
+            self.assertEqual(len([original for _, _, original in written if original.get('absorbed')]), 2)
             read = ported.manifest['ai_read']
             self.assertEqual((read['read'], read['ai_model'], read['ai_pieces'], read['lost_pages']),
-                             (False, 'claude-sonnet-5-5', 2, []))
-            read = [(row['kind'], row['source'], row.get('original')) for row in ported.rows
-                    if row['source'] != 'text']
-            self.assertEqual(read, [('equation', 'ai-reconstructed', equation['original']),
-                                    ('figure-description', 'ai', description['original'])])
+                             (False, base.manifest['ai_read']['reader_model'], len(written), []))
             spans = scaffold_spans(output, ported)
-            entry = span_at(spans, 'paper.md', line_of(ported, 'Figure description: A bar chart'))
+            entry = span_at(spans, 'paper.md', line_of(ported, 'Figure description: A photograph'))
             self.assertEqual((entry['file'], entry['editable']), (None, False))
             typst = ''.join(path.read_text() for path in (output / 'scaffold').rglob('*.typ'))
-            self.assertNotIn('A bar chart', typst)
-            self.assertNotIn('120 100 80', typst)
+            for text in ('A photograph of the bench', '0 10 20 30 40 mm', 'qn,s,d else'):
+                self.assertNotIn(text, typst)
 
 
 if __name__ == '__main__':
