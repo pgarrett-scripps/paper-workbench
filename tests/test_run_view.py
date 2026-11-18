@@ -92,7 +92,7 @@ def issue(number, name, severity, category, rows, **extra):
     return {**dict.fromkeys(ISSUE_FIELDS), 'id': f'i{number:02d}', 'name': name, 'severity': severity,
             'category': category, 'rank': number, 'statement': f'{name}, as the editor states it.',
             'members': [member(row) for row in rows], 'raised_by': len({row['slot'] for row in rows}),
-            'status': 'new', 'surviving_quotes': [], 'audits': [], **extra}
+            'audits': [], **extra}
 
 
 ISSUES = [issue(1, 'The knockdown control is not named', 'major', 'claims-and-conclusions', [AA11, BB22]),
@@ -102,13 +102,13 @@ ISSUES = [issue(1, 'The knockdown control is not named', 'major', 'claims-and-co
 def issues_document(issues=ISSUES, **extra):
     """``review/issues.json`` with every top-level key docs/INTEGRATIONS.md lists."""
     return {'schema_version': ISSUES_SCHEMA_VERSION, 'issues_source': 'editor', 'issues_source_reason': None,
-            'issue_ids_used': [row['id'] for row in issues], 'summary': 'One central question.',
+            'summary': 'One central question.',
             'issues': issues, 'counts': {},
             'verdict': {'significance': 'High', 'strength_of_evidence': 'Weak', 'reasoning': 'Correlation.',
                         'basis': 'judgement', 'limitation': 'Advisory.'},
             'limitations': ['The editor read no supplement.'],
             'escalation_rulings': [{'finding_uid': 'aa11', 'ruling': 'Accepted.'}], 'escalated_count': 1,
-            'prior_round': None, 'stages': {}, 'audits': ['audit_numbers.md', 'audit_stats.md'],
+            'stages': {}, 'audits': ['audit_numbers.md', 'audit_stats.md'],
             'findings_by_track': {'core': 2, 'numbers': 1}, 'findings_delivered': 3, 'findings_submitted': 3,
             'quarantined_findings': [], 'quarantined_findings_count': 0, 'review_guard_status': 'clean',
             'code_check': None, 'reviewer_count': 3, 'reviewer_provenance': [], 'arm': 'full-two-track', 'synthesis_policy': 'editor',

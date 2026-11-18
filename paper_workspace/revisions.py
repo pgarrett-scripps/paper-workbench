@@ -8,6 +8,7 @@ import shutil
 import subprocess
 import tempfile
 from contextlib import contextmanager
+from datetime import datetime, timezone
 from pathlib import Path
 
 from peerreviewagents import export_draft, verify_workspace
@@ -25,46 +26,173 @@ PROTECTED = re.compile(r'\b(?:not|no|never|may|might|could|can|cannot|must|shoul
                        r'associat(?:e[ds]?|ing|ions?)|causal|causes|'
                        r'significant|nonsignificant)\b', re.I)
 SYNTAX = re.compile(r'[#@$`\[\]{}<>_=*\\]|//|/\*|\*/')
-# The run_view groups whose cards each stand for one PeerReviewAgents issue.
-ISSUE_GROUPS = ('required', 'suggestion')
+# The issue ledger. A draft's ledger holds every problem raised on the drafts before it, one row
+# per problem under an id that never changes. LEDGER is frozen into the draft with its manifest,
+# so the fix checks made on that draft live beside it in FIX_CHECKS until the next draft freezes them.
+LEDGER = 'issue-ledger.json'
+FIX_CHECKS = 'fix-checks.json'
+# What a check of a later draft can say about one problem.
+FIX_VERDICTS = ('fixed', 'not-fixed', 'cannot-tell')
+# What the author can say about an issue: still open, addressed in the text, or declined.
+AUTHOR_STATUSES = ('open', 'addressed', 'declined')
 
 
-def ledger_row(finding, decisions, origin, paper_id):
-    """One card of the review as a row of the issue ledger the next draft carries.
+def problem_id(raised_on, review_id, key, taken):
+    """A problem's id: the draft it was raised on, the review and the review's own id for it.
 
-    A card from a PeerReviewAgents run is one issue, and its row keeps the
-    issue id. ``issue_id`` is None when the run's ids were unusable and its
-    cards were numbered instead. Every review is a fresh panel, so the engine
-    says nothing about an earlier issue and the ledger alone remembers it.
-    Every concern but a copyedit is open when it joins the ledger.
+    ``key`` is None when the review's id for the problem is unusable, and the
+    ledger then makes one up. A made-up id, and an id that is already in
+    ``taken``, becomes ``ledger-N`` with the first N not taken, so no two rows
+    share an id. The id is added to ``taken``.
     """
-    run_issue = finding.get('group') in ISSUE_GROUPS
-    scientific = 'not_applicable' if finding.get('category') == 'copyedit' else 'open'
-    row = {'origin_revision': origin, 'paper_id': paper_id, 'finding': finding,
-           'wording_decision': decisions['items'].get(finding['id'], 'proposed'),
-           'author_feedback': decisions.get('annotations', {}).get(finding['id'], {}),
-           'scientific_status': scientific, 'anchor_status': 'historical',
-           'note': 'Anchor refers to the originating draft. Reassess against current text.'}
-    if run_issue:
-        row['issue_id'] = finding['id'] if finding['id'] == finding.get('source_id') else None
-    return row
+    wanted, number = f'{raised_on}:{review_id}:{key}' if key else None, 1
+    while wanted is None or wanted in taken:
+        wanted, number = f'{raised_on}:{review_id}:ledger-{number}', number + 1
+    taken.add(wanted)
+    return wanted
 
 
-THROWN_OUT_NOTE = ('The code check threw this finding out: the code does not do what it said. '
-                   'It is not an open question.')
+def evidence_of(finding):
+    """The quotes a problem was raised on, each with its document and lines in the draft it was raised on.
 
-
-def thrown_out_rows(review, origin, paper_id):
-    """The findings a run's code check threw out, as rows of the issue ledger.
-
-    Such a finding is in no issue and takes no decision. It travels with the
-    draft so the next one, and its Word copy, can say what the code showed. A
-    review that is not a run has no code check.
+    A run's card is one issue, and its evidence is its members. Any other
+    finding is its own one quote.
     """
+    spans = finding['members'] if isinstance(finding.get('members'), list) else [finding]
+    rows = [{key: span.get(key) for key in ('document', 'line', 'end_line', 'quote')} for span in spans
+            if isinstance(span, dict) and isinstance(span.get('quote'), str) and span['quote']]
+    return [dict(row) for row in dict.fromkeys(tuple(row.items()) for row in rows)]
+
+
+def ledger_rows(review, decisions, raised_on, paper_id, taken):
+    """The rows one review of draft ``raised_on`` adds to the issue ledger, with the author's decisions.
+
+    Each card is one problem. Its key is the review's id for it, an issue id
+    for a run's issue, unless the card is numbered by its place, which is no id
+    of the review's. A finding the run's code check threw out is in no issue and
+    takes no decision, so it joins as thrown out with no author. ``finding``
+    keeps the card as the review gave it, for where it sits in that draft.
+    """
+    rows = []
+    annotations = decisions.get('annotations', {})
+
+    def row(finding, key, raised_as, author):
+        return {'id': problem_id(raised_on, review['id'], key, taken), 'raised_on': raised_on,
+                'review_id': review['id'], 'source_id': key, 'paper_id': paper_id, 'raised_as': raised_as,
+                'title': finding.get('title'), 'category': finding.get('category'),
+                'statement': finding.get('comment'), 'severity': finding.get('severity'),
+                'evidence': evidence_of(finding), 'author': author, 'fix_checks': [], 'finding': finding}
+
+    for finding in review['findings']:
+        note = annotations.get(finding['id'], {})
+        author = {'wording': decisions['items'].get(finding['id'], 'proposed'),
+                  'status': note.get('issue_status', 'open'), 'note': note.get('author_comment', ''),
+                  'rationale': note.get('rationale', '')}
+        key = finding['id'] if finding.get('decidable') is not False else None
+        rows.append(row(finding, key, 'copyedit' if finding.get('category') == 'copyedit' else 'problem', author))
     check = review['run']['code_check'] if 'run' in review else None
-    return [{'origin_revision': origin, 'paper_id': paper_id, 'finding': item, 'wording_decision': 'no decision',
-             'author_feedback': {}, 'scientific_status': 'thrown_out', 'anchor_status': 'historical',
-             'note': THROWN_OUT_NOTE} for item in (check['thrown_out'] if check else [])]
+    for item in check['thrown_out'] if check else []:
+        rows.append(row(item, item['id'], 'thrown_out', None))
+    return rows
+
+
+def problem_status(row):
+    """Where a problem stands, read from its row: the row itself never says.
+
+    A finding the code check threw out stays thrown out, and a copyedit has no
+    scientific status. A problem the author declined is declined. Otherwise it
+    is fixed when the latest check of a later draft says so, and open until then.
+    """
+    if row['raised_as'] == 'thrown_out':
+        return 'thrown_out'
+    if row['raised_as'] == 'copyedit':
+        return 'not_applicable'
+    if row['author']['status'] == 'declined':
+        return 'declined'
+    if row['fix_checks'] and row['fix_checks'][-1]['verdict'] == 'fixed':
+        return 'fixed'
+    return 'open'
+
+
+def ledger_view(ledger):
+    """The ledger as the viewer and the agent handoff read it: each row with its status."""
+    return [{**row, 'status': problem_status(row)} for row in ledger]
+
+
+def author_reply(row):
+    """What the author said about a problem, the note and then the rationale, or None."""
+    parts = [text.strip() for text in (row['author']['note'], row['author']['rationale']) if text.strip()]
+    return '\n\n'.join(parts) or None
+
+
+def open_problems(ledger):
+    """The open problems, as the engine's fix check of a later draft takes them: its --problems file.
+
+    Each quote's line is a line of the draft the problem was raised on, so
+    only the document and the quote go.
+    """
+    return [{'id': row['id'], 'statement': row['statement'], 'severity': row['severity'],
+             'evidence': [{'document': span['document'], 'quote': span['quote']} for span in row['evidence']],
+             'author_reply': author_reply(row)} for row in ledger if problem_status(row) == 'open']
+
+
+def apply_fix_checks(ledger, draft, checks, date):
+    """The ledger with one check of draft ``draft`` added to each problem it names.
+
+    A check is ``{'id', 'verdict', 'quote', 'reason'}``: the problem, one of
+    FIX_VERDICTS, the passage of ``draft`` it rests on, or None, and why. Every
+    check must name an open problem, once. The ledger passed in is not changed.
+    """
+    rows = copy.deepcopy(ledger)
+    by_id = {row['id']: row for row in rows}
+    seen = set()
+    for check in checks:
+        row = by_id.get(check.get('id'))
+        if row is None:
+            raise ValueError(f'A fix check names no problem in the ledger: {check.get("id")!r}')
+        if check['id'] in seen:
+            raise ValueError(f'Problem {check["id"]} is checked twice on one draft')
+        if problem_status(row) != 'open':
+            raise ValueError(f'Problem {check["id"]} is {problem_status(row)}, so it takes no fix check')
+        if check.get('verdict') not in FIX_VERDICTS:
+            raise ValueError(f'A fix check verdict is one of {", ".join(FIX_VERDICTS)}, not {check.get("verdict")!r}')
+        if not (check.get('quote') is None or isinstance(check['quote'], str)) or not isinstance(check.get('reason'), str):
+            raise ValueError(f'The fix check of problem {check["id"]} needs a quote or None, and a reason')
+        seen.add(check['id'])
+        row['fix_checks'].append({'draft': draft, 'verdict': check['verdict'], 'quote': check['quote'],
+                                  'reason': check['reason'], 'date': date})
+    return rows
+
+
+def ledger_of(folder):
+    """A draft's issue ledger: the rows frozen into it, with the fix checks recorded on it since."""
+    folder = Path(folder)
+    rows = read_json(folder / LEDGER) if (folder / LEDGER).exists() else []
+    if (folder / FIX_CHECKS).exists():
+        record = read_json(folder / FIX_CHECKS)
+        rows = apply_fix_checks(rows, record['draft'], record['checks'], record['date'])
+    return rows
+
+
+def record_fix_checks(root, draft, checks, date=None):
+    """The seam where the engine's check-fixes result is read in and applied to the ledger.
+
+    ``checks`` are the engine's verdicts on the current draft's open problems,
+    each in the shape apply_fix_checks takes. PeerReviewAgents has not settled
+    its check-fixes output yet, so turning that output into these checks is
+    the step to add here once it has. A draft's checks are recorded once, and
+    the next draft made from it carries them in its own ledger.
+    """
+    with revision_lock(root):
+        if head(root)['revision_id'] != draft:
+            raise ValueError('Record fix checks on the current draft')
+        folder, _ = snapshot(root, draft)
+        if (folder / FIX_CHECKS).exists():
+            raise ValueError('This draft already has its fix checks')
+        date = date or datetime.now(timezone.utc).date().isoformat()
+        apply_fix_checks(ledger_of(folder), draft, checks, date)
+        write_json(folder / FIX_CHECKS, {'draft': draft, 'date': date, 'checks': checks})
+    return ledger_of(folder)
 
 
 def valid_id(value):
@@ -236,7 +364,7 @@ def agent_request(root):
     """Return a version-bound handoff for a coding agent or orchestration client."""
     current = head(root)
     source, paper = snapshot(root, current['revision_id'])
-    ledger = read_json(source / 'issue-ledger.json') if (source / 'issue-ledger.json').exists() else []
+    ledger = ledger_view(ledger_of(source))
     editable = {document: [entry['lines'][0] for entry in entries if entry['editable']]
                 for document, entries in source_spans(paper).items()}
     return {'head': current, 'paper_id': paper.paper_id, 'source_sha256': source_sha256(paper),
@@ -338,10 +466,10 @@ def create_revision(root, review, decisions, revision_id, expected_head, *, buil
                     raise ValueError('Draft compilation failed. Current draft preserved. ' + result.stderr[-1500:])
                 build_result = {'pdf': 'built', 'compiler': subprocess.run(['typst', '--version'],
                     capture_output=True, text=True, check=True).stdout.strip(), 'warnings': result.stderr}
-            ledger = read_json(parent / 'issue-ledger.json') if (parent / 'issue-ledger.json').exists() else []
-            ledger.extend(ledger_row(finding, decisions, expected_head['revision_id'], paper.paper_id)
-                          for finding in review['findings'])
-            ledger.extend(thrown_out_rows(review, expected_head['revision_id'], paper.paper_id))
+            # The parent's problems keep their ids and the checks made on the parent, and this review adds its own.
+            ledger = ledger_of(parent)
+            ledger.extend(ledger_rows(review, decisions, expected_head['revision_id'], paper.paper_id,
+                                      {row['id'] for row in ledger}))
             metadata = {'id': revision_id, 'parent': expected_head['revision_id'],
                 'parent_paper_id': paper.paper_id, 'paper_id': None,
                 'applied_findings': [f['id'] for f in accepted], 'build': build_result,
@@ -352,7 +480,7 @@ def create_revision(root, review, decisions, revision_id, expected_head, *, buil
                 # The revision's own records sit beside its base, so its manifest covers them.
                 metadata['paper_id'] = paper_id
                 write_json(folder / 'review-package.json', package)
-                write_json(folder / 'issue-ledger.json', ledger)
+                write_json(folder / LEDGER, ledger)
                 (folder / 'changes.patch').write_text(''.join(patches), encoding='utf-8')
                 write_json(folder / 'revision.json', metadata)
                 if build:

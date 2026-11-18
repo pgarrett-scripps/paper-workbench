@@ -252,18 +252,36 @@ function externalFinding(item){
   return card?externalCard(card,[...quotes].join('\n\n')):'<p>External evidence record is unavailable in this review export.</p>';
  }).join('');
 }
+// The issue ledger: one row per problem raised on an earlier draft, under the id it keeps on every draft.
+// A fresh review of this draft is shown beside it, and nothing matches its issues to these rows.
+const PROBLEM_STATUS={open:'Open',fixed:'Fixed',declined:'Declined by the author',thrown_out:'Thrown out by the code check',
+ not_applicable:'Copyedit, with no scientific status'};
+const FIX_VERDICT={fixed:'fixed','not-fixed':'not fixed','cannot-tell':'cannot tell'};
+const AUTHOR_STATUS={open:'open',addressed:'addressed by the author',declined:'declined by the author'};
+function authorDecision(row){
+ const author=row.author;
+ const said=[author.note&&`Note: ${esc(author.note)}`,author.rationale&&`Rationale: ${esc(author.rationale)}`].filter(Boolean);
+ return `<p><strong>Author's decision on draft ${esc(row.raised_on)}</strong><br>Wording ${esc(author.wording)}, issue ${esc(AUTHOR_STATUS[author.status]||author.status)}${said.map(text=>'<br>'+text).join('')}</p>`;
+}
+function latestCheck(row){
+ const check=row.fix_checks.at(-1);
+ if(!check)return '<p class="muted">No later draft has been checked for this problem.</p>';
+ return `<p><strong>Latest fix check, on draft ${esc(check.draft)} on ${esc(check.date)}: ${esc(FIX_VERDICT[check.verdict]||check.verdict)}</strong>${check.reason?'<br>'+esc(check.reason):''}</p>${check.quote?`<blockquote>${esc(check.quote)}</blockquote>`:''}`;
+}
 // A carried finding still stands on this draft while the passage on its line has the fingerprint it was found on.
 function history(){
  $('#history-details').hidden=!ledger.length;
  if(ledger.length&&!review.findings.length)$('#history-details').open=true;
  $('#history-ledger').innerHTML=ledger.map(row=>{
   const finding=row.finding||{};
-  const feedback=row.author_feedback||{};
   const current=pieceAt(finding.document,finding.line);
   const location=current&&finding.fingerprint&&current.fingerprint===finding.fingerprint?`<p>${lineLink(finding.document,finding.line,'View unchanged passage in this draft')}</p>`:'';
+  const top=`<p><span class="badge">${esc(row.id)}</span> ${esc(PROBLEM_STATUS[row.status]||row.status)}</p>`;
+  const raised=`<p>Raised on draft ${esc(row.raised_on)} by review ${esc(row.review_id)}. Its quotes are from that draft.</p>`;
+  const quotes=row.evidence.map(span=>`<blockquote>${esc(span.quote)}</blockquote>`).join('');
   // A finding an earlier run's code check threw out is carried to say what the code showed, never as an open question.
-  if(row.scientific_status==='thrown_out')return `<div class="cross-check thrown-out-item"><p class="thrown-out-mark" role="note">${esc(THROWN_OUT)}</p><p><strong>${esc(finding.title||'Finding')}</strong></p><p>${esc(finding.comment||'')}</p><blockquote>${esc(finding.quote||'')}</blockquote>${codeEvidence(finding,'Code that contradicts it')}${finding.note?`<p><strong>Code check note</strong><br>${esc(finding.note)}</p>`:''}<p>Origin draft: ${esc(row.origin_revision||'unknown')}</p></div>`;
-  return `<div class="cross-check"><p><strong>${esc(categoryOf(finding))}: ${esc(finding.title||'Historical finding')}</strong></p><p>${esc(finding.comment||'')}</p><blockquote>${esc(finding.quote||'')}</blockquote>${location}<p>Origin draft: ${esc(row.origin_revision||'unknown')}<br>Wording decision: ${esc(row.wording_decision||'proposed')}<br>Scientific status: ${esc(row.scientific_status||'open')}</p>${feedback.author_comment?`<p>Author response: ${esc(feedback.author_comment)}<br>Author status: ${esc(feedback.issue_status)}<br>${esc(feedback.rationale||'')}</p>`:''}<p>${esc(row.note||'Historical anchors require reassessment on this draft.')}</p></div>`;
+  if(row.status==='thrown_out')return `<div class="cross-check thrown-out-item">${top}<p class="thrown-out-mark" role="note">${esc(THROWN_OUT)}</p><p><strong>${esc(row.title||'Finding')}</strong></p><p>${esc(row.statement||'')}</p>${quotes}${codeEvidence(finding,'Code that contradicts it')}${finding.note?`<p><strong>Code check note</strong><br>${esc(finding.note)}</p>`:''}${raised}</div>`;
+  return `<div class="cross-check">${top}<p><strong>${esc(categoryLabel(row.category))}: ${esc(row.title||'Earlier problem')}</strong>${row.severity?' · '+esc(row.severity):''}</p><p>${esc(row.statement||'')}</p>${quotes}${location}${raised}${authorDecision(row)}${row.status==='not_applicable'?'':latestCheck(row)}</div>`;
  }).join('');
 }
 // A run's cards are the editor's issues. Every review is a fresh panel, so a card says nothing about an earlier round.
@@ -485,7 +503,7 @@ function card(item){
   :`<span class="category ${esc(categoryOf(item))}">${esc(categoryOf(item))} · ${esc(item.kind)} · ${esc(item.severity||'unspecified')}</span>`;
  const details=run?issueBadges(item):'';
  const notes=run?issueNotes(item)+memberList(item):item.counterevidence?`<div class="cross-check"><p><strong>Counterevidence checked</strong><br>${esc(item.counterevidence)}</p></div>`:'';
- const decide=decidable?`<div class="actions">${actions}${wording!=='proposed'?'<button data-action="proposed">Undo wording decision</button>':''}</div><div class="author-response"><label>Author comment<textarea data-field="comment" maxlength="4000">${esc(annotation.author_comment||'')}</textarea></label><label>Issue status<select data-field="issue"><option value="open" ${issueStatus==='open'?'selected':''}>Open</option><option value="addressed" ${issueStatus==='addressed'?'selected':''}>Addressed by author</option></select></label><label>Rationale for status<textarea data-field="rationale" maxlength="2000">${esc(annotation.rationale||'')}</textarea></label><button data-save-response>Save author response</button><p class="muted">Addressed records the author's assessment. It does not verify the scientific issue.</p></div>${annotation.history?.length?`<details><summary>Author response history (${annotation.history.length})</summary><ol>${annotation.history.map(row=>`<li>${esc(row.at)} · ${esc(row.issue_status)} · ${esc(row.rationale||'No rationale')}</li>`).join('')}</ol></details>`:''}`
+ const decide=decidable?`<div class="actions">${actions}${wording!=='proposed'?'<button data-action="proposed">Undo wording decision</button>':''}</div><div class="author-response"><label>Author comment<textarea data-field="comment" maxlength="4000">${esc(annotation.author_comment||'')}</textarea></label><label>Issue status<select data-field="issue"><option value="open" ${issueStatus==='open'?'selected':''}>Open</option><option value="addressed" ${issueStatus==='addressed'?'selected':''}>Addressed by author</option><option value="declined" ${issueStatus==='declined'?'selected':''}>Declined by author</option></select></label><label>Rationale for status<textarea data-field="rationale" maxlength="2000">${esc(annotation.rationale||'')}</textarea></label><button data-save-response>Save author response</button><p class="muted">Addressed and declined record the author's assessment. Neither verifies the scientific issue. A declined issue is not checked again on a later draft.</p></div>${annotation.history?.length?`<details><summary>Author response history (${annotation.history.length})</summary><ol>${annotation.history.map(row=>`<li>${esc(row.at)} · ${esc(row.issue_status)} · ${esc(row.rationale||'No rationale')}</li>`).join('')}</ol></details>`:''}`
   :`<p class="muted no-engine-id" role="note">${esc(NO_ENGINE_ID)}</p>`;
  return `<article class="finding" id="note-${esc(item.id)}" data-id="${esc(item.id)}"><div class="card-top">${top}<span>${esc(wording)}</span></div>${details}<h3>${number}${esc(item.title||(run?'Review issue':'Review finding'))}</h3><p class="comment-text">${esc(item.comment||item.text||'')}</p>${notes}${source||evidence?`<div class="evidence">${source}${source&&evidence?'<br>':''}${evidence?`Evidence: ${evidence}`:''}</div>`:''}${externalFinding(item)}${decide}</article>`;
 }
@@ -533,8 +551,8 @@ function runCards(){
  return banner+(sections.join('')||empty);
 }
 function cards(){
- const openHistorical=ledger.filter(row=>row.scientific_status==='open').length;
- $('#finding-count').textContent=(review.run?runCount():review.findings.length+' new')+(openHistorical?' · '+openHistorical+' earlier questions open':'');$('#review-summary').textContent=review.summary||'';
+ const openEarlier=ledger.filter(row=>row.status==='open').length;
+ $('#finding-count').textContent=(review.run?runCount():review.findings.length+' new')+(openEarlier?' · '+plural(openEarlier,'earlier problem')+' open':'');$('#review-summary').textContent=review.summary||'';
  runPanel();
  const raw=review.raw_response||{};
  $('#handoff-details').hidden=!(raw.source_cards||[]).length&&!raw.domain_profile&&!raw.result_map&&!(raw.result_comparisons||[]).length;
@@ -564,7 +582,7 @@ function cards(){
 async function saveFinding(card,status){
  const issueStatus=card.querySelector('[data-field=issue]').value;
  const rationale=card.querySelector('[data-field=rationale]').value;
- if(issueStatus==='addressed'&&!rationale.trim()){error('Addressed issues require a rationale.');return;}
+ if(issueStatus!=='open'&&!rationale.trim()){error('Addressed and declined issues require a rationale.');return;}
  card.classList.add('busy');
  try{
   decisions=await api(withDraft('/api/decisions'),{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({review_id:review.id,annotation_id:card.dataset.id,status,revision:decisions.revision,author_comment:card.querySelector('[data-field=comment]').value,issue_status:issueStatus,rationale})});

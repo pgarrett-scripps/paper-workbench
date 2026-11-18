@@ -10,7 +10,7 @@ import zipfile
 
 from peerreviewagents.workspace import digest, read_json, write_json
 
-from .revisions import snapshot
+from .revisions import ledger_of, problem_status, snapshot
 from .scaffold_export import export_pieces
 
 W = 'http://schemas.openxmlformats.org/wordprocessingml/2006/main'
@@ -86,8 +86,8 @@ THROWN_OUT = ('Thrown out by the code check: the code does not do what this find
 def comment_text(entry, evidence):
     """What the Word copy says of one ledger row: an open question, or a finding the code check threw out."""
     finding = entry['finding']
-    origin = 'Origin: ' + entry.get('origin_revision', 'unknown') + '. Finding: ' + finding['id'] + '.'
-    if entry['scientific_status'] == 'thrown_out':
+    origin = 'Raised on: ' + entry['raised_on'] + '. Problem: ' + entry['id'] + '.'
+    if problem_status(entry) == 'thrown_out':
         return '\n\n'.join(filter(None, [
             finding.get('title'), finding.get('comment'), THROWN_OUT,
             finding.get('assumed_method') and 'What the finding took the code to do: ' + finding['assumed_method'],
@@ -185,12 +185,13 @@ def patch_document(source, destination, parent, current, ledger, origin):
     # and an unlocated one is listed apart from the open questions.
     located, unlocated, thrown_out = [], [], []
     for index, entry in enumerate(ledger):
-        if entry.get('scientific_status') not in ('open', 'thrown_out'):
+        status = problem_status(entry)
+        if status not in ('open', 'thrown_out'):
             continue
         finding = entry['finding']
         quote = finding.get('anchor_text') or finding.get('quote', '')
         reason, piece, paragraph = None, None, None
-        was = passage(origin(entry['origin_revision']), finding)
+        was = passage(origin(entry['raised_on']), finding)
         if was is None:
             reason = 'The finding has no place in the draft it was raised on'
         elif passage(current, finding) != was:
@@ -218,8 +219,8 @@ def patch_document(source, destination, parent, current, ledger, origin):
             for card in source_cards.values())
         text = comment_text(entry, evidence)
         if reason:
-            (thrown_out if entry['scientific_status'] == 'thrown_out' else unlocated).append(
-                {'finding_id': finding['id'], 'reason': reason, 'text': text, 'quote': quote})
+            (thrown_out if status == 'thrown_out' else unlocated).append(
+                {'problem_id': entry['id'], 'reason': reason, 'text': text, 'quote': quote})
             continue
         # A full paragraph anchor retains inline formatting and makes the exact quote explicit.
         cid = str(index)
@@ -231,9 +232,8 @@ def patch_document(source, destination, parent, current, ledger, origin):
         comment = ET.SubElement(comments, tag('comment'), {tag('id'): cid, tag('author'): 'In Silico', tag('date'): when})
         for line in (text + '\n\nQuoted passage: ' + quote).split('\n'):
             ET.SubElement(comment, tag('p')).append(run(line))
-        located.append({'finding_id': finding['id'], 'comment_id': cid, 'document': piece['document'],
-                        'lines': piece['lines'], 'anchor': 'exact paragraph', 'quote': quote,
-                        'status': entry['scientific_status']})
+        located.append({'problem_id': entry['id'], 'comment_id': cid, 'document': piece['document'],
+                        'lines': piece['lines'], 'anchor': 'exact paragraph', 'quote': quote, 'status': status})
     body = document.find(tag('body'))
     position = len(body) - (1 if body.find(tag('sectPr')) is not None else 0)
     for heading, items in (('Unlocated review questions', unlocated), ('Findings the code check threw out', thrown_out)):
@@ -315,7 +315,7 @@ def export_review(root, revision_id, clean_export, output):
         stage = Path(temporary) / 'artifacts'
         shutil.copytree(clean_export, stage)
         audit = patch_document(stage / 'paper.docx', stage / 'review.docx', parent, paper,
-                               read_json(source / 'issue-ledger.json'), origin)
+                               ledger_of(source), origin)
         audit.update({'revision_id': revision_id, 'parent_revision': metadata['parent'],
                       'clean_docx_sha256': record['files']['paper.docx'], 'new_review_model_calls': 0})
         write_json(stage / 'word-review.json', audit)

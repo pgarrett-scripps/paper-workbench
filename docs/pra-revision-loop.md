@@ -56,7 +56,7 @@ The native import is a revision adapter, not yet a complete replacement for the 
 
 Character offsets preserve Unicode and CRLF. All accepted edits must match the decoded source span and file hash. A changed source inventory, an overlap, changed citation markers, a removed or reordered number, or a change to selected negation and qualification terms blocks revision creation. Association inflections share one protected concept so a grammar correction from associate to associated does not fail solely on inflection. Reimported text must exactly match the approved text projection before a revision can be promoted. These mechanical checks cannot prove semantic equivalence. Complex scientific rewrites remain outside automatic acceptance.
 
-Historical findings retain their original version and anchors. They are not silently relocated after wording changes. New reviews must be anchored against the new draft. Author responses travel with the review package and issue ledger.
+Historical findings retain their original version and anchors. They are not silently relocated after wording changes. New reviews must be anchored against the new draft. Author responses travel with the review package and issue ledger. Each ledger problem keeps one id across drafts, and its status is read from the author's decision and the latest fix check, as [shared core](shared-core.md#the-issue-ledger) describes.
 
 Source import is capped at 250 MiB. Prepare manuscript inputs and required assets without large analysis datasets. Source symlinks are rejected. Repository metadata, environments, and common generated directories are excluded from the copy.
 

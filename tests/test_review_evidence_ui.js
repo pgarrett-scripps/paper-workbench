@@ -221,17 +221,47 @@ assert.ok(html('#run-panel').includes('<p class="count">Code check: 2 checked, 1
 // A filter shows only issues, so the thrown-out findings leave the view with it.
 vm.runInContext("filter = 'required'; cards();", context);
 assert.ok(!html('#comments').includes('thrown-out'));
-// A thrown-out finding carried from an earlier draft says so, and is not counted among the open questions.
-vm.runInContext(`filter = 'all'; ledger = [{origin_revision:'original', paper_id:'p', scientific_status:'thrown_out',
-  wording_decision:'no decision', author_feedback:{}, anchor_status:'historical', note:'Thrown out.',
-  finding:review.run.code_check.thrown_out[0]}]; cards(); history();`, context);
+// A thrown-out finding carried from an earlier draft says so, and is not counted among the open problems.
+// The rows are shaped as /api/ledger hands them over: ledger_view in revisions.py, with each row's status.
+vm.runInContext(`filter = 'all'; ledger = [{id:'original:run:u9', raised_on:'original', review_id:'run', source_id:'u9',
+  paper_id:'p', raised_as:'thrown_out', status:'thrown_out', title:'The mean <hides> the spread', category:null,
+  statement:'Show each repeat.', severity:'major', evidence:[{document:'paper.md', line:1, end_line:1, quote:'alpha'}],
+  author:null, fix_checks:[], finding:review.run.code_check.thrown_out[0]}]; cards(); history();`, context);
 const carried = html('#history-ledger');
-for (const text of ['Thrown out by the code check. This is not an open issue', '<strong>Code that contradicts it</strong>',
-                    'It is the &lt;median&gt;.', 'Origin draft: original']) {
+for (const text of ['<span class="badge">original:run:u9</span> Thrown out by the code check',
+                    'Thrown out by the code check. This is not an open issue', '<strong>Code that contradicts it</strong>',
+                    'It is the &lt;median&gt;.', 'Raised on draft original by review run. Its quotes are from that draft.']) {
   assert.ok(carried.includes(text), text);
 }
-assert.ok(!carried.includes('Scientific status'));
-assert.ok(!elements.get('#finding-count').textContent.includes('earlier questions open'));
+for (const text of ["Author's decision", 'fix check']) assert.ok(!carried.includes(text), text);
+assert.ok(!elements.get('#finding-count').textContent.includes('earlier problem'));
+// An earlier problem shows the author's decision and only the latest fix check of a later draft, with its quote.
+vm.runInContext(`ledger = [{id:'original:run:i03', raised_on:'original', review_id:'run', source_id:'i03', paper_id:'p',
+  raised_as:'problem', status:'open', title:'The seed is <unstated>', category:'reproducibility',
+  statement:'State the seed.', severity:'major', evidence:[{document:'paper.md', line:1, end_line:1, quote:'alpha'}],
+  author:{wording:'noted', status:'addressed', note:'We added it.', rationale:'Methods now name the seed.'},
+  fix_checks:[{draft:'second', verdict:'fixed', quote:'An older quote.', reason:'Earlier.', date:'2026-11-01'},
+              {draft:'third', verdict:'not-fixed', quote:'The seed is <42>.', reason:'The generator is not named.',
+               date:'2026-11-17'}], finding:{}},
+  {id:'original:run:i04', raised_on:'original', review_id:'run', source_id:'i04', paper_id:'p', raised_as:'problem',
+  status:'declined', title:'Scope', category:'claims-and-conclusions', statement:'Widen the claim.', severity:'minor',
+  evidence:[], author:{wording:'noted', status:'declined', note:'', rationale:'Out of scope.'}, fix_checks:[], finding:{}}];
+  cards(); history();`, context);
+const problems = html('#history-ledger');
+for (const text of ['<span class="badge">original:run:i03</span> Open', 'Reproducibility: The seed is &lt;unstated&gt;</strong> · major',
+                    'State the seed.', '<blockquote>alpha</blockquote>',
+                    "Author's decision on draft original</strong><br>Wording noted, issue addressed by the author<br>Note: We added it.<br>Rationale: Methods now name the seed.",
+                    'Latest fix check, on draft third on 2026-11-17: not fixed</strong><br>The generator is not named.',
+                    '<blockquote>The seed is &lt;42&gt;.</blockquote>',
+                    '<span class="badge">original:run:i04</span> Declined by the author',
+                    'Wording noted, issue declined by the author<br>Rationale: Out of scope.',
+                    'No later draft has been checked for this problem.']) {
+  assert.ok(problems.includes(text), text);
+}
+for (const text of ['on draft second', 'An older quote.']) assert.ok(!problems.includes(text), text);
+assert.ok(elements.get('#finding-count').textContent.endsWith(' · 1 earlier problem open'));
+// A card's author response can decline the issue.
+assert.ok(html('#comments').includes('<option value="declined" >Declined by author</option>'));
 vm.runInContext('ledger = []; review.run.code_check = null; cards();', context);
 
 // The run panel shows the fixture ledger, which the engine's own ledger code wrote, as run_view.py hands it over.

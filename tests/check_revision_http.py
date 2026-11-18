@@ -76,8 +76,18 @@ with tempfile.TemporaryDirectory() as temporary:
         assert request("/api/decisions?draft=original", decision)[0] == 409
         assert request("/api/decisions?draft=original", decision,
                        origin="http://bad.example")[0] == 403
+        # The author can decline an issue, with a reason, and no other status is taken.
+        question = review["findings"][-1]
+        decline = {"review_id": "ui", "annotation_id": question["id"], "status": "noted", "revision": 1,
+                   "author_comment": "", "issue_status": "declined", "rationale": ""}
+        assert request("/api/decisions?draft=original", decline)[0] == 400
+        assert request("/api/decisions?draft=original", {**decline, "issue_status": "dropped",
+                                                          "rationale": "No."})[0] == 400
+        decline["rationale"] = "The mechanism is outside this paper."
+        status, decisions = request("/api/decisions?draft=original", decline)
+        assert status == 200 and decisions["annotations"][question["id"]]["issue_status"] == "declined"
 
-        create = {"revision_id": "ui-1", "review_id": "ui", "decision_revision": 1,
+        create = {"revision_id": "ui-1", "review_id": "ui", "decision_revision": 2,
                   "expected_head": state["head"]}
         with patch("paper_workspace.server.create_revision", side_effect=source_only_revision):
             status, created = request("/api/revisions?draft=original", create)
@@ -86,7 +96,10 @@ with tempfile.TemporaryDirectory() as temporary:
         assert status == 200 and revised["id"] != paper.paper_id
         assert request("/api/reviews?draft=ui-1")[1] == []
         ledger = request("/api/ledger?draft=ui-1")[1]
-        assert ledger and ledger[0]["anchor_status"] == "historical"
+        # Each problem keeps the id it was raised under and says where it stands.
+        assert [row["status"] for row in ledger] == ["not_applicable", "not_applicable", "declined"]
+        assert ledger[-1]["id"] == "original:ui:" + question["id"]
+        assert ledger[-1]["author"]["rationale"] == "The mechanism is outside this paper."
         export_folder = root / 'exports' / 'verified'
         export_folder.mkdir(parents=True)
         (export_folder / 'paper.pdf').write_bytes(b'%PDF-fixture')

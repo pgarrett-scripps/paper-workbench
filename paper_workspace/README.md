@@ -89,6 +89,6 @@ The built-in loop is offline and deliberately narrow. It makes no model calls. A
 
 ### Word review copies
 
-After exporting a saved revision, run `python -m paper_workspace export-review WORKSPACE REVISION CLEAN_EXPORT NEW_OUTPUT`. The new package adds a Word copy with tracked changes from the immediate parent and comments for inherited open scientific questions. A finding the code check threw out is commented as thrown out, with the code that contradicts it, and is never an open question. Exact paragraph matches are required for located comments. Uncertain locations remain in an appendix. The viewer offers the verified review copy beside the clean Word and PDF downloads.
+After exporting a saved revision, run `python -m paper_workspace export-review WORKSPACE REVISION CLEAN_EXPORT NEW_OUTPUT`. The new package adds a Word copy with tracked changes from the immediate parent and comments for inherited open scientific questions. Each comment names the draft its problem was raised on and its ledger id. A problem the author declined or a fix check found fixed gets no comment. A finding the code check threw out is commented as thrown out, with the code that contradicts it, and is never an open question. Exact paragraph matches are required for located comments. Uncertain locations remain in an appendix. The viewer offers the verified review copy beside the clean Word and PDF downloads.
 
 See [Word review handoff](../docs/pra-word-review-handoff.md) for validation and current limits.

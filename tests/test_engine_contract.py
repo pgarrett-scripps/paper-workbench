@@ -57,6 +57,8 @@ class AppCommandTest(unittest.TestCase):
             self.assertIn(flag, output.getvalue())
         # The reader always runs on a PDF review, so there is no switch to turn it off.
         self.assertNotIn('--no-ai-read', output.getvalue())
+        # Every review is a fresh panel, so there is no option that hands it an earlier review.
+        self.assertNotIn('--prior-issues', output.getvalue())
 
 
 class EngineCommandTest(unittest.TestCase):

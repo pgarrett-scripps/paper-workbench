@@ -22,7 +22,8 @@ import zipfile
 from peerreviewagents import export_draft, verify_workspace
 from peerreviewagents.workspace import digest, read_json, write_json
 
-from .revisions import checkout, create_revision, head, snapshot, source_spans, valid_id
+from .revisions import (AUTHOR_STATUSES, checkout, create_revision, head, ledger_of, ledger_view, snapshot,
+                        source_spans, valid_id)
 from .run_view import (NO_ENGINE_ID, RUN_REVIEW_ID, RunError, applicable, locate, main_document, run_review,
                        source_sha256)
 
@@ -246,8 +247,7 @@ def make_server(root, port=38744):
                 if url.path == "/api/decisions":
                     return self.send(200, decisions_for(workspace, paper, rid))
                 if url.path == "/api/ledger":
-                    ledger = workspace / "issue-ledger.json"
-                    return self.send(200, read_json(ledger) if ledger.exists() else [])
+                    return self.send(200, ledger_view(ledger_of(workspace)))
                 if url.path == "/api/export":
                     verify_workspace(workspace)
                     review = review_for(workspace, paper, rid)
@@ -356,12 +356,12 @@ def make_server(root, port=38744):
                         rationale = value.get("rationale", previous.get("rationale", ""))
                         if not isinstance(comment, str) or len(comment) > 4000:
                             raise ValueError("Author comment is too long")
-                        if issue_status not in ("open", "addressed"):
-                            raise ValueError("Issue status must be open or addressed")
+                        if issue_status not in AUTHOR_STATUSES:
+                            raise ValueError("Issue status must be open, addressed or declined")
                         if not isinstance(rationale, str) or len(rationale) > 2000:
                             raise ValueError("Issue rationale is too long")
-                        if issue_status == "addressed" and not rationale.strip():
-                            raise ValueError("Addressed issues require a rationale")
+                        if issue_status != "open" and not rationale.strip():
+                            raise ValueError("Addressed and declined issues require a rationale")
                         decisions["items"][finding["id"]] = status
                         export_draft(paper, review, applicable(review, decisions))
                         next_revision = decisions["revision"] + 1

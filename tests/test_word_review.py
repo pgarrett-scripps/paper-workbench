@@ -13,6 +13,7 @@ from peerreviewagents import verify_workspace
 from peerreviewagents.workspace import normalize_review
 
 from manuscripts import line_of
+from paper_workspace.revisions import ledger_rows
 from paper_workspace.scaffold_import import import_scaffold
 from paper_workspace.word_review import patch_document, visible, tag, NS
 
@@ -49,7 +50,7 @@ class WordReviewTests(unittest.TestCase):
         review = normalize_review(base, {'findings': [
             {'kind': 'question', 'category': 'scientific', 'line': line, 'quote': text, 'evidence_lines': [line],
              'title': 'Check interpretation', 'comment': 'Please explain the inference.'}]}, 'q')
-        return [{'scientific_status': 'open', 'origin_revision': 'original', 'finding': review['findings'][0]}]
+        return ledger_rows(review, {'items': {}}, 'original', base.paper_id, set())
 
     def patch(self, source, out, parent, current, ledger):
         return patch_document(source, out, parent, current, ledger, lambda revision: {'original': parent}[revision])
@@ -88,6 +89,16 @@ class WordReviewTests(unittest.TestCase):
         self.assertEqual(len(audit['comments']), 1)
         line = line_of(paper, text)
         self.assertEqual((audit['comments'][0]['document'], audit['comments'][0]['lines']), ('paper.md', [line, line]))
+
+    def test_a_problem_declined_or_checked_fixed_is_not_commented(self):
+        text = 'A < B with 12 samples.'
+        paper = self.draft(text)
+        declined, fixed = self.question(paper, text) + self.question(paper, text)
+        declined['author']['status'] = 'declined'
+        fixed['fix_checks'] = [{'draft': 'second', 'verdict': 'fixed', 'quote': text, 'reason': 'Shown.',
+                                'date': '2026-11-17'}]
+        audit = self.patch(self.fixture([text]), self.folder / 'review.docx', paper, paper, [declined, fixed])
+        self.assertEqual((audit['comments'], audit['unlocated_questions']), ([], []))
 
     def test_stale_question_survives_as_unlocated(self):
         old, new = 'An old claim.', 'A new claim.'
@@ -149,14 +160,14 @@ class WordReviewTests(unittest.TestCase):
         checks against a run the engine wrote.
         """
         from test_run_view import SUMMARY, SUMMARY_EVIDENCE, THROWN_OUT_NOTE
-        [row] = self.question(base, text)
-        row['scientific_status'] = 'thrown_out'
-        row['finding'].update(id='u-mean', finding_uid='u-mean', title='The mean hides the spread of three repeats',
-                              comment='Show each repeat.', assumed_method='The figure plots the mean.',
-                              code_evidence=SUMMARY_EVIDENCE, note=THROWN_OUT_NOTE,
-                              code_data={'path': SUMMARY_EVIDENCE['path'], 'bytes': len(SUMMARY),
-                                         'stored_bytes': len(SUMMARY), 'partial': False, 'changed': ''})
-        return [row]
+        [question] = self.question(base, text)
+        item = {**question['finding'], 'id': 'u-mean', 'finding_uid': 'u-mean',
+                'title': 'The mean hides the spread of three repeats', 'comment': 'Show each repeat.',
+                'assumed_method': 'The figure plots the mean.', 'code_evidence': SUMMARY_EVIDENCE,
+                'note': THROWN_OUT_NOTE, 'code_data': {'path': SUMMARY_EVIDENCE['path'], 'bytes': len(SUMMARY),
+                                                       'stored_bytes': len(SUMMARY), 'partial': False, 'changed': ''}}
+        review = {'id': 'run', 'findings': [], 'run': {'code_check': {'thrown_out': [item]}}}
+        return ledger_rows(review, {'items': {}}, 'original', base.paper_id, set())
 
     def test_a_finding_the_code_check_threw_out_is_commented_as_thrown_out_with_the_code(self):
         from test_run_view import THROWN_OUT_NOTE
@@ -171,18 +182,19 @@ class WordReviewTests(unittest.TestCase):
                          'What the finding took the code to do: The figure plots the mean.',
                          "Code that contradicts it: analysis/summary.json, line 2 of the run's code snapshot, "
                          'a data file the review read whole  "figure": "median of three repeats"',
-                         'Code check note: ' + THROWN_OUT_NOTE, 'Origin: original. Finding: u-mean.'):
+                         'Code check note: ' + THROWN_OUT_NOTE, 'Raised on: original. Problem: original:run:u-mean.'):
             self.assertIn(expected, comments)
         self.assertNotIn('Open scientific question', comments)
-        self.assertEqual([(item['finding_id'], item['status']) for item in audit['comments']], [('u-mean', 'thrown_out')])
+        self.assertEqual([(item['problem_id'], item['status']) for item in audit['comments']],
+                         [('original:run:u-mean', 'thrown_out')])
 
     def test_an_unlocated_thrown_out_finding_is_listed_apart_from_the_open_questions(self):
         old, new = 'The mean is reported in the figure.', 'Each repeat is shown in the figure.'
         parent, current = self.draft(old), self.draft(new)
         out = self.folder / 'review.docx'
         audit = self.patch(self.fixture([new]), out, parent, current, self.thrown_out(parent, old))
-        self.assertEqual((audit['unlocated_questions'], [item['finding_id'] for item in audit['unlocated_thrown_out']]),
-                         ([], ['u-mean']))
+        self.assertEqual((audit['unlocated_questions'], [item['problem_id'] for item in audit['unlocated_thrown_out']]),
+                         ([], ['original:run:u-mean']))
         with zipfile.ZipFile(out) as archive:
             body = visible(ET.fromstring(archive.read('word/document.xml')))
         self.assertIn('Findings the code check threw out', body)
