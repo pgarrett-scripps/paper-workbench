@@ -315,11 +315,21 @@ assert.equal(vm.runInContext("unverifiedNote([])", context), '');
 assert.equal(vm.runInContext("unverifiedNote(['core-2', 'editor'])", context),
              'The model that ran was not recorded for 2 slots (core-2, editor), so the model asked for them is unverified.');
 
-// A review with no findings says whether the reviewers raised none or the guard held them all.
-assert.equal(vm.runInContext("runStatus({status:'complete-without-findings', quarantined_findings_count:0})", context),
+// A review with no findings says whether the reviewers raised none, the guard held them all or the code check threw them out.
+assert.equal(vm.runInContext("runStatus({status:'complete-without-findings', quarantined_findings_count:0, code_check:null})", context),
              'Status complete-without-findings: the reviewers raised none');
-assert.equal(vm.runInContext("runStatus({status:'complete-without-findings', quarantined_findings_count:2})", context),
+assert.equal(vm.runInContext("runStatus({status:'complete-without-findings', quarantined_findings_count:2, code_check:null})", context),
              'Status complete-without-findings: the guard quarantined all 2');
+const checked=contradicted=>`{cap:20, checked:${contradicted}, over_cap:0, counts:{confirmed:0, contradicted:${contradicted}, 'not-shown':0}, thrown_out:[]}`;
+assert.equal(vm.runInContext(`runStatus({status:'complete-without-findings', quarantined_findings_count:0, code_check:${checked(1)}})`, context),
+             'Status complete-without-findings: the code check threw out all 1');
+assert.equal(vm.runInContext(`runStatus({status:'complete-without-findings', quarantined_findings_count:2, code_check:${checked(1)}})`, context),
+             'Status complete-without-findings: the guard quarantined 2 and the code check threw out 1');
+assert.equal(vm.runInContext(`runStatus({status:'complete-without-findings', quarantined_findings_count:0, code_check:${checked(0)}})`, context),
+             'Status complete-without-findings: the reviewers raised none');
+// A check whose record named no cap says how many were over it without a number for the cap.
+assert.ok(vm.runInContext("codeCheckCounts({cap:null, checked:0, over_cap:3, counts:{confirmed:0, contradicted:0, 'not-shown':0}})", context)
+  .includes('3 over its cap left unchecked'));
 
 // Every anchored member marks the manuscript, overlapping quotes included, each pinned with its issue's number.
 // The issue that is one edit shows its wording, and the unplaced member marks nothing.

@@ -7,7 +7,9 @@ network. This file builds two rounds that way, and a third run given analysis
 code whose code lane fetches two data files and files one code-checked finding,
 and whose code check throws out the numbers lane's finding, and drives the
 viewer from them, so the hand-written fixture in test_run_view.py is checked
-against what the engine writes. The third run's code is what a workspace review hands over
+against what the engine writes. Two more runs on that code have the code lane
+find nothing, so the one finding is thrown out, and stop before the review is
+written. The third run's code is what a workspace review hands over
 for a Paper Scaffold workspace, so the snapshot of it shows what the engine
 takes from one and what it leaves out. Round one and the third run are written
 inside that workspace, as ``paper-workbench review . reviews/NAME`` writes them,
@@ -93,15 +95,17 @@ def one_round(root, texts, source, quotes, issues, prior='', **ruling):
     engine.STATE['run'] = None
 
 
-def code_round(root, code):
+def code_round(root, code, lane_finds=True, written=True):
     """A draft-check run given ``code``, with the code check the engine plans on a run with code.
 
     The code lane fetches a small data file whole and a large one in part, is
-    refused the built PDF, which is binary, and files one code-checked finding.
-    The numbers lane files a finding that names the method it assumed, and the
-    code check throws it out with the data line that says otherwise. The arm runs
-    specialists and no editor, so the server writes one issue per finding it
-    keeps. The manuscript is sealed before ingest, so the engine plans no reader.
+    refused the built PDF, which is binary, and files one code-checked finding,
+    or none when ``lane_finds`` is false. The numbers lane files a finding that
+    names the method it assumed, and the code check throws it out with the data
+    line that says otherwise. The arm runs specialists and no editor, so the
+    server writes one issue per finding it keeps. When ``written`` is false the
+    run stops before the recorder writes the review. The manuscript is sealed
+    before ingest, so the engine plans no reader.
     """
     engine.STATE['run'] = None
     (code / 'analysis').mkdir(parents=True, exist_ok=True)
@@ -129,13 +133,16 @@ def code_round(root, code):
     part = engine.read_code(lane, 'analysis/scores.csv')
     assert (part.get('data'), part.get('partial')) == (True, True), part
     assert 'request_rejected' in engine.read_code(lane, 'paper.pdf')
-    stored = engine.submit_finding(lane, title='The threshold in the methods is not the one in the code',
-                                   quote='a false discovery rate of one percent', severity='major',
-                                   comment='The methods say one percent and the pipeline filters at five.',
-                                   code_path=CODE_EVIDENCE['path'], code_start_line=CODE_EVIDENCE['start_line'],
-                                   code_end_line=CODE_EVIDENCE['end_line'], code_quote=CODE_EVIDENCE['text'])
-    assert stored.get('stored'), stored
-    assert engine.submit_report(lane, 'Checked.', model=run.models.get('spec-code'))['closed']
+    if lane_finds:
+        stored = engine.submit_finding(lane, title='The threshold in the methods is not the one in the code',
+                                       quote='a false discovery rate of one percent', severity='major',
+                                       comment='The methods say one percent and the pipeline filters at five.',
+                                       code_path=CODE_EVIDENCE['path'], code_start_line=CODE_EVIDENCE['start_line'],
+                                       code_end_line=CODE_EVIDENCE['end_line'], code_quote=CODE_EVIDENCE['text'])
+        assert stored.get('stored'), stored
+        assert engine.submit_report(lane, 'Checked.', model=run.models.get('spec-code'))['closed']
+    else:
+        assert engine.submit_report(lane, 'Nothing.', none_found=True, model=run.models.get('spec-code'))['closed']
     numbers = token('spec-numbers')
     stored = engine.submit_finding(numbers, severity='major', **MEAN)
     assert stored.get('stored'), stored
@@ -151,7 +158,8 @@ def code_round(root, code):
                                        code_quote=SUMMARY_EVIDENCE['text'], note=THROWN_OUT_NOTE)
     assert 'request_rejected' not in verdict, verdict
     assert engine.submit_report(check, 'Checked one.', model=run.models.get('code-check'))['closed']
-    engine.write_review(engine.claim_agent('recorder', codes.pop('recorder'))['agent_token'])
+    if written:
+        engine.write_review(engine.claim_agent('recorder', codes.pop('recorder'))['agent_token'])
     engine.STATE['run'] = None
 
 
@@ -191,6 +199,7 @@ class EngineRoundsTests(unittest.TestCase):
         cls.workspace = make_workspace(cls.root / 'workspace')
         cls.first, cls.second = cls.workspace / 'reviews' / 'first', cls.root / 'second'
         cls.coded = cls.workspace / 'reviews' / 'coded'
+        cls.disproved, cls.unwritten = cls.root / 'disproved', cls.root / 'unwritten'
         environment = {key: value for key, value in os.environ.items() if key not in CREDENTIALS}
         with mock.patch.dict(os.environ, environment, clear=True):
             plugin_root = engine.STATE.get('plugin_root')
@@ -215,6 +224,9 @@ class EngineRoundsTests(unittest.TestCase):
                 # The code is what `paper-workbench review WORKSPACE RUN` hands the engine, with RUN inside it.
                 argv, _ = engine_argv([str(cls.workspace), str(cls.coded), '--arm', 'draft-check'])
                 code_round(cls.coded, Path(argv[argv.index('--code') + 1]))
+                # The same run with the code lane finding nothing, and the same run stopped before its review.
+                code_round(cls.disproved, cls.root / 'code', lane_finds=False)
+                code_round(cls.unwritten, cls.root / 'code', written=False)
             finally:
                 engine.STATE['run'] = None
                 engine.STATE['plugin_root'] = plugin_root
@@ -332,6 +344,37 @@ class EngineRoundsTests(unittest.TestCase):
         # The engine's own reading still has it on the ledger, and the viewer counts it nowhere as a finding of an issue.
         self.assertIn(item['finding_uid'], [row['finding_uid'] for row in read_run(self.coded)['findings']])
         self.assertEqual(review['run']['findings_source'], 'issues')
+
+    def test_a_run_whose_only_finding_the_code_check_threw_out_is_a_finished_review_with_nothing_open(self):
+        run = read_run(self.disproved)
+        self.assertEqual((run['status'], run['publishable'], run['findings_source']),
+                         ('complete-without-findings', True, 'issues'))
+        # The guard held nothing, so the code check is what left the review empty.
+        self.assertEqual((run['counts']['quarantined'], run['code_check']['counts']['contradicted']), (0, 1))
+        review = self.view(self.disproved)
+        self.assertEqual(review['findings'], [])
+        shown = review['run']
+        self.assertEqual((shown['status'], shown['publishable'], shown['findings_source'],
+                          shown['quarantined_findings_count']), ('complete-without-findings', True, 'issues', 0))
+        [item] = shown['code_check']['thrown_out']
+        self.assertEqual((item['title'], item['code_evidence'], item['note']),
+                         (MEAN['title'], SUMMARY_EVIDENCE, THROWN_OUT_NOTE))
+
+    def test_a_run_stopped_before_its_review_shows_what_the_code_check_threw_out(self):
+        # read_run reads the check's own file on a run that has no issues.json yet.
+        self.assertFalse((self.unwritten / 'review' / 'issues.json').exists())
+        review = self.view(self.unwritten)
+        self.assertEqual(review['run']['findings_source'], 'ledger')
+        titles = [member['title'] for card in review['findings'] for member in card['members']]
+        self.assertEqual(len(titles), 1)
+        self.assertNotIn(MEAN['title'], titles)
+        shown = review['run']['code_check']
+        self.assertEqual((shown['cap'], shown['checked'], shown['counts']['contradicted']),
+                         (read_run(self.unwritten)['code_check']['cap'], 1, 1))
+        self.assertIsInstance(shown['cap'], int)
+        [item] = shown['thrown_out']
+        self.assertEqual((item['title'], item['code_evidence'], item['placement']),
+                         (MEAN['title'], SUMMARY_EVIDENCE, 'anchored'))
 
     def test_a_run_given_no_code_has_no_code_check(self):
         review = self.view(self.first)

@@ -571,6 +571,21 @@ class RunReviewTests(unittest.TestCase):
         self.assertIn('In issue 1 (i01), name is not text. In issue 1 (i01), statement is not text.', message)
         self.assertTrue(message.endswith('. 4 more are not listed. Re-run the review.'), message)
 
+    def test_the_code_check_is_read_as_read_run_hands_it_on(self):
+        # read_run works out the cap, the counts and how many were checked. A record that names no
+        # cap is read with none, and the panel shows it.
+        self.write_issues(code_check={'over_cap': 0, 'checks': []})
+        shown = run_review(self.review, self.base)['run']['code_check']
+        self.assertEqual((shown['cap'], shown['checked'], shown['over_cap'], shown['thrown_out']), (None, 0, 0, []))
+        # The rows are handed on as the check wrote them, so one with a value of the wrong type is refused by name.
+        self.write_issues(code_check={'cap': 20, 'over_cap': 0, 'checks': [{'finding_uid': 5, 'verdict': 'maybe'}]})
+        with self.assertRaises(RunError) as raised:
+            run_review(self.review, self.base)
+        self.assertEqual(str(raised.exception),
+                         "This run's code check holds values of the wrong type, so the viewer cannot show it. "
+                         'In code_check row 1, finding_uid is not text. In code_check row 1, verdict is not one of '
+                         'confirmed, contradicted, not-shown. Re-run the review.')
+
     def test_a_run_on_another_manuscript_version_is_refused(self):
         write_json(self.review / 'manifest.json', {'paper_id': PAPER_ID, 'source_sha256': 'other'})
         with self.assertRaisesRegex(ValueError, 'different manuscript version'):

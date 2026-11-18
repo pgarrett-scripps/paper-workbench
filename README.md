@@ -10,7 +10,7 @@ Start with [the team handoff](HANDOFF.md) for the current architecture, setup an
 
 ## Install
 
-Requires Python 3.11 or newer. The app pins `peerreviewagents` 0.10.0, which is not on PyPI yet, and is tested against its main branch at commit cf5b787, which reads manuscripts by line, has a model read each page image before every PDF review, can check the paper against its analysis code and throws out a finding when the code does not do what it said. Until it is published, install the engine from its main branch first, then this app:
+Requires Python 3.11 or newer. The app pins `peerreviewagents` 0.10.0, which is not on PyPI yet, and is tested against its main branch at commit a4bfe33, which reads manuscripts by line, has a model read each page image before every PDF review, can check the paper against its analysis code and throws out a finding when the code does not do what it said. Until it is published, install the engine from its main branch first, then this app:
 
 ```bash
 python -m pip install 'peerreviewagents @ git+https://github.com/pgarrett-scripps/PeerReviewAgents@main'

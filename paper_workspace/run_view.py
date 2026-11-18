@@ -14,12 +14,11 @@ order, ``ref:r2`` before ``ref:r10``. It is called without the fetched
 abstracts and full text, because the panel never shows them.
 
 On a run given code, the engine's code check reads each finding that rests on
-how a number was computed against the code. ``read_run`` does not hand on what
-it found, so its ``code_check`` is read from the ``issues.json`` that
-``read_run`` names in ``reports``, which is where the engine's integration
-guide says a reader of what the review threw out finds it.
+how a number was computed against the code. ``read_run`` hands on what it found
+as ``code_check``, from ``issues.json``, or from the check's own file on a run
+that stopped before the review was written. This module opens no run file of
+its own for it.
 """
-import json
 import os
 import re
 from collections import Counter
@@ -28,7 +27,8 @@ from pathlib import Path
 from peerreviewagents import MANUSCRIPT_DIRECTORY, cited_text, read_citation_ledger, read_run
 from peerreviewagents import locate_run, NotARunFolder
 from peerreviewagents.issues import (ISSUE_FIELDS, by_category, closed_issues, is_issue_id, required_issues,
-                                     schema_problem, suggestion_issues)
+                                     suggestion_issues)
+from peerreviewagents.names import CODE_CHECK_VERDICTS
 
 RUN_REVIEW_ID = 'run'
 AUDIT_LIMIT = 400_000
@@ -68,7 +68,6 @@ CODE_VIEW = ('reviewed', 'kind', 'source', 'commit', 'branch', 'dirty', 'snapsho
 # engine's words how the file changed after the snapshot listed it.
 DATA_VIEW = ('path', 'bytes', 'stored_bytes', 'partial', 'changed')
 CONTRADICTED = 'contradicted'
-CODE_CHECK_VERDICTS = ('confirmed', CONTRADICTED, 'not-shown')
 # What a finding the code check threw out keeps from the check's row. Its comment
 # and offsets come from its ledger row, and the slot and track are the finding's own.
 THROWN_OUT_VIEW = ('finding_uid', 'title', 'severity', 'basis', 'assumed_method', 'quote', 'document', 'line',
@@ -160,12 +159,12 @@ def issue_problems(rows):
     return problems
 
 
-def wrong_types(problems):
+def wrong_types(problems, record="This run's review/issues.json"):
     """One message for every value of the wrong type, the first few of them named."""
     lines = [line[0].upper() + line[1:] for line in problems[:TYPE_PROBLEMS_SHOWN]]
     if len(problems) > TYPE_PROBLEMS_SHOWN:
         lines.append(f'{len(problems) - TYPE_PROBLEMS_SHOWN} more are not listed')
-    return ("This run's review/issues.json holds values of the wrong type, so the viewer cannot show it. "
+    return (f'{record} holds values of the wrong type, so the viewer cannot show it. '
             + '. '.join(lines) + '. Re-run the review.')
 
 
@@ -176,23 +175,15 @@ def check_issues(rows):
         raise RunError(wrong_types(problems))
 
 
-def code_check_problems(check):
-    """Each value of ``code_check`` that is not of the type the viewer reads, as a line of prose."""
-    if not isinstance(check, dict):
-        return ['code_check is not an object']
-    problems = [f'code_check {key} is not a whole number' for key in ('cap', 'checked', 'over_cap')
-                if not is_line(check.get(key))]
-    counts = check.get('counts')
-    if not (isinstance(counts, dict) and all(is_line(counts.get(key)) for key in CODE_CHECK_VERDICTS)):
-        problems.append('code_check counts is not a whole number per verdict')
-    rows = check.get('checks')
-    if not isinstance(rows, list):
-        return problems + ['code_check checks is not a list']
+def code_check_problems(rows):
+    """Each value in the code check's rows that is not of the type the viewer reads, as a line of prose.
+
+    ``read_run`` works out the cap, the counts and how many were checked, and
+    hands on each row as the check wrote it.
+    """
+    problems = []
     for number, row in enumerate(rows, 1):
         where = f'code_check row {number}'
-        if not isinstance(row, dict):
-            problems.append(f'{where} is not an object')
-            continue
         if not isinstance(row.get('finding_uid'), str):
             problems.append(f'in {where}, finding_uid is not text')
         if row.get('verdict') not in CODE_CHECK_VERDICTS:
@@ -210,32 +201,17 @@ def code_check_problems(check):
 
 
 def code_check_of(run):
-    """What the run's code check did, or ``None`` on a run given no code.
+    """What the run's code check did, as ``read_run`` hands it on, or ``None`` on a run that had none.
 
-    It is read from the ``issues.json`` that ``read_run`` names. A run with no
-    readable ``issues.json``, or one stamped with a version the engine does not
-    read, has no code check to show here, and ``read_run`` has already named
-    that file in ``problems``. Engine 0.10.0 writes ``code_check`` on every run,
-    so a document without the key is refused.
+    A run given no code has none. A row holding a value of another type is
+    refused with each such value named.
     """
-    path = run['reports'].get('issues')
-    if path is None:
-        return None
-    try:
-        document = json.loads(Path(path).read_bytes().decode('utf-8'))
-    except (OSError, ValueError):
-        return None
-    if schema_problem(document):
-        return None
-    if 'code_check' not in document:
-        raise RunError("This run's review/issues.json has no code_check, which engine 0.10.0 writes on every run. "
-                       'Re-run the review.')
-    check = document['code_check']
+    check = run['code_check']
     if check is None:
         return None
-    problems = code_check_problems(check)
+    problems = code_check_problems(check['checks'])
     if problems:
-        raise RunError(wrong_types(problems))
+        raise RunError(wrong_types(problems, "This run's code check"))
     return check
 
 

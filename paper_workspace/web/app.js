@@ -326,9 +326,15 @@ function memberList(item){
  if(!item.members.length)return '';
  return `<details class="members" open><summary>Evidence: ${esc(plural(item.members.length,'finding'))}</summary><ol>${item.members.map((member,index)=>memberItem(item,member,index)).join('')}</ol></details>`;
 }
+// A review written with no findings in it: the reviewers raised none, the guard quarantined
+// what they raised, or the code check threw it out.
 function runStatus(run){
  if(run.status!=='complete-without-findings')return `Status ${run.status}`;
- return run.quarantined_findings_count?`Status ${run.status}: the guard quarantined all ${run.quarantined_findings_count}`
+ const quarantined=run.quarantined_findings_count||0;
+ const thrown=run.code_check?run.code_check.counts.contradicted:0;
+ if(quarantined&&thrown)return `Status ${run.status}: the guard quarantined ${quarantined} and the code check threw out ${thrown}`;
+ if(thrown)return `Status ${run.status}: the code check threw out all ${thrown}`;
+ return quarantined?`Status ${run.status}: the guard quarantined all ${quarantined}`
   :`Status ${run.status}: the reviewers raised none`;
 }
 function agentFacts(row){
@@ -430,7 +436,7 @@ function codeReviewed(code){
 function codeCheckCounts(check){
  if(!check)return '';
  const counts=check.counts||{};
- const over=check.over_cap>0?`, ${check.over_cap} over its cap of ${check.cap} left unchecked`:'';
+ const over=check.over_cap>0?`, ${check.over_cap} over its cap${check.cap===null?'':` of ${check.cap}`} left unchecked`:'';
  return `<p class="count">${esc(`Code check: ${check.checked} checked, ${counts.confirmed??0} confirmed, ${counts.contradicted??0} thrown out, ${counts['not-shown']??0} not shown in the code${over}`)}</p>`;
 }
 // A finding the code check threw out is in no issue and takes no decision. It is shown with the
