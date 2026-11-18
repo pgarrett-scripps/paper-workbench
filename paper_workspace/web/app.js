@@ -257,12 +257,16 @@ function externalFinding(item){
 const PROBLEM_STATUS={open:'Open',fixed:'Fixed',declined:'Declined by the author',thrown_out:'Thrown out by the code check',
  not_applicable:'Copyedit, with no scientific status'};
 const AUTHOR_STATUS={open:'open',addressed:'addressed by the author',declined:'declined by the author'};
-function authorDecision(row){
- const author=row.author;
- const said=[author.note&&`Note: ${esc(author.note)}`,author.rationale&&`Rationale: ${esc(author.rationale)}`].filter(Boolean);
- // A problem brought in from an engine run has no wording to accept, only the decision on the issue.
- const issue=esc(AUTHOR_STATUS[author.status]||author.status);
- return `<p><strong>Author's decision on draft ${esc(row.raised_on)}</strong><br>${author.wording?`Wording ${esc(author.wording)}, issue ${issue}`:`Issue ${issue}`}${said.map(text=>'<br>'+text).join('')}</p>`;
+// The author's decisions on a problem, the latest first, each naming the draft it was made on. A decision made after
+// a fix check found the problem not fixed sits above the one it follows, and every earlier one stays in view.
+function authorDecisions(row){
+ // A problem brought in from an engine run has no wording to accept, only the decisions on the issue.
+ const wording=row.wording?`<p>Wording ${esc(row.wording)} on draft ${esc(row.raised_on)}</p>`:'';
+ if(!row.decisions.length)return wording+(row.status==='not_applicable'?'':'<p class="muted">The author has not decided on this problem.</p>');
+ return wording+[...row.decisions].reverse().map(decision=>{
+  const said=[decision.note&&`Note: ${esc(decision.note)}`,decision.rationale&&`Rationale: ${esc(decision.rationale)}`].filter(Boolean);
+  return `<p><strong>Author's decision on draft ${esc(decision.draft)}</strong><br>Issue ${esc(AUTHOR_STATUS[decision.status]||decision.status)}${said.map(text=>'<br>'+text).join('')}</p>`;
+ }).join('');
 }
 // One engine fix check of a later draft. Its verdict and basis are printed as the engine names them, and the
 // quote is the passage of the checked draft the verdict rests on. A check that did not reach the problem says why.
@@ -300,7 +304,7 @@ function history(){
   const quotes=row.evidence.map(span=>`<blockquote>${esc(span.quote)}</blockquote>`).join('');
   // A finding an earlier run's code check threw out is carried to say what the code showed, never as an open question.
   if(row.status==='thrown_out')return `<div class="cross-check thrown-out-item">${top}<p class="thrown-out-mark" role="note">${esc(THROWN_OUT)}</p><p><strong>${esc(row.title||'Finding')}</strong></p><p>${esc(row.statement||'')}</p>${quotes}${codeEvidence(finding,'Code that contradicts it')}${finding.note?`<p><strong>Code check note</strong><br>${esc(finding.note)}</p>`:''}${raised}</div>`;
-  return `<div class="cross-check">${top}<p><strong>${esc(categoryLabel(row.category))}: ${esc(row.title||'Earlier problem')}</strong>${row.severity?' · '+esc(row.severity):''}</p><p>${esc(row.statement||'')}</p>${quotes}${location}${raised}${authorDecision(row)}${row.status==='not_applicable'?'':fixChecks(row)}</div>`;
+  return `<div class="cross-check">${top}<p><strong>${esc(categoryLabel(row.category))}: ${esc(row.title||'Earlier problem')}</strong>${row.severity?' · '+esc(row.severity):''}</p><p>${esc(row.statement||'')}</p>${quotes}${location}${raised}${authorDecisions(row)}${row.status==='not_applicable'?'':fixChecks(row)}</div>`;
  }).join('');
 }
 // A run's cards are the editor's issues. Every review is a fresh panel, so a card says nothing about an earlier round.

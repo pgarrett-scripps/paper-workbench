@@ -7,21 +7,21 @@ workspace folder in place of the PDF, and reviews its built PDF with its code. `
 ``review`` of a manuscript workspace reviews its current draft and adds the
 problems of the finished review to that draft's issue ledger, as
 ``import-run`` does for a run folder. ``decide`` records the author's
-decision on one of them. ``check-fixes`` runs the engine's fix check of a
-manuscript workspace's current draft against the open problems in its issue
+decision on one open or declined problem in the ledger. ``revise`` makes the
+next draft from the author's edited Paper Scaffold project, with its PDF built
+and the ledger frozen into it. ``check-fixes`` runs the engine's fix check of
+a manuscript workspace's current draft against the open problems in its issue
 ledger, and records the verdicts there. ``import`` and ``verify`` make and
 check a manuscript workspace without a model call, and the remaining
-commands revise and export a workspace.
+commands run copyediting rounds, move the current draft and export a workspace.
 """
 import argparse
 import json
 import sys
 
-from peerreviewagents.workspace import read_json
-
 ENGINE_COMMANDS = ('review', 'check-fixes', 'report')
 APP_COMMANDS = ('import', 'verify', 'port-scaffold', 'import-scaffold', 'import-run', 'decide', 'revise',
-                'revision-loop', 'revision-request', 'checkout-revision', 'export-revision', 'export-review', 'serve')
+                'revision-loop', 'checkout-revision', 'export-revision', 'export-review', 'serve')
 __all__ = ['APP_COMMANDS', 'ENGINE_COMMANDS', 'build_parser', 'main']
 
 
@@ -46,22 +46,12 @@ def add_app_subcommands(sub):
     p.add_argument('--title')
     from .ledger_commands import add_subcommands
     add_subcommands(sub)
-    p=sub.add_parser('revise',help='Create a source revision from a review response')
-    p.add_argument('workspace')
-    p.add_argument('response')
-    p.add_argument('--id',required=True)
-    p.add_argument('--decisions',help='Explicit accepted edits. Otherwise apply the conservative automatic policy.')
-    p.add_argument('--source-revision',required=True,help='Revision reviewed, or original')
-    p.add_argument('--expected-version',type=int,required=True)
-    p.add_argument('--no-build',action='store_true',help='Create a source-only draft without a PDF build')
     p=sub.add_parser('revision-loop',help='Run bounded copyediting rounds on a workspace')
     p.add_argument('workspace')
     p.add_argument('--id',required=True)
     p.add_argument('--max-rounds',type=int,default=2)
     p.add_argument('--max-edits',type=int,default=10)
     p.add_argument('--no-build',action='store_true')
-    p=sub.add_parser('revision-request',help='Print the revision request an editing agent would receive')
-    p.add_argument('workspace')
     p=sub.add_parser('checkout-revision',help='Make a saved revision the current head')
     p.add_argument('workspace')
     p.add_argument('revision')
@@ -176,20 +166,12 @@ def dispatch(parser,args):
         return decide_problem('paper-workbench decide',args.workspace,args.problem,args.status,
                               args.rationale,args.note)
     elif args.command=='revise':
-        from peerreviewagents.workspace import normalize_review
-        from .revisions import snapshot,automation_decisions,create_revision
-        _,paper=snapshot(args.workspace,args.source_revision)
-        review=normalize_review(paper,read_json(args.response),args.id)
-        decisions=read_json(args.decisions) if args.decisions else automation_decisions(paper,review)
-        print(create_revision(args.workspace,review,decisions,args.id,
-            {'revision_id':args.source_revision,'version':args.expected_version},build=not args.no_build))
+        from .ledger_commands import revise_draft
+        return revise_draft('paper-workbench revise',args.workspace,args.project,args.id)
     elif args.command=='revision-loop':
         from .revisions import run_loop
         print(run_loop(args.workspace,args.id,max_rounds=args.max_rounds,max_edits=args.max_edits,
             build=not args.no_build))
-    elif args.command=='revision-request':
-        from .revisions import agent_request
-        print(json.dumps(agent_request(args.workspace),indent=2,ensure_ascii=False))
     elif args.command=='checkout-revision':
         from .revisions import head,checkout
         expected=head(args.workspace)

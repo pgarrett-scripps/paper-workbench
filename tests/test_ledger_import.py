@@ -21,8 +21,9 @@ from peerreviewagents.workspace import digest, normalize_review
 
 from paper_workspace.__main__ import main
 from paper_workspace.ledger_commands import added_line
-from paper_workspace.revisions import (RAISED, automation_decisions, copyedit_proposals, create_revision, decide,
-                                       head, ledger_of, open_problems, record_problems, snapshot)
+from paper_workspace.revisions import (DECIDED, LEDGER, RAISED, automation_decisions, copyedit_proposals,
+                                       create_revision, decide, head, ledger_of, open_problems, record_problems,
+                                       snapshot)
 from paper_workspace.scaffold_import import import_scaffold
 from reader_fixture import pdf_bytes
 from test_engine_rounds import FIRST, check_round, grouped, offline, one_round, opened_round
@@ -131,7 +132,7 @@ class LedgerImportTest(ReviewedDraft):
                              (name, 'round-1', 'problem', 'major'))
             self.assertEqual(row['statement'], f'{name} is stated more strongly than the data carry.')
             self.assertEqual([(span['quote'], span['line']) for span in row['evidence']], [(quote, None)])
-            self.assertEqual((row['author']['status'], row['fix_checks']), ('open', []))
+            self.assertEqual((row['wording'], row['decisions'], row['fix_checks']), (None, [], []))
         record = json.loads(self.raised.read_text())
         self.assertEqual(record['runs'], [{'run': str(run), 'review_id': 'round-1', 'date': DATE,
                                            'pdf_sha256': digest(self.source), 'added': 3, 'left_out': 0,
@@ -181,20 +182,29 @@ class LedgerImportTest(ReviewedDraft):
         self.assertEqual(json.loads(self.raised.read_text())['runs'][0]['not_publishable_reasons'], reasons)
         self.assertIn('The review is not publishable as a peer review: ', added_line(result))
 
-    def test_the_author_decides_on_each_problem_raised_on_the_draft(self):
+    def test_the_author_decides_on_each_open_problem_in_the_ledger_of_the_draft(self):
         run = reviewed(self.temp / 'round-1', self.source)
         sample, scope, repeats = record_problems(self.root, run, DATE)['added']
+        raised = self.raised.read_bytes()
         row = decide(self.root, sample, 'addressed', 'The donors are now named.', 'See the methods.')
         # Addressed is the author's word, and the problem stays open until a check of a later draft finds it fixed.
-        self.assertEqual((row['status'], row['author']), ('open', {
-            'wording': None, 'status': 'addressed', 'note': 'See the methods.', 'rationale': 'The donors are now named.'}))
+        self.assertEqual((row['status'], row['wording'], row['decisions']), ('open', None, [
+            {'draft': 'second', 'status': 'addressed', 'note': 'See the methods.',
+             'rationale': 'The donors are now named.'}]))
         self.assertEqual(decide(self.root, scope, 'declined', 'The claim is about one tissue.')['status'], 'declined')
         self.assertNotIn(scope, [problem['id'] for problem in open_problems(ledger_of(self.folder))])
         reply = next(problem for problem in open_problems(ledger_of(self.folder)) if problem['id'] == sample)
         self.assertEqual(reply['author_reply'], 'See the methods.\n\nThe donors are now named.')
-        # A rationale left out keeps the one the row has.
-        self.assertEqual(decide(self.root, sample, 'open')['author']['rationale'], 'The donors are now named.')
-        before = self.raised.read_bytes()
+        # A second decision on the same draft replaces the first, and a rationale left out keeps the one it gave.
+        self.assertEqual(decide(self.root, sample, 'open')['decisions'], [
+            {'draft': 'second', 'status': 'open', 'note': 'See the methods.', 'rationale': 'The donors are now named.'}])
+        # A problem carried from the original takes a decision on this draft too.
+        self.assertEqual(decide(self.root, self.major, 'declined', 'Out of scope.')['decisions'], [
+            {'draft': 'second', 'status': 'declined', 'note': '', 'rationale': 'Out of scope.'}])
+        # The decisions sit beside the draft, and the problems the review raised are as it raised them.
+        self.assertEqual(self.raised.read_bytes(), raised)
+        before = (self.folder / DECIDED).read_bytes()
+        copyedit = next(row['id'] for row in ledger_of(self.folder) if row['raised_as'] == 'copyedit')
         refusals = [
             ((repeats, 'declined'), 'An addressed or declined problem needs a rationale.'),
             ((repeats, 'declined', '   '), 'An addressed or declined problem needs a rationale.'),
@@ -202,14 +212,14 @@ class LedgerImportTest(ReviewedDraft):
             ((repeats, 'open', None, 'x' * 4001), 'A note is at most 4000 characters.'),
             ((repeats, 'fixed', 'Done.'), "A decision is one of open, addressed, declined, not 'fixed'."),
             (('second:round-1:i99', 'declined', 'No.'), 'The ledger of draft second has no problem second:round-1:i99.'),
-            ((self.major, 'declined', 'No.'), f'Problem {self.major} was raised on draft original and is carried into '
-                                              'draft second with the decision made then, so it takes no new one.'),
+            ((copyedit, 'declined', 'No.'), f'Problem {copyedit} is a copyedit, which has no scientific status, so it '
+                                            'takes no decision.'),
         ]
         for given, message in refusals:
             with self.assertRaises(ValueError, msg=given) as refused:
                 decide(self.root, *given)
             self.assertEqual(str(refused.exception), message)
-        self.assertEqual(self.raised.read_bytes(), before)
+        self.assertEqual((self.folder / DECIDED).read_bytes(), before)
 
     def test_a_fresh_review_of_a_later_draft_adds_new_rows_and_matches_none_to_the_old(self):
         first = reviewed(self.temp / 'round-1', self.source)
@@ -217,7 +227,8 @@ class LedgerImportTest(ReviewedDraft):
         decide(self.root, scope, 'declined', 'The claim is about one tissue.')
         third = self.next_draft()
         carried = {row['id']: row for row in ledger_of(third)}
-        self.assertEqual(carried[scope]['author']['status'], 'declined')
+        self.assertEqual(carried[scope]['decisions'], [
+            {'draft': 'second', 'status': 'declined', 'note': '', 'rationale': 'The claim is about one tissue.'}])
         # Draft third is not the PDF round one read, so round one is not a review of it.
         with self.assertRaisesRegex(ValueError, 'is of another PDF than draft third'):
             record_problems(self.root, first, DATE)
@@ -227,17 +238,23 @@ class LedgerImportTest(ReviewedDraft):
         added = record_problems(self.root, second, DATE)['added']
         self.assertEqual(added, self.ids(second, 'third', 'round-2'))
         ledger = {row['id']: row for row in ledger_of(third)}
-        self.assertEqual(ledger[added[0]]['author']['status'], 'open')
+        self.assertEqual(ledger[added[0]]['decisions'], [])
         self.assertEqual([ledger[problem]['title'] for problem in (scope, added[0])], ['The scope', 'The scope'])
         self.assertEqual({problem: ledger[problem] for problem in carried}, carried)
         self.assertFalse(set(added) & set(carried))
-        # A problem carried from draft second keeps the decision it was carried with.
-        with self.assertRaisesRegex(ValueError, f'^Problem {sample} was raised on draft second and is carried into '
-                                                'draft third with the decision made then'):
-            decide(self.root, sample, 'addressed', 'Fixed.')
-        # A check of draft third takes round one's open problems and the original's, and not its own.
+        # A problem carried from draft second is decided again on draft third, and the decision made on draft
+        # second stays on its row, as the ledger frozen into draft third still has it.
+        frozen = (third / LEDGER).read_bytes()
+        decide(self.root, scope, 'addressed', 'The claim now names the tissue.')
+        self.assertEqual(next(row for row in ledger_of(third) if row['id'] == scope)['decisions'], [
+            {'draft': 'second', 'status': 'declined', 'note': '', 'rationale': 'The claim is about one tissue.'},
+            {'draft': 'third', 'status': 'addressed', 'note': '', 'rationale': 'The claim now names the tissue.'}])
+        self.assertEqual((third / LEDGER).read_bytes(), frozen)
+        verify_workspace(third)
+        # A check of draft third takes round one's open problems and the original's, and not its own. The scope
+        # is addressed now, not declined, so it is open again.
         self.assertEqual([row['id'] for row in open_problems(ledger_of(third), 'third')],
-                         [self.minor, self.major, self.moderate, sample, repeats])
+                         [self.minor, self.major, self.moderate, sample, scope, repeats])
 
 
 class LedgerCommandTest(ReviewedDraft):
@@ -264,13 +281,16 @@ class LedgerCommandTest(ReviewedDraft):
         sample = record_problems(self.root, run, DATE)['added'][0]
         status, _, errors, _ = command('decide', str(self.root), sample, 'declined', '--rationale', 'Out of scope.',
                                        '--note', 'Kept for the discussion.')
-        self.assertEqual((status, errors), (0, f'paper-workbench decide: problem {sample} is declined, and no fix '
-                                               'check takes it.\n'))
-        self.assertEqual(decide(self.root, sample, 'addressed')['author'], {
-            'wording': None, 'status': 'addressed', 'note': 'Kept for the discussion.', 'rationale': 'Out of scope.'})
-        self.assertEqual(command('decide', str(self.root), self.major, 'declined', '--rationale', 'No.')[:3], (
-            2, '', f'paper-workbench decide: Problem {self.major} was raised on draft original and is carried into '
-                   'draft second with the decision made then, so it takes no new one.\n'))
+        self.assertEqual((status, errors), (0, f'paper-workbench decide: problem {sample}, decided on draft second, '
+                                               'is declined, and no fix check takes it.\n'))
+        self.assertEqual(decide(self.root, sample, 'addressed')['decisions'], [
+            {'draft': 'second', 'status': 'addressed', 'note': 'Kept for the discussion.', 'rationale': 'Out of scope.'}])
+        self.assertEqual(command('decide', str(self.root), self.major, 'open')[:3], (
+            0, '', f'paper-workbench decide: problem {self.major}, decided on draft second, is open.\n'))
+        copyedit = next(row['id'] for row in ledger_of(self.folder) if row['raised_as'] == 'copyedit')
+        self.assertEqual(command('decide', str(self.root), copyedit, 'declined', '--rationale', 'No.')[:3], (
+            2, '', f'paper-workbench decide: Problem {copyedit} is a copyedit, which has no scientific status, so it '
+                   'takes no decision.\n'))
 
     def test_review_of_a_manuscript_workspace_reviews_the_current_draft_and_adds_its_problems(self):
         run = self.temp / 'round-1'

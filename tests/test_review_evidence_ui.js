@@ -226,7 +226,7 @@ assert.ok(!html('#comments').includes('thrown-out'));
 vm.runInContext(`filter = 'all'; ledger = [{id:'original:run:u9', raised_on:'original', review_id:'run', source_id:'u9',
   paper_id:'p', raised_as:'thrown_out', status:'thrown_out', title:'The mean <hides> the spread', category:null,
   statement:'Show each repeat.', severity:'major', evidence:[{document:'paper.md', line:1, end_line:1, quote:'alpha'}],
-  author:null, fix_checks:[], finding:review.run.code_check.thrown_out[0]}]; cards(); history();`, context);
+  wording:null, decisions:[], fix_checks:[], finding:review.run.code_check.thrown_out[0]}]; cards(); history();`, context);
 const carried = html('#history-ledger');
 for (const text of ['<span class="badge">original:run:u9</span> Thrown out by the code check',
                     'Thrown out by the code check. This is not an open issue', '<strong>Code that contradicts it</strong>',
@@ -235,13 +235,15 @@ for (const text of ['<span class="badge">original:run:u9</span> Thrown out by th
 }
 for (const text of ["Author's decision", 'fix check']) assert.ok(!carried.includes(text), text);
 assert.ok(!elements.get('#finding-count').textContent.includes('earlier problem'));
-// An earlier problem shows the author's decision, a later check that did not reach it, then the latest
-// verdict with the engine's own verdict and basis names and the quote of the checked draft it rests on.
-// Each fix check is shaped as fix_check_entries in revisions.py records it. The earlier checks stay below.
+// An earlier problem shows the author's decisions, the latest first with the draft each was made on, then a
+// later check that did not reach it, then the latest verdict with the engine's own verdict and basis names and
+// the quote of the checked draft it rests on. Each fix check is shaped as fix_check_entries in revisions.py
+// records it, and each decision as ledger_of reads it. The earlier checks stay below.
 vm.runInContext(`ledger = [{id:'original:run:i03', raised_on:'original', review_id:'run', source_id:'i03', paper_id:'p',
   raised_as:'problem', status:'open', title:'The seed is <unstated>', category:'reproducibility',
   statement:'State the seed.', severity:'major', evidence:[{document:'paper.md', line:1, end_line:1, quote:'alpha'}],
-  author:{wording:'noted', status:'addressed', note:'We added it.', rationale:'Methods now name the seed.'},
+  wording:'noted', decisions:[{draft:'original', status:'addressed', note:'We added it.', rationale:'Methods now name the seed.'},
+                              {draft:'third', status:'addressed', note:'', rationale:'The <generator> is named now.'}],
   fix_checks:[{draft:'second', run:'/checks/one', date:'2026-11-01', verdict:'cannot-tell', basis:'old-quote-stands',
                evidence:null, old_evidence:[{document:'paper.md', quote:'An <older> quote.', present:true}],
                searches:['seed', 'random state'], reason:'The draft keeps the sentence.', note:''},
@@ -254,13 +256,19 @@ vm.runInContext(`ledger = [{id:'original:run:i03', raised_on:'original', review_
   finding:{}},
   {id:'original:run:i04', raised_on:'original', review_id:'run', source_id:'i04', paper_id:'p', raised_as:'problem',
   status:'declined', title:'Scope', category:'claims-and-conclusions', statement:'Widen the claim.', severity:'minor',
-  evidence:[], author:{wording:'noted', status:'declined', note:'', rationale:'Out of scope.'}, fix_checks:[], finding:{}}];
+  evidence:[], wording:'noted', decisions:[{draft:'original', status:'declined', note:'', rationale:'Out of scope.'}],
+  fix_checks:[], finding:{}},
+  {id:'second:round-1:i01', raised_on:'second', review_id:'round-1', source_id:'i01', paper_id:'p', raised_as:'problem',
+  status:'open', title:'Donors', category:'methods', statement:'Name the donors.', severity:'major',
+  evidence:[{document:'paper.md', line:null, end_line:null, quote:'one donor'}], wording:null, decisions:[],
+  fix_checks:[], finding:{}}];
   cards(); history();`, context);
 const problems = html('#history-ledger');
 for (const text of ['<span class="badge">original:run:i03</span> Open', 'Reproducibility: The seed is &lt;unstated&gt;</strong> · major',
                     'State the seed.', '<blockquote>alpha</blockquote>',
-                    "Author's decision on draft original</strong><br>Wording noted, issue addressed by the author<br>Note: We added it.<br>Rationale: Methods now name the seed.",
-                    '<p class="muted"><strong>Not checked on draft fourth on 2026-11-18</strong><br>Past the cap of 40 problems one fix check reads.</p>'
+                    "<p>Wording noted on draft original</p><p><strong>Author's decision on draft third</strong><br>Issue addressed by the author<br>Rationale: The &lt;generator&gt; is named now.</p>"
+                    + "<p><strong>Author's decision on draft original</strong><br>Issue addressed by the author<br>Note: We added it.<br>Rationale: Methods now name the seed.</p>"
+                    + '<p class="muted"><strong>Not checked on draft fourth on 2026-11-18</strong><br>Past the cap of 40 problems one fix check reads.</p>'
                     + '<p><strong>Fix check of draft third on 2026-11-17: not-fixed</strong><br>Basis: quote<br>'
                     + "Checker's note: The generator is not named.</p>"
                     + '<p class="muted">From draft third, page 2 of its PDF, section Methods</p><blockquote>The seed is &lt;42&gt;.</blockquote>'
@@ -268,8 +276,10 @@ for (const text of ['<span class="badge">original:run:i03</span> Open', 'Reprodu
                     + '<br>Basis: old-quote-stands<br>Reason: The draft keeps the sentence.<br>Searched the draft for: seed, random state</p>'
                     + '<p class="muted">Still in draft second word for word</p><blockquote>An &lt;older&gt; quote.</blockquote></details>',
                     '<span class="badge">original:run:i04</span> Declined by the author',
-                    'Wording noted, issue declined by the author<br>Rationale: Out of scope.',
-                    'No later draft has been checked for this problem.']) {
+                    "<p>Wording noted on draft original</p><p><strong>Author's decision on draft original</strong><br>Issue declined by the author<br>Rationale: Out of scope.</p>",
+                    'No later draft has been checked for this problem.',
+                    // A problem an engine review raised has no wording, and the card says when no decision was made.
+                    'Raised on draft second by review round-1. Its quotes are from that draft.</p><p class="muted">The author has not decided on this problem.</p><p class="muted">No later draft has been checked for this problem.</p>']) {
   assert.ok(problems.includes(text), text);
 }
 // The verdict is the engine's name as written, and the run folder path is not shown.
@@ -281,7 +291,8 @@ vm.runInContext(`ledger = [{...ledger[0], status:'fixed', fix_checks:[{draft:'se
 assert.ok(html('#history-ledger').includes('<p><strong>Fix check of draft second on 2026-11-01: fixed</strong><br>Basis: old-quote-gone<br>'
   + 'Searched the draft for: seed</p><p class="muted">No longer in draft second word for word</p><blockquote>alpha</blockquote>'));
 assert.ok(!html('#history-ledger').includes('Earlier fix checks'));
-assert.ok(elements.get('#finding-count').textContent.endsWith(' · 1 earlier problem open'));
+// The count is of the ledger cards() last drew: the seed and the donors are open, and the scope is declined.
+assert.ok(elements.get('#finding-count').textContent.endsWith(' · 2 earlier problems open'));
 // A card's author response can decline the issue.
 assert.ok(html('#comments').includes('<option value="declined" >Declined by author</option>'));
 vm.runInContext('ledger = []; review.run.code_check = null; cards();', context);

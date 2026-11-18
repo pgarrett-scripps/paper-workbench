@@ -134,7 +134,13 @@ def _body_span(source: str, name: str, *, required: bool) -> tuple[int, int]:
     return starts[0].end(), ends[0].start()
 
 
-def _copy_project(source: Path, destination: Path) -> None:
+def copy_project(source: Path, destination: Path) -> None:
+    """Copy a Scaffold project's source into ``destination``, a folder that does not exist yet.
+
+    The copy leaves out the agent notes and the version control, environment,
+    build and cache folders a project keeps, and refuses a symlink, a file that
+    is not a regular file and a project over the import limit.
+    """
     destination.mkdir(parents=True)
     copied_bytes = 0
 
@@ -414,7 +420,7 @@ def import_scaffold(source, output, title=None, prepare=None, check=None):
     temporary = Path(tempfile.mkdtemp(prefix=".scaffold-import-", dir=output.parent))
     try:
         copied = temporary / "scaffold"
-        _copy_project(source, copied)
+        copy_project(source, copied)
         name = _title(copied, title)
         documents, spans, about = _documents(copied, name)
         write_json(temporary / SPANS, spans)

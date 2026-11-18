@@ -8,7 +8,7 @@ from peerreviewagents import verify_workspace
 from peerreviewagents.workspace import normalize_review, read_json
 
 from manuscripts import line_of
-from paper_workspace.revisions import (agent_request, apply_fix_checks, automation_decisions, checkout,
+from paper_workspace.revisions import (apply_fix_checks, automation_decisions, checkout,
     copyedit_proposals, create_revision, head, ledger_rows, open_problems, problem_id, problem_status, run_loop,
     safety_reasons, snapshot)
 from paper_workspace.scaffold_import import import_scaffold
@@ -50,6 +50,10 @@ class Revisions(unittest.TestCase):
         for name in ('config.typ', 'references.bib', 'results.typ'):
             self.assertEqual((draft / 'scaffold' / name).read_bytes(), (FIXTURE / name).read_bytes())
         self.assertIn('changes.patch', read_json(draft / 'manifest.json')['files'])
+        # The patch is the diff from the original's source, and names only the file the edits changed.
+        patch = (draft / 'changes.patch').read_text()
+        self.assertTrue(patch.startswith('--- before/paper.typ\n+++ after/paper.typ\n'), patch)
+        self.assertEqual(patch.count('\n--- '), 0)
         verify_workspace(self.root)
         verify_workspace(draft)
 
@@ -128,7 +132,7 @@ class Revisions(unittest.TestCase):
         decisions['items'] = {'i01': 'accepted'}
         create_revision(self.root, review, decisions, 'issues', head(self.root), build=False)
         rows = read_json(self.root / 'revisions/issues/issue-ledger.json')[-3:]
-        self.assertEqual([(row['id'], row['source_id'], problem_status(row), row['author']['wording']) for row in rows],
+        self.assertEqual([(row['id'], row['source_id'], problem_status(row), row['wording']) for row in rows],
                          [('original:copyedit:i01', 'i01', 'open', 'accepted'),
                           ('original:copyedit:i02', 'i02', 'open', 'proposed'),
                           ('original:copyedit:ledger-1', None, 'open', 'proposed')])
@@ -164,8 +168,8 @@ class Revisions(unittest.TestCase):
         create_revision(self.root, review, decisions, 'checked', head(self.root), build=False)
         rows = read_json(self.root / 'revisions/checked/issue-ledger.json')
         self.assertEqual(len(rows), len(review['findings']) + 1)
-        self.assertEqual((rows[-1]['id'], rows[-1]['finding'], problem_status(rows[-1]), rows[-1]['author']),
-                         ('original:copyedit:u-mean', item, 'thrown_out', None))
+        self.assertEqual((rows[-1]['id'], rows[-1]['finding'], problem_status(rows[-1]), rows[-1]['wording'],
+                          rows[-1]['decisions']), ('original:copyedit:u-mean', item, 'thrown_out', None, []))
 
     def test_a_run_given_no_code_adds_nothing_thrown_out_to_the_ledger(self):
         review, decisions = self.proposals()
@@ -317,17 +321,6 @@ class Revisions(unittest.TestCase):
         (self.root / 'scaffold/unrecorded.typ').write_text('New content')
         with self.assertRaisesRegex(ValueError, 'inventory changed'):
             verify_workspace(self.root)
-
-    def test_agent_handoff_tracks_current_draft(self):
-        before = agent_request(self.root)
-        run_loop(self.root, 'agent', build=False)
-        after = agent_request(self.root)
-        self.assertNotEqual(before['source_sha256'], after['source_sha256'])
-        self.assertEqual(after['head']['revision_id'], 'agent-1')
-        self.assertEqual([row['status'] for row in after['historical_issues']], ['not_applicable', 'not_applicable'])
-        self.assertEqual(after['editable_lines'], before['editable_lines'])
-        self.assertTrue((self.root / 'reviews/agent-r1.json').exists())
-        self.assertTrue((self.root / 'revisions/agent-1/reviews/agent-r2.json').exists())
 
 
 if __name__ == '__main__':

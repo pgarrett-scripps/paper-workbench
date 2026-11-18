@@ -56,25 +56,30 @@ Author decisions on a run are saved in `manuscript/decisions/run.json`. The revi
 A fix loop runs on a native Scaffold workspace, imported with `import-scaffold` from a project built with `just paper`, so the original draft keeps its built PDF as `artifacts/paper.pdf`:
 
 1. Review. `review WORKSPACE RUN` reviews the current draft's built PDF with its `scaffold/` source as the code, as a fresh panel that knows nothing of an earlier review, and adds the problems of the finished review to the draft's ledger. `import-run WORKSPACE RUN` adds a run folder the same way.
-2. Decide. `decide WORKSPACE PROBLEM STATUS --rationale TEXT` marks a problem raised on the current draft open, addressed or declined. In `serve` the author also accepts or declines each card's wording. Addressed is the author's own assessment and leaves the problem open.
-3. Revise. The viewer's revision button, or `revise`, builds the next draft. `revisions/DRAFT/issue-ledger.json` holds one row per problem under an id that never changes, such as `original:run:i03`, and the draft's manifest covers it.
+2. Decide. `decide WORKSPACE PROBLEM STATUS --rationale TEXT` marks an open or declined problem in the current draft's ledger open, addressed or declined, whichever draft raised it. In `serve` the author also accepts or declines each card's wording. Addressed is the author's own assessment and leaves the problem open.
+3. Revise. The author edits the project folder the workspace was imported from, by hand or with an agent, and `revise WORKSPACE PROJECT --id DRAFT` builds the next draft from it. `revisions/DRAFT/issue-ledger.json` holds one row per problem under an id that never changes, such as `original:run:i03`, and the draft's manifest covers it. The viewer's revision button instead applies the wording a review's cards accepted.
 4. Check fixes. `check-fixes` reads the current draft against the open problems in its ledger.
-5. Fresh review. Review the new draft when you want new problems found. It reads nothing of the ledger, and its problems are new rows that match no earlier one.
+5. Decide again. A problem the check found not fixed is still open and takes a new decision on the new draft, and the author edits and revises again.
+
+Review the new draft when you want new problems found. It reads nothing of the ledger, and its problems are new rows that match no earlier one.
 
 ```bash
 python -m paper_workspace import-scaffold path/to/project path/to/workspace
 python -m paper_workspace review path/to/workspace runs/r1
 python -m paper_workspace decide path/to/workspace original:r1:i02 addressed --rationale "Reworded the claim"
+python -m paper_workspace revise path/to/workspace path/to/project --id draft-2
 python -m paper_workspace check-fixes path/to/workspace runs/fixes-1
 ```
 
-`ledger_commands.py` holds `import-run` and `decide`. Both call `revisions.py`: `record_problems` reads the run through the engine's `read_run` and `problems_from_run` and takes a finished review only when the PDF it read is the current draft's built PDF by hash, and `decide` records one decision. Each refuses with one line on stderr, exit 2 and nothing changed. The problems of a review are kept beside the frozen ledger in `revisions/DRAFT/raised-problems.json` until the next draft copies them. A run added twice adds nothing, and a complete review the engine calls not publishable is added with its reasons printed.
+`ledger_commands.py` holds `import-run`, `decide` and `revise`. Each calls `revisions.py`: `record_problems` reads the run through the engine's `read_run` and `problems_from_run` and takes a finished review only when the PDF it read is the current draft's built PDF by hash, `decide` records one decision and `revise` makes one draft. Each refuses with one line on stderr, exit 2 and nothing changed. The problems of a review are kept beside the frozen ledger in `revisions/DRAFT/raised-problems.json`, and the decisions made on a draft in `revisions/DRAFT/decided-problems.json`, until the next draft freezes them into its own ledger. Each decision records the draft it was made on, a second decision on the same draft replaces the first, and the decisions made on earlier drafts stay on the row. A problem that is fixed, thrown out or a copyedit takes no decision.
+
+`revise` copies the project as `import-scaffold` does and refuses a project inside the workspace or one with no `paper.typ`. `publish_draft` builds the copy with typst, writes `changes.patch`, the diff from the current draft's source, and freezes the current draft's ledger into the new draft. It makes no draft, and the current draft stays current, when the source is the current draft's file for file or the build fails. The viewer's revision button goes through `create_revision`, which applies a review's accepted wording to the current draft's source and publishes it through `publish_draft` too. A run added twice adds nothing, and a complete review the engine calls not publishable is added with its reasons printed.
 
 `fix_check.py` writes `RUN/problems.json` in the engine's `review-problems-v1` schema from `open_problems(ledger, draft)`: every open problem the current draft has no verdict on yet, in severity order, each with its id, statement, severity, the quotes it was raised on and the author's note as `author_reply`. A problem the engine would refuse, such as one with no severity, is left out and named on stderr. It then hands the draft's built `artifacts/paper.pdf` and that file to the engine's `check_fixes_main`, the entry `peerreview check-fixes` uses, and takes the engine's other options as they are. It refuses, with exit 2 and nothing run, a folder that is not a workspace, a draft made with `--no-build`, a draft with no open problem left to check, a run folder that already holds files and any `--problems`.
 
 The engine gives each problem it reaches one verdict from `peerreviewagents.names.FIX_VERDICTS`, which are `fixed`, `not-fixed` and `cannot-tell`. A `fixed` or `not-fixed` verdict rests on its basis: `quote` for a passage of the new draft, `old-quote-gone` when every quote the problem was raised on is gone and `old-quote-stands` when one is still there word for word. A `cannot-tell` verdict gives a reason instead, such as a fix that lives in the code. One check takes at most 40 problems, ten to a checker. `record_fix_checks` reads what `read_fix_check` returns and records one entry per problem in `revisions/DRAFT/fix-checks.json`, beside the frozen ledger: the run, the date, the verdict, the basis, the passage of the new draft as `evidence`, each quote it was raised on with whether it is still present, the searches, the reason and the checker's note. A problem past the cap or reached by no checker is entered as not checked, with why, and the next check of the same draft takes it again. Each check needs its own run folder and is recorded once. The next draft copies every entry into its own ledger. A check that is blocked, stopped or cannot be read whole records nothing, prints why and exits 1 or the engine's code. The stderr line after a recorded check counts each verdict and the problems not checked.
 
-`problem_status` reads a row's status: `fixed` when its latest verdict is `fixed` and `open` while it is `not-fixed` or `cannot-tell`. A not-checked entry leaves the earlier verdict standing. The viewer shows each problem's latest verdict with its basis, the quote from the new draft and the checker's note, or that the check did not reach it and why, with earlier checks under a toggle. The verdict names come from the engine.
+`problem_status` reads a row's status: `declined` when the author's latest decision declined it, `fixed` when its latest verdict is `fixed` and `open` while it is `not-fixed` or `cannot-tell`. A not-checked entry leaves the earlier verdict standing. The viewer shows each of the author's decisions on a problem, the latest first and each with the draft it was made on, then the latest verdict with its basis, the quote from the new draft and the checker's note, or that the check did not reach it and why, with earlier checks under a toggle. The verdict names come from the engine.
 
 ## Retired experiment runners
 
@@ -96,18 +101,17 @@ node tests/test_review_evidence_ui.js
 node --check paper_workspace/web/app.js
 ```
 
-Tests cover the run-folder reader, finished, stopped and startup-blocked runs in the viewer, the review and report commands against the installed engine with `claude` off `PATH`, the fix check recorded from checks the engine's `scripted_fix_check` writes with no model, Unicode anchors, source tampering, overlap rejection, revisions, Scaffold import and export, and Word review copies. No test starts a review.
+Tests cover the run-folder reader, finished, stopped and startup-blocked runs in the viewer, the review and report commands against the installed engine with `claude` off `PATH`, the fix check recorded from checks the engine's `scripted_fix_check` writes with no model, the whole fix loop over three drafts through the commands, Unicode anchors, source tampering, overlap rejection, revisions, Scaffold import and export, and Word review copies. No test starts a review.
 
 ## Native Scaffold revisions
 
 The real manuscript continuation supports citation-aware source edits, all prose paragraphs in the tested port, preserved source figures and structured tables, and version-bound Word and PDF downloads. See [the completed fixes and validation](../docs/pra-real-revision-improvements.md). This is workflow validation with no new review inference or superiority claim.
 
-Native Scaffold projects support immutable source snapshots, exact prose anchors, separate revised drafts, PDF build gates, rollback, and a bounded unattended copyediting loop. Scientific concerns remain distinct from wording decisions. See [the revision workflow](../docs/pra-revision-loop.md) for commands, the agent handoff contract, validation, and current limits.
+Native Scaffold projects support immutable source snapshots, exact prose anchors, separate revised drafts, PDF build gates, rollback, and a bounded unattended copyediting loop. Scientific concerns remain distinct from wording decisions. See [the revision workflow](../docs/pra-revision-loop.md) for commands, validation, and current limits.
 
 ```bash
 python -m paper_workspace import-scaffold /path/to/manuscript /path/to/workspace
 python -m paper_workspace revision-loop /path/to/workspace --id language-pass --max-rounds 2 --max-edits 10
-python -m paper_workspace revision-request /path/to/workspace
 ```
 
 The built-in loop is offline and deliberately narrow. It makes no model calls. A provider callback can supply fresh version-bound proposals. Native Word export creates a clean manuscript, with review history retained in the workspace rather than embedded as Word tracked changes.

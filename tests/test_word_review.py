@@ -94,7 +94,7 @@ class WordReviewTests(unittest.TestCase):
         text = 'A < B with 12 samples.'
         paper = self.draft(text)
         declined, fixed = self.question(paper, text) + self.question(paper, text)
-        declined['author']['status'] = 'declined'
+        declined['decisions'] = [{'draft': 'original', 'status': 'declined', 'note': '', 'rationale': 'Out of scope.'}]
         fixed['fix_checks'] = [{'draft': 'second', 'run': '/runs/check', 'date': '2026-11-17', 'verdict': 'fixed',
                                 'basis': 'quote', 'evidence': {'document': 'paper.md', 'line': 1, 'end_line': 1,
                                                                'page': 1, 'section': None, 'quote': text},

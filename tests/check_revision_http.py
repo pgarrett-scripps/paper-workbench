@@ -99,7 +99,8 @@ with tempfile.TemporaryDirectory() as temporary:
         # Each problem keeps the id it was raised under and says where it stands.
         assert [row["status"] for row in ledger] == ["not_applicable", "not_applicable", "declined"]
         assert ledger[-1]["id"] == "original:ui:" + question["id"]
-        assert ledger[-1]["author"]["rationale"] == "The mechanism is outside this paper."
+        assert ledger[-1]["decisions"] == [{"draft": "original", "status": "declined", "note": "",
+                                            "rationale": "The mechanism is outside this paper."}]
         export_folder = root / 'exports' / 'verified'
         export_folder.mkdir(parents=True)
         (export_folder / 'paper.pdf').write_bytes(b'%PDF-fixture')

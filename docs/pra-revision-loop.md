@@ -1,6 +1,6 @@
 # Manuscript revision and automation
 
-This page describes the system up to PeerReviewAgents `v0.8.0`. The revision, revision loop and export commands it names still exist in the app, but the debate and the Sol review it mentions do not.
+This page describes the system up to PeerReviewAgents `v0.8.0`. The revision loop and export commands it names still exist in the app, but the debate and the Sol review it mentions do not. `revision-request` and a `revise` that took a review response file were removed. `revise` now makes the next draft from the project the author edited, as the [README fix loop](../README.md#fix-loop) says.
 
 The next product milestone is a dependable round trip from a manuscript to located review findings, a revised source draft, and publishable document files. This milestone does not establish that PRA produces better scientific reviews than the matched single reviewer. Earlier experimental results remain unchanged.
 
@@ -17,7 +17,7 @@ The built-in loop runs without a model. It normalizes repeated horizontal spaces
 
 This intentionally small policy exercises the complete editing lifecycle without spending review tokens. It is not the scientific review engine. The existing investigation and debate remain the scientific review path, and their findings can be handed to the revision workflow. A broader unattended scientific rewriting policy has not been enabled.
 
-For an agent integration, `revision-request` emits the active draft, source identity, historical issues, and edit policy. An orchestrator supplies a review bound to that identity. `revise` validates the response and creates a new draft using explicit decisions or the conservative automatic policy. The Python `run_loop` also accepts a provider callback, invoked against each newly imported draft. Any callback that launches model inference must use the existing subscription runtime and its separate call and usage limits. The revision loop bounds rounds and accepted edits, it does not impose a hard token cap on an arbitrary callback.
+An agent that edits the manuscript edits the author's Paper Scaffold project, as a person would, and `revise` makes the next draft from it. The Python `run_loop` accepts a provider callback, invoked against each newly imported draft, that returns a review bound to that draft's identity. Any callback that launches model inference must use the existing subscription runtime and its separate call and usage limits. The revision loop bounds rounds and accepted edits, it does not impose a hard token cap on an arbitrary callback.
 
 The CLI does not start a model, select a more expensive model, redeem a reset, run author analysis code, or publish a document. Sol remains the intended model for the next limited scientific test.
 
@@ -30,21 +30,20 @@ For an existing verified PDF or JATS workspace, `python -m paper_workspace port-
 ```bash
 python -m paper_workspace import-scaffold /path/to/manuscript /path/to/workspace
 python -m paper_workspace revision-loop /path/to/workspace --id language-pass --max-rounds 2 --max-edits 10 --scaffold-root /path/to/paper-scaffold
-python -m paper_workspace revision-request /path/to/workspace
 python -m paper_workspace serve /path/to/workspace --port 38755
 ```
 
-A model or external agent can return a review response as JSON with `paper_id`, `source_sha256`, and `findings`. Each finding contains `category`, `kind`, `document`, `line`, `quote`, `replacement`, `comment`, and `evidence_lines`, with `end_line` for a quote that runs onto a later line. Categories are `scientific` and `copyedit`. Existing reviews without a category default to scientific. Use an empty replacement for a question.
+A provider callback returns a review response as JSON with `paper_id`, `source_sha256`, and `findings`. Each finding contains `category`, `kind`, `document`, `line`, `quote`, `replacement`, `comment`, and `evidence_lines`, with `end_line` for a quote that runs onto a later line. Categories are `scientific` and `copyedit`. Existing reviews without a category default to scientific. Use an empty replacement for a question.
 
 ```bash
-python -m paper_workspace revise /path/to/workspace response.json --id revision-2 --source-revision language-pass-1 --expected-version 1
+python -m paper_workspace revise /path/to/workspace /path/to/manuscript --id revision-2
 python -m paper_workspace checkout-revision /path/to/workspace original --expected-version 2
 python -m paper_workspace export-revision /path/to/workspace language-pass-1 /path/to/workspace/exports/language-pass-1 --scaffold-root /path/to/paper-scaffold --python /path/to/python-with-export-dependencies
 ```
 
-The version is the active draft pointer's optimistic concurrency token, returned by `revision-request`. It increments on revision creation and rollback. Do not guess it. A review of an older draft cannot overwrite a newer draft.
+The version is the active draft pointer's optimistic concurrency token, kept in the workspace's `revision-head.json`. It increments on revision creation and rollback. Do not guess it. A review of an older draft cannot overwrite a newer draft.
 
-The default `revise` policy selects eligible copyedits. `--decisions path.json` instead supplies explicit accepted wording decisions using the normalized finding IDs for the chosen review ID. Source guards still apply. `--no-build` is an explicit source-only mode and does not establish document validity.
+`revise` copies the edited project as `import-scaffold` does and builds it with typst before the active draft changes. It refuses, and says why, when the project's source is the current draft's file for file or the build fails. The new draft freezes the current draft's issue ledger and keeps `changes.patch`, the diff from the current draft's source. The revision loop applies only the conservative automatic policy, and the viewer's revision button applies the wording decisions on a review's cards, with the source guards below.
 
 Document export requires Typst and a Python environment with the selected Scaffold checkout's export dependencies, including `pypandoc-binary` and `bibtexparser`. Ported rich exports additionally use `python-docx`, Pillow, `pypdf`, and local LibreOffice on PATH. The exporter invokes the selected trusted Scaffold adapters. It does not run the manuscript's analysis or build scripts. Draft sources are copied into a temporary export directory, helper values are resolved from saved declarations, and only complete PDF and DOCX outputs are published to the requested export directory. Export directories cannot overwrite previous outputs. For ports, `paper.pdf` renders the rich Word document and `source-build.pdf` preserves the compact Typst reading copy.
 
