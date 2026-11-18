@@ -3,9 +3,12 @@
 ``review`` runs one PeerReviewAgents review of a manuscript PDF and ``report``
 renders the reports of a run, finished or stopped, exactly as ``peerreview
 review`` and ``peerreview report`` do. ``review`` also takes a Paper Scaffold
-workspace folder in place of the PDF, and reviews its built PDF with its code. ``serve RUN`` opens that run in the viewer. ``import`` and
-``verify`` make and check a manuscript workspace without a model call, and the
-remaining commands revise and export a workspace.
+workspace folder in place of the PDF, and reviews its built PDF with its code. ``serve RUN`` opens that run in the viewer.
+``check-fixes`` runs the engine's fix check of a manuscript workspace's
+current draft against the open problems in its issue ledger, and records the
+verdicts there. ``import`` and ``verify`` make and check a manuscript
+workspace without a model call, and the remaining commands revise and export
+a workspace.
 """
 import argparse
 import json
@@ -13,7 +16,7 @@ import sys
 
 from peerreviewagents.workspace import read_json
 
-ENGINE_COMMANDS = ('review', 'report')
+ENGINE_COMMANDS = ('review', 'check-fixes', 'report')
 APP_COMMANDS = ('import', 'verify', 'port-scaffold', 'import-scaffold', 'revise', 'revision-loop',
                 'revision-request', 'checkout-revision', 'export-revision', 'export-review', 'serve')
 __all__ = ['APP_COMMANDS', 'ENGINE_COMMANDS', 'build_parser', 'main']
@@ -77,12 +80,16 @@ def add_app_subcommands(sub):
 def build_parser(prog='paper-workbench'):
     parser=argparse.ArgumentParser(prog=prog,
         description='Paper Workbench: review, revise and export a local annotated manuscript. '
-                    'review and report run PeerReviewAgents, also available as peerreview review and peerreview report.')
+                    'review, check-fixes and report run PeerReviewAgents, also available as peerreview review, '
+                    'peerreview check-fixes and peerreview report.')
     sub=parser.add_subparsers(dest='command',required=True)
     # Each engine command parses its own options, so its help comes from the engine.
     sub.add_parser('review',add_help=False,
         help='Review one manuscript PDF, or a Paper Scaffold workspace with its code, into a run folder '
              '(paper-workbench review -h for its options)')
+    sub.add_parser('check-fixes',add_help=False,
+        help='Check the current draft of a manuscript workspace against the open problems in its issue ledger, '
+             'and record the verdicts there (paper-workbench check-fixes -h for its options)')
     sub.add_parser('report',add_help=False,
         help='Render REVIEW.md and REVIEW.txt of a run, finished or stopped, with no model call')
     add_app_subcommands(sub)
@@ -95,7 +102,12 @@ def run_engine(command,argv):
     The engine parses the options, so a new engine option reaches the review.
     A Paper Scaffold workspace stands where the PDF does, and
     ``workspace_review`` turns it into the engine's arguments first.
+    ``check-fixes`` takes a manuscript workspace, and ``fix_check`` writes
+    the problems from its ledger and records what the engine found.
     """
+    if command=='check-fixes':
+        from .fix_check import check_fixes
+        return check_fixes(argv)
     if command=='review':
         from peerreviewagents import review_main
         from .workspace_review import WorkspaceRefused, engine_argv

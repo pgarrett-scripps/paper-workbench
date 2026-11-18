@@ -235,14 +235,23 @@ for (const text of ['<span class="badge">original:run:u9</span> Thrown out by th
 }
 for (const text of ["Author's decision", 'fix check']) assert.ok(!carried.includes(text), text);
 assert.ok(!elements.get('#finding-count').textContent.includes('earlier problem'));
-// An earlier problem shows the author's decision and only the latest fix check of a later draft, with its quote.
+// An earlier problem shows the author's decision, a later check that did not reach it, then the latest
+// verdict with the engine's own verdict and basis names and the quote of the checked draft it rests on.
+// Each fix check is shaped as fix_check_entries in revisions.py records it. The earlier checks stay below.
 vm.runInContext(`ledger = [{id:'original:run:i03', raised_on:'original', review_id:'run', source_id:'i03', paper_id:'p',
   raised_as:'problem', status:'open', title:'The seed is <unstated>', category:'reproducibility',
   statement:'State the seed.', severity:'major', evidence:[{document:'paper.md', line:1, end_line:1, quote:'alpha'}],
   author:{wording:'noted', status:'addressed', note:'We added it.', rationale:'Methods now name the seed.'},
-  fix_checks:[{draft:'second', verdict:'fixed', quote:'An older quote.', reason:'Earlier.', date:'2026-11-01'},
-              {draft:'third', verdict:'not-fixed', quote:'The seed is <42>.', reason:'The generator is not named.',
-               date:'2026-11-17'}], finding:{}},
+  fix_checks:[{draft:'second', run:'/checks/one', date:'2026-11-01', verdict:'cannot-tell', basis:'old-quote-stands',
+               evidence:null, old_evidence:[{document:'paper.md', quote:'An <older> quote.', present:true}],
+               searches:['seed', 'random state'], reason:'The draft keeps the sentence.', note:''},
+              {draft:'third', run:'/checks/two', date:'2026-11-17', verdict:'not-fixed', basis:'quote',
+               evidence:{document:'paper.md', line:4, end_line:4, page:2, section:'Methods', quote:'The seed is <42>.'},
+               old_evidence:[{document:'paper.md', quote:'alpha', present:false}], searches:[], reason:'',
+               note:'The generator is not named.'},
+              {draft:'fourth', run:'/checks/three', date:'2026-11-18', verdict:null, basis:'', evidence:null,
+               old_evidence:[], searches:[], reason:'Past the cap of 40 problems one fix check reads.', note:''}],
+  finding:{}},
   {id:'original:run:i04', raised_on:'original', review_id:'run', source_id:'i04', paper_id:'p', raised_as:'problem',
   status:'declined', title:'Scope', category:'claims-and-conclusions', statement:'Widen the claim.', severity:'minor',
   evidence:[], author:{wording:'noted', status:'declined', note:'', rationale:'Out of scope.'}, fix_checks:[], finding:{}}];
@@ -251,14 +260,27 @@ const problems = html('#history-ledger');
 for (const text of ['<span class="badge">original:run:i03</span> Open', 'Reproducibility: The seed is &lt;unstated&gt;</strong> · major',
                     'State the seed.', '<blockquote>alpha</blockquote>',
                     "Author's decision on draft original</strong><br>Wording noted, issue addressed by the author<br>Note: We added it.<br>Rationale: Methods now name the seed.",
-                    'Latest fix check, on draft third on 2026-11-17: not fixed</strong><br>The generator is not named.',
-                    '<blockquote>The seed is &lt;42&gt;.</blockquote>',
+                    '<p class="muted"><strong>Not checked on draft fourth on 2026-11-18</strong><br>Past the cap of 40 problems one fix check reads.</p>'
+                    + '<p><strong>Fix check of draft third on 2026-11-17: not-fixed</strong><br>Basis: quote<br>'
+                    + "Checker's note: The generator is not named.</p>"
+                    + '<p class="muted">From draft third, page 2 of its PDF, section Methods</p><blockquote>The seed is &lt;42&gt;.</blockquote>'
+                    + '<details><summary>Earlier fix checks (1)</summary><p><strong>Fix check of draft second on 2026-11-01: cannot-tell</strong>'
+                    + '<br>Basis: old-quote-stands<br>Reason: The draft keeps the sentence.<br>Searched the draft for: seed, random state</p>'
+                    + '<p class="muted">Still in draft second word for word</p><blockquote>An &lt;older&gt; quote.</blockquote></details>',
                     '<span class="badge">original:run:i04</span> Declined by the author',
                     'Wording noted, issue declined by the author<br>Rationale: Out of scope.',
                     'No later draft has been checked for this problem.']) {
   assert.ok(problems.includes(text), text);
 }
-for (const text of ['on draft second', 'An older quote.']) assert.ok(!problems.includes(text), text);
+// The verdict is the engine's name as written, and the run folder path is not shown.
+for (const text of ['not fixed', 'cannot tell', '/checks/']) assert.ok(!problems.includes(text), text);
+// A verdict with no quote of the checked draft says whether each quote it was raised on is still there.
+vm.runInContext(`ledger = [{...ledger[0], status:'fixed', fix_checks:[{draft:'second', run:'/checks/one', date:'2026-11-01',
+  verdict:'fixed', basis:'old-quote-gone', evidence:null, old_evidence:[{document:'paper.md', quote:'alpha', present:false}],
+  searches:['seed'], reason:'', note:''}]}]; history();`, context);
+assert.ok(html('#history-ledger').includes('<p><strong>Fix check of draft second on 2026-11-01: fixed</strong><br>Basis: old-quote-gone<br>'
+  + 'Searched the draft for: seed</p><p class="muted">No longer in draft second word for word</p><blockquote>alpha</blockquote>'));
+assert.ok(!html('#history-ledger').includes('Earlier fix checks'));
 assert.ok(elements.get('#finding-count').textContent.endsWith(' · 1 earlier problem open'));
 // A card's author response can decline the issue.
 assert.ok(html('#comments').includes('<option value="declined" >Declined by author</option>'));

@@ -35,7 +35,7 @@ def run_main(argv):
 class AppCommandTest(unittest.TestCase):
     def test_parser_knows_the_app_and_engine_commands(self):
         parser = build_parser()
-        self.assertEqual(ENGINE_COMMANDS, ('review', 'report'))
+        self.assertEqual(ENGINE_COMMANDS, ('review', 'check-fixes', 'report'))
         self.assertEqual(ENGINE_COMMANDS, CLI_COMMANDS)
         for argv in (['serve', 'run'], ['verify', 'ws'], ['import', 'paper.pdf', 'ws', '--xml', 'paper.xml']):
             self.assertEqual(parser.parse_args(argv).command, argv[0])

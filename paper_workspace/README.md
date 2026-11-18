@@ -51,6 +51,26 @@ The run folder holds `manuscript`, the imported workspace, and `review`, the run
 
 Author decisions on a run are saved in `manuscript/decisions/run.json`. The review folder stays as the run wrote it. Each review is its own run folder, so a later review opens with no decisions, and a card says nothing about an earlier review.
 
+## Fix loop
+
+A fix loop runs on a native Scaffold workspace, imported with `import-scaffold`:
+
+1. Review. A review finds the problems, as a fresh panel that knows nothing of an earlier review.
+2. Decide. In `serve` the author accepts or declines each card's wording and marks the problem open, addressed or declined, with a rationale. Addressed is the author's own assessment and leaves the problem open.
+3. Revise. The viewer's revision button, or `revise`, builds the next draft from the review and the decisions. `revisions/DRAFT/issue-ledger.json` holds one row per problem under an id that never changes, such as `original:run:i03`, and the draft's manifest covers it.
+4. Check fixes. `check-fixes` reads the current draft against the open problems in its ledger.
+5. Fresh review. Review the new draft when you want new problems found. It reads nothing of the ledger.
+
+```bash
+python -m paper_workspace check-fixes path/to/workspace runs/fixes-1
+```
+
+`fix_check.py` writes `RUN/problems.json` in the engine's `review-problems-v1` schema from `open_problems(ledger, draft)`: every open problem the current draft has no verdict on yet, in severity order, each with its id, statement, severity, the quotes it was raised on and the author's note as `author_reply`. A problem the engine would refuse, such as one with no severity, is left out and named on stderr. It then hands the draft's built `artifacts/paper.pdf` and that file to the engine's `check_fixes_main`, the entry `peerreview check-fixes` uses, and takes the engine's other options as they are. It refuses, with exit 2 and nothing run, a folder that is not a workspace, a draft made with `--no-build`, a draft with no open problem left to check, a run folder that already holds files and any `--problems`.
+
+The engine gives each problem it reaches one verdict from `peerreviewagents.names.FIX_VERDICTS`, which are `fixed`, `not-fixed` and `cannot-tell`. A `fixed` or `not-fixed` verdict rests on its basis: `quote` for a passage of the new draft, `old-quote-gone` when every quote the problem was raised on is gone and `old-quote-stands` when one is still there word for word. A `cannot-tell` verdict gives a reason instead, such as a fix that lives in the code. One check takes at most 40 problems, ten to a checker. `record_fix_checks` reads what `read_fix_check` returns and records one entry per problem in `revisions/DRAFT/fix-checks.json`, beside the frozen ledger: the run, the date, the verdict, the basis, the passage of the new draft as `evidence`, each quote it was raised on with whether it is still present, the searches, the reason and the checker's note. A problem past the cap or reached by no checker is entered as not checked, with why, and the next check of the same draft takes it again. Each check needs its own run folder and is recorded once. The next draft copies every entry into its own ledger. A check that is blocked, stopped or cannot be read whole records nothing, prints why and exits 1 or the engine's code. The stderr line after a recorded check counts each verdict and the problems not checked.
+
+`problem_status` reads a row's status: `fixed` when its latest verdict is `fixed` and `open` while it is `not-fixed` or `cannot-tell`. A not-checked entry leaves the earlier verdict standing. The viewer shows each problem's latest verdict with its basis, the quote from the new draft and the checker's note, or that the check did not reach it and why, with earlier checks under a toggle. The verdict names come from the engine.
+
 ## Retired experiment runners
 
 Engine 0.8 removed the study-only modules behind the staged evidence workflow, the revised debate, the two-paper and four-paper pilots, the handoff retests, the ensemble and reliability trials, and the transfer and domain studies. Engine 0.9 removed the remaining Python review orchestration. Every experiment runner is deleted, and git history keeps them. `experiments/` keeps the study protocols and result files, and [its README](../experiments/README.md) says how to recover a runner. The study records in `docs/` that described only the deleted system were deleted too, and git history keeps them. Study code that used the 0.8 engine runs only against PeerReviewAgents `v0.8.0`.
@@ -71,7 +91,7 @@ node tests/test_review_evidence_ui.js
 node --check paper_workspace/web/app.js
 ```
 
-Tests cover the run-folder reader, finished, stopped and startup-blocked runs in the viewer, the review and report commands against the installed engine with `claude` off `PATH`, Unicode anchors, source tampering, overlap rejection, revisions, Scaffold import and export, and Word review copies. No test starts a review.
+Tests cover the run-folder reader, finished, stopped and startup-blocked runs in the viewer, the review and report commands against the installed engine with `claude` off `PATH`, the fix check recorded from checks the engine's `scripted_fix_check` writes with no model, Unicode anchors, source tampering, overlap rejection, revisions, Scaffold import and export, and Word review copies. No test starts a review.
 
 ## Native Scaffold revisions
 

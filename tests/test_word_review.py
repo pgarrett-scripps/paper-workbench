@@ -95,8 +95,10 @@ class WordReviewTests(unittest.TestCase):
         paper = self.draft(text)
         declined, fixed = self.question(paper, text) + self.question(paper, text)
         declined['author']['status'] = 'declined'
-        fixed['fix_checks'] = [{'draft': 'second', 'verdict': 'fixed', 'quote': text, 'reason': 'Shown.',
-                                'date': '2026-11-17'}]
+        fixed['fix_checks'] = [{'draft': 'second', 'run': '/runs/check', 'date': '2026-11-17', 'verdict': 'fixed',
+                                'basis': 'quote', 'evidence': {'document': 'paper.md', 'line': 1, 'end_line': 1,
+                                                               'page': 1, 'section': None, 'quote': text},
+                                'old_evidence': [], 'searches': [], 'reason': '', 'note': 'Shown.'}]
         audit = self.patch(self.fixture([text]), self.folder / 'review.docx', paper, paper, [declined, fixed])
         self.assertEqual((audit['comments'], audit['unlocated_questions']), ([], []))
 

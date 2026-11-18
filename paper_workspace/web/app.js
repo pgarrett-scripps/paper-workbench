@@ -256,17 +256,34 @@ function externalFinding(item){
 // A fresh review of this draft is shown beside it, and nothing matches its issues to these rows.
 const PROBLEM_STATUS={open:'Open',fixed:'Fixed',declined:'Declined by the author',thrown_out:'Thrown out by the code check',
  not_applicable:'Copyedit, with no scientific status'};
-const FIX_VERDICT={fixed:'fixed','not-fixed':'not fixed','cannot-tell':'cannot tell'};
 const AUTHOR_STATUS={open:'open',addressed:'addressed by the author',declined:'declined by the author'};
 function authorDecision(row){
  const author=row.author;
  const said=[author.note&&`Note: ${esc(author.note)}`,author.rationale&&`Rationale: ${esc(author.rationale)}`].filter(Boolean);
  return `<p><strong>Author's decision on draft ${esc(row.raised_on)}</strong><br>Wording ${esc(author.wording)}, issue ${esc(AUTHOR_STATUS[author.status]||author.status)}${said.map(text=>'<br>'+text).join('')}</p>`;
 }
-function latestCheck(row){
- const check=row.fix_checks.at(-1);
- if(!check)return '<p class="muted">No later draft has been checked for this problem.</p>';
- return `<p><strong>Latest fix check, on draft ${esc(check.draft)} on ${esc(check.date)}: ${esc(FIX_VERDICT[check.verdict]||check.verdict)}</strong>${check.reason?'<br>'+esc(check.reason):''}</p>${check.quote?`<blockquote>${esc(check.quote)}</blockquote>`:''}`;
+// One engine fix check of a later draft. Its verdict and basis are printed as the engine names them, and the
+// quote is the passage of the checked draft the verdict rests on. A check that did not reach the problem says why.
+function fixCheck(check){
+ if(!check.verdict)return `<p class="muted"><strong>Not checked on draft ${esc(check.draft)} on ${esc(check.date)}</strong><br>${esc(check.reason)}</p>`;
+ const said=[check.basis&&`Basis: ${esc(check.basis)}`,check.reason&&`Reason: ${esc(check.reason)}`,
+  check.note&&`Checker's note: ${esc(check.note)}`,
+  check.searches.length&&`Searched the draft for: ${check.searches.map(esc).join(', ')}`].filter(Boolean);
+ const evidence=check.evidence;
+ const where=evidence&&[Number.isInteger(evidence.page)&&`page ${esc(evidence.page)} of its PDF`,evidence.section&&`section ${esc(evidence.section)}`].filter(Boolean);
+ const quoted=evidence?`<p class="muted">From draft ${esc(check.draft)}${where.length?', '+where.join(', '):''}</p><blockquote>${esc(evidence.quote)}</blockquote>`
+  :check.old_evidence.map(span=>`<p class="muted">${span.present?'Still in':'No longer in'} draft ${esc(check.draft)} word for word</p><blockquote>${esc(span.quote)}</blockquote>`).join('');
+ return `<p><strong>Fix check of draft ${esc(check.draft)} on ${esc(check.date)}: ${esc(check.verdict)}</strong>${said.map(text=>'<br>'+text).join('')}</p>${quoted}`;
+}
+// The latest verdict leads, after a later check that did not reach the problem. Every earlier check stays below it.
+function fixChecks(row){
+ const checks=row.fix_checks;
+ if(!checks.length)return '<p class="muted">No later draft has been checked for this problem.</p>';
+ const verdict=checks.findLastIndex(check=>check.verdict);
+ const shown=[...new Set([checks.length-1,verdict].filter(index=>index>=0))];
+ const earlier=checks.filter((_,index)=>!shown.includes(index)).reverse();
+ return shown.map(index=>fixCheck(checks[index])).join('')
+  +(earlier.length?`<details><summary>Earlier fix checks (${earlier.length})</summary>${earlier.map(fixCheck).join('')}</details>`:'');
 }
 // A carried finding still stands on this draft while the passage on its line has the fingerprint it was found on.
 function history(){
@@ -281,7 +298,7 @@ function history(){
   const quotes=row.evidence.map(span=>`<blockquote>${esc(span.quote)}</blockquote>`).join('');
   // A finding an earlier run's code check threw out is carried to say what the code showed, never as an open question.
   if(row.status==='thrown_out')return `<div class="cross-check thrown-out-item">${top}<p class="thrown-out-mark" role="note">${esc(THROWN_OUT)}</p><p><strong>${esc(row.title||'Finding')}</strong></p><p>${esc(row.statement||'')}</p>${quotes}${codeEvidence(finding,'Code that contradicts it')}${finding.note?`<p><strong>Code check note</strong><br>${esc(finding.note)}</p>`:''}${raised}</div>`;
-  return `<div class="cross-check">${top}<p><strong>${esc(categoryLabel(row.category))}: ${esc(row.title||'Earlier problem')}</strong>${row.severity?' · '+esc(row.severity):''}</p><p>${esc(row.statement||'')}</p>${quotes}${location}${raised}${authorDecision(row)}${row.status==='not_applicable'?'':latestCheck(row)}</div>`;
+  return `<div class="cross-check">${top}<p><strong>${esc(categoryLabel(row.category))}: ${esc(row.title||'Earlier problem')}</strong>${row.severity?' · '+esc(row.severity):''}</p><p>${esc(row.statement||'')}</p>${quotes}${location}${raised}${authorDecision(row)}${row.status==='not_applicable'?'':fixChecks(row)}</div>`;
  }).join('');
 }
 // A run's cards are the editor's issues. Every review is a fresh panel, so a card says nothing about an earlier round.

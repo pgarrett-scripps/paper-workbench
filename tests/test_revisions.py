@@ -9,8 +9,8 @@ from peerreviewagents.workspace import normalize_review, read_json
 
 from manuscripts import line_of
 from paper_workspace.revisions import (agent_request, apply_fix_checks, automation_decisions, checkout,
-    copyedit_proposals, create_revision, head, ledger_of, ledger_rows, open_problems, problem_id, problem_status,
-    record_fix_checks, run_loop, safety_reasons, snapshot)
+    copyedit_proposals, create_revision, head, ledger_rows, open_problems, problem_id, problem_status, run_loop,
+    safety_reasons, snapshot)
 from paper_workspace.scaffold_import import import_scaffold
 
 FIXTURE = Path(__file__).parent / 'fixtures/scaffold-revision'
@@ -188,74 +188,60 @@ class Revisions(unittest.TestCase):
             'i03': {'author_comment': '', 'issue_status': 'declined', 'rationale': 'Out of scope.'}}}
         return ledger_rows(review, decisions, 'original', 'p', set())
 
-    def check(self, problem, verdict, quote='text', reason='Because.'):
-        return {'id': f'original:run:{problem}', 'verdict': verdict, 'quote': quote, 'reason': reason}
+    def check(self, problem, verdict, reason=''):
+        """One problem's entry in a fix check, in the shape ``fix_check_entries`` gives it.
 
-    def test_status_is_read_from_the_row_and_its_latest_fix_check(self):
+        test_fix_check.py records entries made from checks the engine wrote.
+        These rules hold whatever check the entries came from.
+        """
+        return {'id': f'original:run:{problem}', 'run': '/runs/check', 'date': '2026-11-17', 'verdict': verdict,
+                'basis': 'old-quote-gone' if verdict else '', 'evidence': None, 'old_evidence': [], 'searches': [],
+                'reason': reason, 'note': 'The quoted sentence is gone.' if verdict else ''}
+
+    def test_status_is_read_from_the_row_and_its_latest_verdict(self):
         ledger = self.problems()
         self.assertEqual([problem_status(row) for row in ledger],
                          ['open', 'open', 'declined', 'not_applicable', 'thrown_out'])
-        ledger = apply_fix_checks(ledger, 'second', [self.check('i01', 'fixed'), self.check('i02', 'not-fixed')],
-                                  '2026-11-01')
+        ledger = apply_fix_checks(ledger, 'second', [self.check('i01', 'fixed'), self.check('i02', 'not-fixed')])
         self.assertEqual([problem_status(row) for row in ledger[:2]], ['fixed', 'open'])
-        ledger = apply_fix_checks(ledger, 'third', [self.check('i02', 'fixed', 'Table 2 lists the seed.')],
-                                  '2026-11-17')
+        # A check that did not reach a problem gives it no verdict, so the one before it stands.
+        unreached = self.check('i02', None, 'No checker reached it before the check was written.')
+        ledger = apply_fix_checks(ledger, 'third', [unreached])
+        self.assertEqual(problem_status(ledger[1]), 'open')
+        ledger = apply_fix_checks(ledger, 'third', [self.check('i02', 'fixed')])
         self.assertEqual(problem_status(ledger[1]), 'fixed')
+        entry = {key: value for key, value in self.check('i02', 'fixed').items() if key != 'id'}
         self.assertEqual(ledger[1]['fix_checks'], [
-            {'draft': 'second', 'verdict': 'not-fixed', 'quote': 'text', 'reason': 'Because.', 'date': '2026-11-01'},
-            {'draft': 'third', 'verdict': 'fixed', 'quote': 'Table 2 lists the seed.', 'reason': 'Because.',
-             'date': '2026-11-17'}])
+            {'draft': 'second', **entry, 'verdict': 'not-fixed'},
+            {'draft': 'third', **{key: value for key, value in unreached.items() if key != 'id'}},
+            {'draft': 'third', **entry}])
 
     def test_open_problems_are_what_a_fix_check_takes(self):
-        ledger = apply_fix_checks(self.problems(), 'second', [self.check('i02', 'cannot-tell', None)], '2026-11-01')
-        self.assertEqual(open_problems(ledger), [
-            {'id': 'original:run:i01', 'statement': 'Statement 1.', 'severity': 'major',
-             'evidence': [{'document': 'paper.md', 'quote': 'quote 1'}], 'author_reply': 'We added the seed.'},
-            {'id': 'original:run:i02', 'statement': 'Statement 2.', 'severity': 'major',
-             'evidence': [{'document': 'paper.md', 'quote': 'quote 2'}], 'author_reply': 'Table 2 now lists it.'}])
+        ledger = apply_fix_checks(self.problems(), 'second', [
+            self.check('i01', None, 'Past the cap of 40 problems one fix check reads.'),
+            self.check('i02', 'cannot-tell')])
+        rows = [{'id': 'original:run:i01', 'statement': 'Statement 1.', 'severity': 'major',
+                 'evidence': [{'document': 'paper.md', 'quote': 'quote 1'}], 'author_reply': 'We added the seed.'},
+                {'id': 'original:run:i02', 'statement': 'Statement 2.', 'severity': 'major',
+                 'evidence': [{'document': 'paper.md', 'quote': 'quote 2'}], 'author_reply': 'Table 2 now lists it.'}]
+        self.assertEqual(open_problems(ledger), rows)
+        # The next check of the same draft takes only what this one did not reach.
+        self.assertEqual(open_problems(ledger, 'second'), rows[:1])
+        self.assertEqual(open_problems(ledger, 'third'), rows)
 
     def test_a_fix_check_must_name_an_open_problem_once_with_a_known_verdict(self):
         ledger = self.problems()
         cases = {'no problem in the ledger': [self.check('i09', 'fixed')],
-                 'checked twice': [self.check('i01', 'fixed'), self.check('i01', 'not-fixed')],
+                 'already has a verdict from a check of draft second': [self.check('i01', 'cannot-tell'),
+                                                                        self.check('i01', 'not-fixed')],
                  'is declined': [self.check('i03', 'fixed')],
                  'is thrown_out': [self.check('u-mean', 'fixed')],
                  'not .partly.': [self.check('i01', 'partly')],
-                 'needs a quote or None, and a reason': [self.check('i01', 'fixed', reason=None)]}
-        for message, checks in cases.items():
+                 'has no verdict from the check, and the entry does not say why': [self.check('i01', None)]}
+        for message, entries in cases.items():
             with self.subTest(message), self.assertRaisesRegex(ValueError, message):
-                apply_fix_checks(ledger, 'second', checks, '2026-11-17')
+                apply_fix_checks(ledger, 'second', entries)
         self.assertEqual([row['fix_checks'] for row in ledger], [[]] * len(ledger))
-
-    def test_fix_checks_are_recorded_beside_the_draft_and_frozen_into_the_next(self):
-        response = copyedit_proposals(self.paper)
-        line = line_of(self.paper, 'protein activity')
-        response['findings'].append({'kind': 'question', 'category': 'scientific', 'line': line,
-            'quote': 'protein activity', 'comment': 'Clarify mechanistic support.', 'evidence_lines': [line]})
-        review = normalize_review(self.paper, response, 'mixed')
-        create_revision(self.root, review, automation_decisions(self.paper, review, max_edits=1), 'mixed',
-                        head(self.root), build=False)
-        folder = self.root / 'revisions/mixed'
-        [problem] = open_problems(ledger_of(folder))
-        check = {'id': problem['id'], 'verdict': 'not-fixed', 'quote': 'protein activity',
-                 'reason': 'The sentence still claims a mechanism.'}
-        with self.assertRaisesRegex(ValueError, 'no problem'):
-            record_fix_checks(self.root, 'mixed', [{**check, 'id': 'original:mixed:nothing'}])
-        self.assertFalse((folder / 'fix-checks.json').exists())
-        ledger = record_fix_checks(self.root, 'mixed', [check], date='2026-11-17')
-        self.assertEqual(ledger[-1]['fix_checks'], [{'draft': 'mixed', 'verdict': 'not-fixed', 'quote': 'protein activity',
-            'reason': 'The sentence still claims a mechanism.', 'date': '2026-11-17'}])
-        # The frozen ledger is as the draft was made, so its manifest still holds.
-        self.assertEqual(read_json(folder / 'issue-ledger.json')[-1]['fix_checks'], [])
-        verify_workspace(folder)
-        with self.assertRaisesRegex(ValueError, 'already has its fix checks'):
-            record_fix_checks(self.root, 'mixed', [check])
-        self.assertEqual(run_loop(self.root, 'next', max_rounds=1, build=False)['applied_edits'], 1)
-        child = self.root / 'revisions/next-1'
-        self.assertEqual(read_json(child / 'issue-ledger.json')[:len(ledger)], ledger)
-        self.assertFalse((child / 'fix-checks.json').exists())
-        with self.assertRaisesRegex(ValueError, 'current draft'):
-            record_fix_checks(self.root, 'mixed', [check])
 
     def test_stale_agent_response_stops_before_changes(self):
         response = copyedit_proposals(self.paper)

@@ -10,7 +10,7 @@ Start with [the team handoff](HANDOFF.md) for the current architecture, setup an
 
 ## Install
 
-Requires Python 3.11 or newer. The app pins `peerreviewagents` 0.10.0, which is not on PyPI yet, and is tested against its main branch at commit 9c36283, which reads manuscripts by line, has a model read each page image before every PDF review, can check the paper against its analysis code and throws out a finding when the code does not do what it said. Until it is published, install the engine from its main branch first, then this app:
+Requires Python 3.11 or newer. The app pins `peerreviewagents` 0.10.0, which is not on PyPI yet, and is tested against its main branch at commit 47c41c6, which reads manuscripts by line, has a model read each page image before every PDF review, can check the paper against its analysis code, throws out a finding when the code does not do what it said and checks a new draft against the problems a review raised. Until it is published, install the engine from its main branch first, then this app:
 
 ```bash
 python -m pip install 'peerreviewagents @ git+https://github.com/pgarrett-scripps/PeerReviewAgents@main'
@@ -57,12 +57,28 @@ paper-workbench verify workspaces/example
 paper-workbench serve workspaces/example --port 38744
 ```
 
+## Fix loop
+
+A fix loop runs on a Paper Scaffold workspace imported with `import-scaffold`, whose drafts are kept under `revisions/`.
+
+1. Review. A review finds the problems. Every review is a fresh panel that knows nothing of an earlier one.
+2. Decide. `serve` shows each problem as a card. The author accepts or declines its wording and marks it open, addressed or declined, with a rationale.
+3. Revise. The viewer's revision button, or `revise`, builds the next draft from a review and those decisions. The draft's issue ledger keeps one row per problem, under an id that never changes, with the author's decision on it.
+4. Check fixes. `paper-workbench check-fixes WORKSPACE RUN` checks the current draft against the open problems in its ledger.
+5. Fresh review. Review the new draft whenever you want new problems found. It reads nothing of the ledger.
+
+```bash
+paper-workbench check-fixes my-workspace runs/fixes-1
+```
+
+`check-fixes` is the engine's `peerreview check-fixes` on the current draft's built PDF. It writes the problems file itself, to `RUN/problems.json`, from every open problem that draft has no verdict on yet, in severity order, so it takes no `--problems`. The engine gives each problem it reaches a verdict, `fixed`, `not-fixed` or `cannot-tell` in its own words. A `fixed` or `not-fixed` verdict rests on a quote from the new draft or on whether the quote the problem was raised on is still there, and `cannot-tell` gives a reason. It raises nothing new. The app records the verdicts in the draft's ledger, beside the frozen ledger in `fix-checks.json`, and the next draft carries them in its own ledger. A problem is fixed when its latest verdict says so, and a declined problem is never checked again. A check takes at most 40 problems. A problem it did not reach is recorded as not checked, with why, and the next check of the same draft, into a new run folder, takes it again. A blocked or stopped check, or one that cannot be read whole, records nothing and says why. A check is model inference with its own token and wall-clock ceilings, and it needs `claude` on `PATH` as a review does. The viewer shows each problem's latest verdict, its basis and the quote from the new draft, or that the check did not reach it, with the earlier checks below.
+
 ## Engine and app
 
-- PeerReviewAgents owns the review: ingest, the plugin, its agents and tools, the domain packs and the report writer. Its public Python surface is `review`, `review_main`, `review_parser`, `review_arms`, `report_main`, `read_run`, `read_citation_ledger`, `locate_run`, `NotARunFolder`, `import_paper`, `write_manuscript`, `read_manuscript`, `cited_text`, `citation_uses`, `write_reports`, `verify_workspace`, `export_draft`, the run constants and the helpers in `peerreviewagents.workspace`.
+- PeerReviewAgents owns the review and the fix check: ingest, the plugin, its agents and tools, the domain packs and the report writer. Its public Python surface is `review`, `review_main`, `review_parser`, `review_arms`, `check_fixes_main`, `check_fixes_parser`, `read_fix_check`, the problems file in `peerreviewagents.problems`, `report_main`, `read_run`, `read_citation_ledger`, `locate_run`, `NotARunFolder`, `import_paper`, `write_manuscript`, `read_manuscript`, `cited_text`, `citation_uses`, `write_reports`, `verify_workspace`, `export_draft`, the run constants and the helpers in `peerreviewagents.workspace`.
 - The engine writes every manuscript as `paper.md`, one document per supplement, `map.json` and `manifest.json`. The app names a place in it by document and line, and a highlight on the page is the passage's page and box from `map.json` plus the quote. `import-scaffold` writes a Typst manuscript through `write_manuscript`, so it is the same base a PDF import writes.
 - `paper_workspace` (here) owns the viewer server, author decisions, revisions, Paper Scaffold import and export, and Word review copies.
-- `paper-workbench review` and `report` hand off to the engine. Every other command, including `import`, `verify` and `serve`, belongs to the app.
+- `paper-workbench review`, `check-fixes` and `report` hand off to the engine. `check-fixes` writes the problems file from the ledger first and records what the engine's `read_fix_check` reads back. Every other command, including `import`, `verify` and `serve`, belongs to the app.
 - The app calls the engine only through that surface. It uses `locate_run` and `NotARunFolder` to tell a run folder from a workspace, and takes `digest`, `read_json`, `write_json`, `save_review`, `normalize_review` and `text_of` from `peerreviewagents.workspace`. A test fails if any module imports a private engine module, apart from the two test tools the engine contract names.
 - `experiments` holds the protocols and results of earlier studies. The experiment runners and most study records in `docs` were deleted, and git history keeps them. Study code that used the 0.8 engine runs only against PeerReviewAgents `v0.8.0`.
 
@@ -79,7 +95,7 @@ python -m unittest discover -s tests -p 'test_*.py'
 node tests/test_review_evidence_ui.js
 ```
 
-Tests use synthetic or local fixtures and never start a review. The read manuscript fixture is built by the engine's scripted reader with no model, which needs Poppler. Some optional rendering checks require local document tooling.
+Tests use synthetic or local fixtures and never start a review or a fix check. A fix check in a test is written by the engine's `scripted_fix_check`, with no model. The read manuscript fixture is built by the engine's scripted reader with no model, which needs Poppler. Some optional rendering checks require local document tooling.
 
 ## Provenance
 

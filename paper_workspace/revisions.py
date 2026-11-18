@@ -12,6 +12,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 from peerreviewagents import export_draft, verify_workspace
+from peerreviewagents.names import FIX_VERDICTS
 from peerreviewagents.workspace import digest, read_json, save_review, write_json
 
 from .run_view import source_sha256
@@ -31,10 +32,10 @@ SYNTAX = re.compile(r'[#@$`\[\]{}<>_=*\\]|//|/\*|\*/')
 # so the fix checks made on that draft live beside it in FIX_CHECKS until the next draft freezes them.
 LEDGER = 'issue-ledger.json'
 FIX_CHECKS = 'fix-checks.json'
-# What a check of a later draft can say about one problem.
-FIX_VERDICTS = ('fixed', 'not-fixed', 'cannot-tell')
 # What the author can say about an issue: still open, addressed in the text, or declined.
 AUTHOR_STATUSES = ('open', 'addressed', 'declined')
+# What a ledger entry keeps of the engine's anchored quote of the checked draft.
+DRAFT_EVIDENCE = ('document', 'line', 'end_line', 'page', 'section', 'quote')
 
 
 def problem_id(raised_on, review_id, key, taken):
@@ -101,7 +102,8 @@ def problem_status(row):
 
     A finding the code check threw out stays thrown out, and a copyedit has no
     scientific status. A problem the author declined is declined. Otherwise it
-    is fixed when the latest check of a later draft says so, and open until then.
+    is fixed when the latest verdict of a check of a later draft says so, and
+    open until then. A check that did not reach the problem gave it no verdict.
     """
     if row['raised_as'] == 'thrown_out':
         return 'thrown_out'
@@ -109,9 +111,15 @@ def problem_status(row):
         return 'not_applicable'
     if row['author']['status'] == 'declined':
         return 'declined'
-    if row['fix_checks'] and row['fix_checks'][-1]['verdict'] == 'fixed':
+    verdicts = [check['verdict'] for check in row['fix_checks'] if check['verdict']]
+    if verdicts and verdicts[-1] == 'fixed':
         return 'fixed'
     return 'open'
+
+
+def checked_on(row, draft):
+    """Whether a fix check of draft ``draft`` gave this problem a verdict."""
+    return any(check['draft'] == draft and check['verdict'] for check in row['fix_checks'])
 
 
 def ledger_view(ledger):
@@ -125,43 +133,85 @@ def author_reply(row):
     return '\n\n'.join(parts) or None
 
 
-def open_problems(ledger):
+def open_problems(ledger, draft=None):
     """The open problems, as the engine's fix check of a later draft takes them: its --problems file.
 
     Each quote's line is a line of the draft the problem was raised on, so
-    only the document and the quote go.
+    only the document and the quote go. With ``draft``, a problem a check of
+    that draft already gave a verdict is left out, as the same text has
+    nothing new to show a second check.
     """
     return [{'id': row['id'], 'statement': row['statement'], 'severity': row['severity'],
              'evidence': [{'document': span['document'], 'quote': span['quote']} for span in row['evidence']],
-             'author_reply': author_reply(row)} for row in ledger if problem_status(row) == 'open']
+             'author_reply': author_reply(row)} for row in ledger
+            if problem_status(row) == 'open' and not (draft and checked_on(row, draft))]
 
 
-def apply_fix_checks(ledger, draft, checks, date):
-    """The ledger with one check of draft ``draft`` added to each problem it names.
+def apply_fix_checks(ledger, draft, entries):
+    """The ledger with the fix check entries of draft ``draft`` added to the problems they name.
 
-    A check is ``{'id', 'verdict', 'quote', 'reason'}``: the problem, one of
-    FIX_VERDICTS, the passage of ``draft`` it rests on, or None, and why. Every
-    check must name an open problem, once. The ledger passed in is not changed.
+    An entry is one problem's line in one engine fix check, as
+    ``fix_check_entries`` writes it: the problem's ``id``, the ``run`` and the
+    ``date``, a ``verdict`` from the engine's FIX_VERDICTS, or None for a
+    problem the check did not reach with the ``reason``, and what a verdict
+    rests on. Each entry must name a problem that is open, with no verdict
+    from an earlier check of the same draft. The ledger passed in is not changed.
     """
     rows = copy.deepcopy(ledger)
     by_id = {row['id']: row for row in rows}
-    seen = set()
-    for check in checks:
-        row = by_id.get(check.get('id'))
+    for entry in entries:
+        row = by_id.get(entry.get('id'))
         if row is None:
-            raise ValueError(f'A fix check names no problem in the ledger: {check.get("id")!r}')
-        if check['id'] in seen:
-            raise ValueError(f'Problem {check["id"]} is checked twice on one draft')
+            raise ValueError(f'A fix check names no problem in the ledger: {entry.get("id")!r}')
         if problem_status(row) != 'open':
-            raise ValueError(f'Problem {check["id"]} is {problem_status(row)}, so it takes no fix check')
-        if check.get('verdict') not in FIX_VERDICTS:
-            raise ValueError(f'A fix check verdict is one of {", ".join(FIX_VERDICTS)}, not {check.get("verdict")!r}')
-        if not (check.get('quote') is None or isinstance(check['quote'], str)) or not isinstance(check.get('reason'), str):
-            raise ValueError(f'The fix check of problem {check["id"]} needs a quote or None, and a reason')
-        seen.add(check['id'])
-        row['fix_checks'].append({'draft': draft, 'verdict': check['verdict'], 'quote': check['quote'],
-                                  'reason': check['reason'], 'date': date})
+            raise ValueError(f'Problem {entry["id"]} is {problem_status(row)}, so it takes no fix check')
+        if checked_on(row, draft):
+            raise ValueError(f'Problem {entry["id"]} already has a verdict from a check of draft {draft}')
+        if entry.get('verdict') is not None and entry['verdict'] not in FIX_VERDICTS:
+            raise ValueError(f'A fix check verdict is one of {", ".join(FIX_VERDICTS)}, not {entry.get("verdict")!r}')
+        if not isinstance(entry.get('reason'), str) or (entry['verdict'] is None and not entry['reason']):
+            raise ValueError(f'Problem {entry["id"]} has no verdict from the check, and the entry does not say why')
+        row['fix_checks'].append({'draft': draft, **{key: value for key, value in entry.items() if key != 'id'}})
     return rows
+
+
+def fix_check_entries(check, date):
+    """One ledger entry for each problem an engine fix check was given, from what ``read_fix_check`` returned.
+
+    A problem with a verdict keeps what the verdict rests on, under the
+    engine's own names: its ``basis``, the anchored passage of the checked
+    draft as ``evidence``, or None, whether each quote it was raised on is
+    still ``present`` in that draft, the searches, the reason and the
+    checker's note. A problem with no verdict is entered as not checked, with
+    ``verdict`` None and why: past the check's cap, or reached by no checker.
+    """
+    given = [str(problem['id']) for problem in check['problems']]
+    if not given:
+        raise ValueError(f'The fix check at {check["run"]} names no problem it was given')
+    answered = {}
+    for row in check['checks']:
+        if str(row['problem_id']) not in given:
+            raise ValueError(f'The fix check at {check["run"]} answered problem {row["problem_id"]}, '
+                             'which it was not given')
+        answered[str(row['problem_id'])] = row
+    entries = []
+    for place, problem in enumerate(given):
+        entry = {'id': problem, 'run': check['run'], 'date': date, 'verdict': None, 'basis': '',
+                 'evidence': None, 'old_evidence': [], 'searches': [], 'reason': '', 'note': ''}
+        row = answered.get(problem)
+        if row is None:
+            past = check['cap'] is not None and place >= check['cap']
+            entry['reason'] = (f'Past the cap of {check["cap"]} problems one fix check reads.' if past
+                               else 'No checker reached it before the check was written.')
+        else:
+            quoted = row['draft_evidence']
+            entry.update(verdict=row['verdict'], basis=row['basis'],
+                         evidence={field: quoted.get(field) for field in DRAFT_EVIDENCE} if quoted else None,
+                         old_evidence=[{'document': old['document'], 'quote': old['quote'],
+                                        'present': old['in_new_draft']['present']} for old in row['old_evidence']],
+                         searches=list(row['searches']), reason=row['reason'], note=row['note'])
+        entries.append(entry)
+    return entries
 
 
 def ledger_of(folder):
@@ -170,28 +220,39 @@ def ledger_of(folder):
     rows = read_json(folder / LEDGER) if (folder / LEDGER).exists() else []
     if (folder / FIX_CHECKS).exists():
         record = read_json(folder / FIX_CHECKS)
-        rows = apply_fix_checks(rows, record['draft'], record['checks'], record['date'])
+        rows = apply_fix_checks(rows, record['draft'], record['checks'])
     return rows
 
 
-def record_fix_checks(root, draft, checks, date=None):
-    """The seam where the engine's check-fixes result is read in and applied to the ledger.
+def record_fix_checks(root, draft, check, date=None):
+    """Record one engine fix check of the current draft in its ledger, and return the ledger.
 
-    ``checks`` are the engine's verdicts on the current draft's open problems,
-    each in the shape apply_fix_checks takes. PeerReviewAgents has not settled
-    its check-fixes output yet, so turning that output into these checks is
-    the step to add here once it has. A draft's checks are recorded once, and
-    the next draft made from it carries them in its own ledger.
+    ``check`` is what the engine's ``read_fix_check`` returned for the run.
+    Only a complete check that was read whole is recorded. A blocked or
+    stopped run, or one with a file the reading could not read, changes
+    nothing, and the ValueError says why. Every problem it was given must be
+    open with no verdict from an earlier check of this draft, and a run is
+    recorded once. A draft can take several checks, and the next draft made
+    from it carries them all in its own ledger.
     """
+    if not check['complete']:
+        cause = f' ({check["cause"]})' if check['cause'] else ''
+        raise ValueError(f'The fix check at {check["run"]} is {check["status"]}{cause}, and only a complete '
+                         'check is recorded.')
+    if check['file_problems']:
+        raise ValueError(f'The fix check at {check["run"]} could not be read whole: '
+                         + ', and '.join(problem.rstrip('.') for problem in check['file_problems']) + '.')
+    entries = fix_check_entries(check, date or datetime.now(timezone.utc).date().isoformat())
     with revision_lock(root):
         if head(root)['revision_id'] != draft:
             raise ValueError('Record fix checks on the current draft')
         folder, _ = snapshot(root, draft)
-        if (folder / FIX_CHECKS).exists():
-            raise ValueError('This draft already has its fix checks')
-        date = date or datetime.now(timezone.utc).date().isoformat()
-        apply_fix_checks(ledger_of(folder), draft, checks, date)
-        write_json(folder / FIX_CHECKS, {'draft': draft, 'date': date, 'checks': checks})
+        path = folder / FIX_CHECKS
+        record = read_json(path) if path.exists() else {'draft': draft, 'checks': []}
+        if any(entry['run'] == check['run'] for entry in record['checks']):
+            raise ValueError(f'The fix check at {check["run"]} is already recorded on draft {draft}.')
+        apply_fix_checks(ledger_of(folder), draft, entries)
+        write_json(path, {'draft': draft, 'checks': [*record['checks'], *entries]})
     return ledger_of(folder)
 
 
