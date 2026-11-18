@@ -4,9 +4,10 @@ The engine has no public way to build a run folder without a model. Its own
 tests submit the findings through its server as the reviewer slots would and
 do the grouping in Python, so no model is started and nothing reaches the
 network. This file builds two rounds that way, and a third run given analysis
-code whose code lane files one code-checked finding, and drives the viewer from
-them, so the hand-written fixture in test_run_view.py is checked against what
-the engine writes. The third run's code is what a workspace review hands over
+code whose code lane fetches two data files and files one code-checked finding,
+and whose code check throws out the numbers lane's finding, and drives the
+viewer from them, so the hand-written fixture in test_run_view.py is checked
+against what the engine writes. The third run's code is what a workspace review hands over
 for a Paper Scaffold workspace, so the snapshot of it shows what the engine
 takes from one and what it leaves out. Round one and the third run are written
 inside that workspace, as ``paper-workbench review . reviews/NAME`` writes them,
@@ -30,7 +31,8 @@ import manuscripts
 from paper_workspace.run_view import run_review
 from paper_workspace.server import make_server
 from paper_workspace.workspace_review import engine_argv
-from test_run_view import CODE_EVIDENCE, PIPELINE, finding, issue
+from test_run_view import (CODE_EVIDENCE, PIPELINE, SUMMARY, SUMMARY_EVIDENCE, THROWN_OUT_NOTE, finding, issue,
+                           issues_document)
 from test_workspace_review import make_workspace
 
 FIRST =['Knockdown lowered VPS35 in twelve samples drawn from one donor.',
@@ -38,6 +40,11 @@ FIRST =['Knockdown lowered VPS35 in twelve samples drawn from one donor.',
          'Each assay was repeated three times and the mean is reported in the figure.']
 SECOND = ['Knockdown lowered VPS35 in twelve samples drawn from four donors.', FIRST[1], FIRST[2]]
 CODE_TEXTS = ['Peptides were filtered at a false discovery rate of one percent.', FIRST[2]]
+# A table too large for the engine to fetch whole, so it stores only its first lines.
+SCORES = 'peptide,score\n' + ''.join(f'P{n},{n}\n' for n in range(30000))
+MEAN = {'title': 'The mean hides the spread of three repeats', 'quote': 'the mean is reported in the figure',
+        'comment': 'With three repeats the mean says little. Show each repeat.',
+        'assumed_method': 'The figure plots the mean of the three repeats.'}
 CREDENTIALS = ('ANTHROPIC_API_KEY', 'ANTHROPIC_AUTH_TOKEN', 'OPENAI_API_KEY')
 
 
@@ -87,14 +94,20 @@ def one_round(root, texts, source, quotes, issues, prior='', **ruling):
 
 
 def code_round(root, code):
-    """A draft-check run given ``code``: the code lane files one code-checked finding, the numbers lane none.
+    """A draft-check run given ``code``, with the code check the engine plans on a run with code.
 
-    The arm runs specialists and no editor, so the server writes one issue per
-    finding. The manuscript is sealed before ingest, so the engine plans no reader.
+    The code lane fetches a small data file whole and a large one in part, is
+    refused the built PDF, which is binary, and files one code-checked finding.
+    The numbers lane files a finding that names the method it assumed, and the
+    code check throws it out with the data line that says otherwise. The arm runs
+    specialists and no editor, so the server writes one issue per finding it
+    keeps. The manuscript is sealed before ingest, so the engine plans no reader.
     """
     engine.STATE['run'] = None
     (code / 'analysis').mkdir(parents=True, exist_ok=True)
     (code / CODE_EVIDENCE['path']).write_text(PIPELINE)
+    (code / SUMMARY_EVIDENCE['path']).write_text(SUMMARY)
+    (code / 'analysis' / 'scores.csv').write_text(SCORES)
     manuscripts.build(root / 'manuscript', CODE_TEXTS, source_sha256=digest('source-code'))
     opened = engine.ingest(str(root / 'manuscript.pdf'), str(root), arm='draft-check', reviewers=0,
                            tracks=['numbers'], code=str(code))
@@ -103,13 +116,19 @@ def code_round(root, code):
     assert opened['reader'] is None and 'reader' not in codes, opened
     run = engine.current()
 
-    def token(slot):
+    def token(slot, paper=True):
         agent = engine.claim_agent(slot, codes.pop(slot))['agent_token']
-        engine.read_paper(agent)
+        if paper:
+            engine.read_paper(agent)
         return agent
 
     lane = token('spec-code')
     assert 'request_rejected' not in engine.read_code(lane, CODE_EVIDENCE['path'])
+    whole = engine.read_code(lane, SUMMARY_EVIDENCE['path'])
+    assert (whole.get('data'), whole.get('partial')) == (True, False), whole
+    part = engine.read_code(lane, 'analysis/scores.csv')
+    assert (part.get('data'), part.get('partial')) == (True, True), part
+    assert 'request_rejected' in engine.read_code(lane, 'paper.pdf')
     stored = engine.submit_finding(lane, title='The threshold in the methods is not the one in the code',
                                    quote='a false discovery rate of one percent', severity='major',
                                    comment='The methods say one percent and the pipeline filters at five.',
@@ -118,7 +137,20 @@ def code_round(root, code):
     assert stored.get('stored'), stored
     assert engine.submit_report(lane, 'Checked.', model=run.models.get('spec-code'))['closed']
     numbers = token('spec-numbers')
-    assert engine.submit_report(numbers, 'Nothing.', none_found=True, model=run.models.get('spec-numbers'))['closed']
+    stored = engine.submit_finding(numbers, severity='major', **MEAN)
+    assert stored.get('stored'), stored
+    assert engine.submit_report(numbers, 'One.', model=run.models.get('spec-numbers'))['closed']
+    # The code check reads no paper. It is handed the findings that rest on a method and reads the code.
+    check = token('code-check', paper=False)
+    claims = engine.method_claims(check)
+    assert [row['finding_uid'] for row in claims['claims']] == [stored['finding_uid']], claims
+    verdict = engine.submit_code_check(check, stored['finding_uid'], 'contradicted',
+                                       code_path=SUMMARY_EVIDENCE['path'],
+                                       code_start_line=SUMMARY_EVIDENCE['start_line'],
+                                       code_end_line=SUMMARY_EVIDENCE['end_line'],
+                                       code_quote=SUMMARY_EVIDENCE['text'], note=THROWN_OUT_NOTE)
+    assert 'request_rejected' not in verdict, verdict
+    assert engine.submit_report(check, 'Checked one.', model=run.models.get('code-check'))['closed']
     engine.write_review(engine.claim_agent('recorder', codes.pop('recorder'))['agent_token'])
     engine.STATE['run'] = None
 
@@ -199,6 +231,11 @@ class EngineRoundsTests(unittest.TestCase):
         self.assertEqual(sorted(finding('aa11', 'Knockdown')), sorted(row))
         written = json.loads((self.second / 'review' / 'issues.json').read_text())['issues']
         self.assertEqual({tuple(sorted(row)) for row in written}, {tuple(sorted(issue(1, 'x', 'major', 'y', [])))})
+        # The engine writes every top-level key on every run, code_check as None on a run given no code.
+        for root in (self.first, self.second, self.coded):
+            document = json.loads((root / 'review' / 'issues.json').read_text())
+            self.assertEqual(sorted(issues_document()), sorted(document))
+        self.assertIsNone(json.loads((self.first / 'review' / 'issues.json').read_text())['code_check'])
 
     def test_round_one_is_read_as_three_issues(self):
         review = self.view(self.first)
@@ -251,10 +288,55 @@ class EngineRoundsTests(unittest.TestCase):
         self.assertEqual((member['slot'], member['basis'], member['code_evidence']),
                          ('spec-code', 'code-checked', CODE_EVIDENCE))
         self.assertTrue(member['basis_reason'].startswith(f"The code quoted is what {CODE_EVIDENCE['path']} holds"))
+        self.assertIsNone(member['code_data'])
         code = review['run']['code']
-        self.assertEqual((code['reviewed'], code['kind'], code['files_opened'], code['opened']),
-                         (True, 'folder', [CODE_EVIDENCE['path']], 1))
+        self.assertEqual((code['reviewed'], code['kind'], code['opened']), (True, 'folder', 3))
+        self.assertEqual(code['files_opened'][0], CODE_EVIDENCE['path'])
         self.assertNotIn('manifest', code)
+
+    def test_the_run_panel_says_which_data_files_were_fetched_and_which_in_part(self):
+        code = self.view(self.coded)['run']['code']
+        rows = {row['path']: row for row in code['data']}
+        self.assertEqual(sorted(rows), ['analysis/scores.csv', SUMMARY_EVIDENCE['path']])
+        whole, part = rows[SUMMARY_EVIDENCE['path']], rows['analysis/scores.csv']
+        self.assertEqual((whole['partial'], whole['bytes'], whole['stored_bytes']), (False, len(SUMMARY), len(SUMMARY)))
+        self.assertEqual((part['partial'], part['bytes']), (True, len(SCORES)))
+        self.assertLess(part['stored_bytes'], part['bytes'])
+        self.assertEqual(sorted(whole), ['bytes', 'changed', 'partial', 'path', 'stored_bytes'])
+        # The built PDF is listed as data and refused, because it cannot be read as text.
+        self.assertEqual((code['data_fetched'], code['data_partial'], code['data_refused']), (2, 1, 1))
+        self.assertEqual(code['data_bytes'], whole['stored_bytes'] + part['stored_bytes'])
+        self.assertEqual(code['source_cut'], 0)
+        self.assertGreaterEqual(code['data_listed'], 3)
+
+    def test_a_finding_the_code_check_threw_out_is_no_card_and_shows_the_code_that_disproved_it(self):
+        check = json.loads((self.coded / 'review' / 'issues.json').read_text())['code_check']
+        self.assertEqual(check['counts'], {'confirmed': 0, 'contradicted': 1, 'not-shown': 0})
+        self.assertEqual(check['checks'][0]['code_evidence'], SUMMARY_EVIDENCE)
+        review = self.view(self.coded)
+        titles = [member['title'] for card in review['findings'] for member in card['members']]
+        self.assertNotIn(MEAN['title'], titles)
+        self.assertEqual(len(review['findings']), 1)
+        shown = review['run']['code_check']
+        self.assertEqual((shown['checked'], shown['over_cap'], shown['counts']), (1, 0, check['counts']))
+        [item] = shown['thrown_out']
+        self.assertEqual({key: item[key] for key in MEAN}, MEAN)
+        self.assertEqual((item['slot'], item['track'], item['severity'], item['note']),
+                         ('spec-numbers', 'numbers', 'major', THROWN_OUT_NOTE))
+        self.assertEqual(item['code_evidence'], SUMMARY_EVIDENCE)
+        self.assertEqual(item['code_data'], {'path': SUMMARY_EVIDENCE['path'], 'bytes': len(SUMMARY),
+                                             'stored_bytes': len(SUMMARY), 'partial': False, 'changed': ''})
+        # It is placed on the manuscript as a member is, by its ledger row's span.
+        self.assertEqual((item['placement'], item['anchor_text'], item['id']),
+                         ('anchored', MEAN['quote'], item['finding_uid']))
+        # The engine's own reading still has it on the ledger, and the viewer counts it nowhere as a finding of an issue.
+        self.assertIn(item['finding_uid'], [row['finding_uid'] for row in read_run(self.coded)['findings']])
+        self.assertEqual(review['run']['findings_source'], 'issues')
+
+    def test_a_run_given_no_code_has_no_code_check(self):
+        review = self.view(self.first)
+        self.assertIsNone(review['run']['code_check'])
+        self.assertEqual(review['run']['code']['data'], [])
 
     def test_a_workspace_review_hands_over_its_code_and_the_engine_leaves_out_its_data(self):
         code = read_run(self.coded)['code']
@@ -268,7 +350,12 @@ class EngineRoundsTests(unittest.TestCase):
             self.assertTrue(skipped[folder].startswith('not looked at'), skipped)
             self.assertFalse([path for path in copied if path.startswith(folder + '/')], copied)
         self.assertEqual(skipped['.env'], 'may hold secrets')
-        self.assertIn('paper.pdf', skipped)
+        # The built PDF and the statistics file are data, listed with their size and never copied up front.
+        data = {row['path']: row for row in code['manifest']['data']}
+        self.assertEqual((data['paper.pdf']['readable'], data['paper.pdf']['fetched']), (False, False))
+        self.assertEqual(data['stats.json']['fetched'], False)
+        self.assertNotIn('stats.json', copied)
+        self.assertEqual(code['data_listed'], len(data))
         # The run is written inside the code, beside round one's run, and no file of either is copied in.
         self.assertEqual(skipped['reviews/coded'], 'not looked at: the run folder this review is being written into')
         self.assertEqual(skipped['reviews/first'], 'not looked at: a PeerReviewAgents run folder')

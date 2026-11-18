@@ -12,7 +12,14 @@ The citation ledger's rows come from the engine's ``read_citation_ledger``,
 which keeps the last row written for each ``row_id`` and gives them in reading
 order, ``ref:r2`` before ``ref:r10``. It is called without the fetched
 abstracts and full text, because the panel never shows them.
+
+On a run given code, the engine's code check reads each finding that rests on
+how a number was computed against the code. ``read_run`` does not hand on what
+it found, so its ``code_check`` is read from the ``issues.json`` that
+``read_run`` names in ``reports``, which is where the engine's integration
+guide says a reader of what the review threw out finds it.
 """
+import json
 import os
 import re
 from collections import Counter
@@ -21,7 +28,7 @@ from pathlib import Path
 from peerreviewagents import MANUSCRIPT_DIRECTORY, cited_text, read_citation_ledger, read_run
 from peerreviewagents import locate_run, NotARunFolder
 from peerreviewagents.issues import (ISSUE_FIELDS, by_category, closed_issues, is_issue_id, required_issues,
-                                     suggestion_issues)
+                                     schema_problem, suggestion_issues)
 
 RUN_REVIEW_ID = 'run'
 AUDIT_LIMIT = 400_000
@@ -50,9 +57,22 @@ TYPE_PROBLEMS_SHOWN = 8
 FROM_LEDGER = ('comment', 'start', 'end', 'anchor_text', 'placement', 'replacement', 'basis_reason',
                'counterevidence', 'source_urls', 'code_evidence')
 # What the run panel says about the code a run was reviewed against. The snapshot's
-# own manifest, which names every file, stays in the run folder.
+# own manifest, which names every file, stays in the run folder. `source_cut` counts
+# the program source files a cap left out, and the data counts say how many data
+# files the code ships and what the reviewers fetched of them.
 CODE_VIEW = ('reviewed', 'kind', 'source', 'commit', 'branch', 'dirty', 'snapshot', 'files_in_snapshot',
-             'files_skipped', 'truncated', 'files_opened', 'opened', 'searches')
+             'files_skipped', 'truncated', 'source_cut', 'files_opened', 'opened', 'searches',
+             'data_listed', 'data_fetched', 'data_partial', 'data_refused', 'data_bytes')
+# What the panel shows of each data file a reviewer fetched. A partial one holds
+# only the first `stored_bytes` of its `bytes`. `changed` is empty, or says in the
+# engine's words how the file changed after the snapshot listed it.
+DATA_VIEW = ('path', 'bytes', 'stored_bytes', 'partial', 'changed')
+CONTRADICTED = 'contradicted'
+CODE_CHECK_VERDICTS = ('confirmed', CONTRADICTED, 'not-shown')
+# What a finding the code check threw out keeps from the check's row. Its comment
+# and offsets come from its ledger row, and the slot and track are the finding's own.
+THROWN_OUT_VIEW = ('finding_uid', 'title', 'severity', 'basis', 'assumed_method', 'quote', 'document', 'line',
+                   'end_line', 'code_evidence', 'note')
 # Where a finding sits in the manuscript.
 SPAN = ('document', 'line', 'end_line', 'start', 'end', 'anchor_text')
 # What a card copies from the member it is anchored to.
@@ -154,6 +174,86 @@ def check_issues(rows):
     problems = issue_problems(rows)
     if problems:
         raise RunError(wrong_types(problems))
+
+
+def code_check_problems(check):
+    """Each value of ``code_check`` that is not of the type the viewer reads, as a line of prose."""
+    if not isinstance(check, dict):
+        return ['code_check is not an object']
+    problems = [f'code_check {key} is not a whole number' for key in ('cap', 'checked', 'over_cap')
+                if not is_line(check.get(key))]
+    counts = check.get('counts')
+    if not (isinstance(counts, dict) and all(is_line(counts.get(key)) for key in CODE_CHECK_VERDICTS)):
+        problems.append('code_check counts is not a whole number per verdict')
+    rows = check.get('checks')
+    if not isinstance(rows, list):
+        return problems + ['code_check checks is not a list']
+    for number, row in enumerate(rows, 1):
+        where = f'code_check row {number}'
+        if not isinstance(row, dict):
+            problems.append(f'{where} is not an object')
+            continue
+        if not isinstance(row.get('finding_uid'), str):
+            problems.append(f'in {where}, finding_uid is not text')
+        if row.get('verdict') not in CODE_CHECK_VERDICTS:
+            problems.append(f'in {where}, verdict is not one of {", ".join(CODE_CHECK_VERDICTS)}')
+        problems += [f'in {where}, {key} is not text' for key in ('title', 'quote', 'note', 'assumed_method')
+                     if not is_text(row.get(key))]
+        evidence = row.get('code_evidence')
+        if not (evidence is None or (isinstance(evidence, dict) and isinstance(evidence.get('path'), str)
+                                     and is_line(evidence.get('start_line')) and is_line(evidence.get('end_line'))
+                                     and isinstance(evidence.get('text'), str))):
+            problems.append(f'in {where}, code_evidence is not a file, its lines and their text')
+        elif row.get('verdict') == CONTRADICTED and evidence is None:
+            problems.append(f'in {where}, a contradicted finding has no code_evidence')
+    return problems
+
+
+def code_check_of(run):
+    """What the run's code check did, or ``None`` on a run given no code.
+
+    It is read from the ``issues.json`` that ``read_run`` names. A run with no
+    readable ``issues.json``, or one stamped with a version the engine does not
+    read, has no code check to show here, and ``read_run`` has already named
+    that file in ``problems``. Engine 0.10.0 writes ``code_check`` on every run,
+    so a document without the key is refused.
+    """
+    path = run['reports'].get('issues')
+    if path is None:
+        return None
+    try:
+        document = json.loads(Path(path).read_bytes().decode('utf-8'))
+    except (OSError, ValueError):
+        return None
+    if schema_problem(document):
+        return None
+    if 'code_check' not in document:
+        raise RunError("This run's review/issues.json has no code_check, which engine 0.10.0 writes on every run. "
+                       'Re-run the review.')
+    check = document['code_check']
+    if check is None:
+        return None
+    problems = code_check_problems(check)
+    if problems:
+        raise RunError(wrong_types(problems))
+    return check
+
+
+def fetched_data(code):
+    """The data files a reviewer fetched from the run's code, by path, as the snapshot's manifest records them.
+
+    The engine lists every data file the code ships and copies one in only when
+    a reviewer reads it. A text file over its size cap is stored as its first
+    whole lines, and ``partial`` says so. A run given no code has no manifest.
+    """
+    manifest = code['manifest']
+    rows = manifest['data'] if manifest else []
+    return {row['path']: {key: row.get(key) for key in DATA_VIEW} for row in rows if row.get('fetched') is True}
+
+
+def data_of(evidence, data):
+    """The fetched data file a piece of code evidence quotes, or ``None`` when it quotes source."""
+    return data.get(evidence['path']) if isinstance(evidence, dict) else None
 
 
 def check_engine(review):
@@ -459,6 +559,27 @@ def finding_card(row, ledger, base):
     return issue_card(issue, 'ledger', ledger, base)
 
 
+def thrown_out(check, ledger, data, base):
+    """The findings the code check threw out: the code does not do what each one said.
+
+    The engine keeps such a finding out of every issue, so it is no card and
+    takes no decision. Each one shows the check's row, the code that disproved
+    it and the note written for the authors, with the comment and the span of
+    its ledger row, placed on the manuscript as a member is.
+    """
+    items = []
+    for row in check['checks']:
+        if row['verdict'] != CONTRADICTED:
+            continue
+        finding = ledger.get(row['finding_uid'], {})
+        item = {key: row.get(key) for key in THROWN_OUT_VIEW}
+        item.update(id=row['finding_uid'], slot=row.get('finding_slot'), track=row.get('finding_track'),
+                    comment=finding.get('comment'), start=finding.get('start'), end=finding.get('end'),
+                    anchor_text=finding.get('anchor_text'), code_data=data_of(row['code_evidence'], data))
+        items.append(placed(item, base))
+    return items
+
+
 def run_review(review, base):
     """The run as a review that the viewer, the decisions and ``export_draft`` read.
 
@@ -479,8 +600,12 @@ def run_review(review, base):
     check_version(run, base)
     ledger = {row['finding_uid']: row for row in run['findings'] if isinstance(row.get('finding_uid'), str)}
     issues = run['issues']
+    check = code_check_of(run)
+    data = fetched_data(run['code'])
+    # A finding the code check contradicted is in no issue, and it is never shown as one of its own either.
     held = {member.get('finding_uid') for issue in issues for member in issue.get('members') or []
             if isinstance(member, dict) and isinstance(member.get('finding_uid'), str)}
+    held |= {row['finding_uid'] for row in check['checks'] if row['verdict'] == CONTRADICTED} if check else set()
     findings = ([issue_card(issue, 'required', ledger, base) for issue in required_issues(issues)]
                 + [issue_card(issue, 'suggestion', ledger, base)
                    for _, rows in by_category(suggestion_issues(issues)) for issue in rows]
@@ -491,6 +616,10 @@ def run_review(review, base):
     for number, card in enumerate(loose, top + 1):
         card['number'] = number
     findings += loose
+    # A member whose code evidence is a data file says whether the review read all of it.
+    for card in findings:
+        for member in card['members']:
+            member['code_data'] = data_of(member.get('code_evidence'), data)
     uses = Counter(card['source_id'] for card in findings if isinstance(card['source_id'], str))
     for number, card in enumerate(findings, 1):
         value = card['source_id']
@@ -536,7 +665,10 @@ def run_review(review, base):
         'audits': audit_texts(run['reports']['audits']),
         'citations': citations,
         # `reviewed` is false for a run given no code, and every other key is then empty.
-        'code': {key: run['code'][key] for key in CODE_VIEW},
+        'code': {**{key: run['code'][key] for key in CODE_VIEW}, 'data': list(data.values())},
+        # `None` on a run given no code. A finding it threw out is listed here and in no card.
+        'code_check': check and {**{key: check[key] for key in ('cap', 'checked', 'over_cap', 'counts')},
+                                 'thrown_out': thrown_out(check, ledger, data, base)},
         'tokens_total': run['runtime']['tokens_total'],
         'wall_seconds': run['runtime']['wall_seconds'],
     }

@@ -44,6 +44,14 @@ TABLE = {'kind': 'table', 'text': 'Sample VPS35 A 12', 'table': [['Sample', 'VPS
 PIPELINE = '"""The analysis."""\nFDR_THRESHOLD = 0.05\n'
 CODE_EVIDENCE = {'path': 'analysis/pipeline.py', 'start_line': 2, 'end_line': 2, 'text': 'FDR_THRESHOLD = 0.05',
                  'sha256': hashlib.sha256(PIPELINE.encode()).hexdigest()}
+# A data file the code ships, and the code_evidence the code check stores when it
+# quotes its second line to throw out a finding that said the figure shows a mean.
+# test_engine_rounds.py files that check through the engine and checks it is this.
+SUMMARY = '{\n  "figure": "median of three repeats"\n}\n'
+SUMMARY_EVIDENCE = {'path': 'analysis/summary.json', 'start_line': 2, 'end_line': 2,
+                    'text': '  "figure": "median of three repeats"',
+                    'sha256': hashlib.sha256(SUMMARY.encode()).hexdigest()}
+THROWN_OUT_NOTE = 'The figure is the median of the three repeats, not the mean.'
 
 
 def finding(uid, quote, slot='core-1', track='core', **extra):
@@ -61,7 +69,7 @@ def finding(uid, quote, slot='core-1', track='core', **extra):
             'piece_kind': 'paragraph', 'piece_lines': [LINE, LINE], 'fingerprint': FINGERPRINT,
             'placement': 'anchored', 'schema_version': FINDING_SCHEMA_VERSION, 'track': track, 'slot': slot,
             'role': 'core' if track == 'core' else 'specialist', 'escalate': False, 'finding_uid': uid,
-            'basis': 'judgement', 'basis_reason': 'No arithmetic receipt.',
+            'basis': 'judgement', 'basis_reason': 'No arithmetic receipt.', 'assumed_method': '',
             'recorded': '2026-11-15T12:00:00+00:00', **extra}
 
 
@@ -103,7 +111,7 @@ def issues_document(issues=ISSUES, **extra):
             'prior_round': None, 'stages': {}, 'audits': ['audit_numbers.md', 'audit_stats.md'],
             'findings_by_track': {'core': 2, 'numbers': 1}, 'findings_delivered': 3, 'findings_submitted': 3,
             'quarantined_findings': [], 'quarantined_findings_count': 0, 'review_guard_status': 'clean',
-            'reviewer_count': 3, 'reviewer_provenance': [], 'arm': 'full-two-track', 'synthesis_policy': 'editor',
+            'code_check': None, 'reviewer_count': 3, 'reviewer_provenance': [], 'arm': 'full-two-track', 'synthesis_policy': 'editor',
             'finding_schema_version': None, 'workflow_version': None, **extra}
 
 

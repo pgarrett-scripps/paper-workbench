@@ -50,23 +50,51 @@ def passage(base, finding):
     return base.range_text(line, last, document)
 
 
-def code_cited(finding):
-    """The code each member of a run's card quotes from the run's code snapshot, as comment text.
+def code_quoted(label, code, data):
+    """``code`` as comment text: the file of the run's code snapshot, its lines and the text found there.
 
-    A code-checked finding names a file of the snapshot, a line range in it and
-    the text the engine found there. Line numbers count lines of the snapshot file.
+    Line numbers count lines of the snapshot file. ``data`` is the fetched data
+    file the code quotes, as run_view hands it over, or ``None`` when it quotes
+    program source. A data file over its size cap was stored only in part.
     """
-    cited = []
-    for member in finding.get('members') or []:
-        code = member.get('code_evidence') if isinstance(member, dict) else None
-        if not (isinstance(code, dict) and isinstance(code.get('path'), str)
-                and type(code.get('start_line')) is int and type(code.get('end_line')) is int):
-            continue
-        first, last = code['start_line'], code['end_line']
-        lines = f'line {first}' if first == last else f'lines {first} to {last}'
-        text = code.get('text') if isinstance(code.get('text'), str) else ''
-        cited.append(f"Code checked: {code['path']}, {lines} of the run's code snapshot" + (f'\n{text}' if text else ''))
-    return '\n\n'.join(dict.fromkeys(cited))
+    if not (isinstance(code, dict) and isinstance(code.get('path'), str)
+            and type(code.get('start_line')) is int and type(code.get('end_line')) is int):
+        return ''
+    first, last = code['start_line'], code['end_line']
+    lines = f'line {first}' if first == last else f'lines {first} to {last}'
+    said = f"{label}: {code['path']}, {lines} of the run's code snapshot"
+    if isinstance(data, dict):
+        said += (f", a data file of which the review read only the first {data['stored_bytes']} of {data['bytes']} bytes"
+                 if data.get('partial') else ', a data file the review read whole')
+        if data.get('changed'):
+            said += f". The file {data['changed']}"
+    text = code.get('text') if isinstance(code.get('text'), str) else ''
+    return said + (f'\n{text}' if text else '')
+
+
+def code_cited(finding):
+    """The code each member of a run's card quotes from the run's code snapshot, as comment text."""
+    cited = [code_quoted('Code checked', member.get('code_evidence'), member.get('code_data'))
+             for member in finding.get('members') or [] if isinstance(member, dict)]
+    return '\n\n'.join(dict.fromkeys(filter(None, cited)))
+
+
+THROWN_OUT = ('Thrown out by the code check: the code does not do what this finding said. '
+              'It is not an open question.')
+
+
+def comment_text(entry, evidence):
+    """What the Word copy says of one ledger row: an open question, or a finding the code check threw out."""
+    finding = entry['finding']
+    origin = 'Origin: ' + entry.get('origin_revision', 'unknown') + '. Finding: ' + finding['id'] + '.'
+    if entry['scientific_status'] == 'thrown_out':
+        return '\n\n'.join(filter(None, [
+            finding.get('title'), finding.get('comment'), THROWN_OUT,
+            finding.get('assumed_method') and 'What the finding took the code to do: ' + finding['assumed_method'],
+            code_quoted('Code that contradicts it', finding.get('code_evidence'), finding.get('code_data')),
+            finding.get('note') and 'Code check note: ' + finding['note'], origin]))
+    return '\n\n'.join(filter(None, [finding.get('title'), finding.get('comment'), evidence, code_cited(finding),
+                                     'Open scientific question. ' + origin]))
 
 
 def patch_document(source, destination, parent, current, ledger, origin):
@@ -153,9 +181,11 @@ def patch_document(source, destination, parent, current, ledger, origin):
         raise ValueError('Review markup altered clean manuscript text')
 
     comments = ET.Element(tag('comments'), nsmap={'w': W})
-    located, unlocated = [], []
+    # A finding the code check threw out is commented on its passage too, said to be thrown out,
+    # and an unlocated one is listed apart from the open questions.
+    located, unlocated, thrown_out = [], [], []
     for index, entry in enumerate(ledger):
-        if entry.get('scientific_status') != 'open':
+        if entry.get('scientific_status') not in ('open', 'thrown_out'):
             continue
         finding = entry['finding']
         quote = finding.get('anchor_text') or finding.get('quote', '')
@@ -186,10 +216,10 @@ def patch_document(source, destination, parent, current, ledger, origin):
             '\n'.join(ref.get('quote', '') for ref in finding.get('source_evidence', [])
                       if ref.get('evidence_id') == card.get('evidence_id'))
             for card in source_cards.values())
-        text = '\n\n'.join(filter(None, [finding.get('title'), finding.get('comment'), evidence, code_cited(finding),
-            'Open scientific question. Origin: ' + entry.get('origin_revision', 'unknown') + '. Finding: ' + finding['id'] + '.']))
+        text = comment_text(entry, evidence)
         if reason:
-            unlocated.append({'finding_id': finding['id'], 'reason': reason, 'text': text, 'quote': quote})
+            (thrown_out if entry['scientific_status'] == 'thrown_out' else unlocated).append(
+                {'finding_id': finding['id'], 'reason': reason, 'text': text, 'quote': quote})
             continue
         # A full paragraph anchor retains inline formatting and makes the exact quote explicit.
         cid = str(index)
@@ -202,11 +232,14 @@ def patch_document(source, destination, parent, current, ledger, origin):
         for line in (text + '\n\nQuoted passage: ' + quote).split('\n'):
             ET.SubElement(comment, tag('p')).append(run(line))
         located.append({'finding_id': finding['id'], 'comment_id': cid, 'document': piece['document'],
-                        'lines': piece['lines'], 'anchor': 'exact paragraph', 'quote': quote})
-    if unlocated:
-        body = document.find(tag('body'))
-        position = len(body) - (1 if body.find(tag('sectPr')) is not None else 0)
-        for text in ['Unlocated review questions'] + [item['text'] + '\nLocation note: ' + item['reason'] + '\nQuoted passage: ' + item['quote'] for item in unlocated]:
+                        'lines': piece['lines'], 'anchor': 'exact paragraph', 'quote': quote,
+                        'status': entry['scientific_status']})
+    body = document.find(tag('body'))
+    position = len(body) - (1 if body.find(tag('sectPr')) is not None else 0)
+    for heading, items in (('Unlocated review questions', unlocated), ('Findings the code check threw out', thrown_out)):
+        if not items:
+            continue
+        for text in [heading] + [item['text'] + '\nLocation note: ' + item['reason'] + '\nQuoted passage: ' + item['quote'] for item in items]:
             p = ET.Element(tag('p'))
             p.append(run(text))
             body.insert(position, p)
@@ -242,8 +275,10 @@ def patch_document(source, destination, parent, current, ledger, origin):
         for name, data in entries.items():
             archive.writestr(name, data)
     return {'changed_pieces': changed, 'comments': located, 'unlocated_questions': unlocated,
+            'unlocated_thrown_out': thrown_out,
             'accepted_text_matches_clean': True, 'rejected_changed_pieces_match_parent': True,
-            'scope': 'Changes from the immediate parent revision. Open questions from the inherited ledger.'}
+            'scope': 'Changes from the immediate parent revision. Open questions from the inherited ledger, '
+                     'and the findings the code check threw out, each said to be thrown out.'}
 
 
 def export_review(root, revision_id, clean_export, output):

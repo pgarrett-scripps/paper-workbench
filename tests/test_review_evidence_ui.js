@@ -85,7 +85,9 @@ review = {id:'run', summary:'Editor summary', raw_response:undefined, findings:[
   models_unverified:['recorder'],
   code:{reviewed:true, kind:'folder', source:'/home/someone/paper-repo', commit:'0123456789abcdef0123', branch:'main',
         dirty:true, snapshot:'/home/someone/run/code', files_in_snapshot:3, files_skipped:1,
-        truncated:'more than 400 files of text source', files_opened:['analysis/<fdr>.py'], opened:1, searches:2},
+        truncated:'more than 400 files of text source', source_cut:0, files_opened:['analysis/<fdr>.py'], opened:1, searches:2,
+        data_listed:0, data_fetched:0, data_partial:0, data_refused:0, data_bytes:0, data:[]},
+  code_check:null,
   findings_by_track:{field:1, core:1}, wall_seconds:600, tokens_total:1234}};
 cards();
 `, context);
@@ -178,10 +180,68 @@ assert.ok(panel.includes('<div class="code-reviewed"><p><strong>Code reviewed</s
 assert.ok(!panel.includes('/home/someone'));
 // A run given no code says nothing about code, as REVIEW.md does.
 assert.equal(vm.runInContext("codeReviewed({reviewed:false, kind:'', source:'', files_opened:[]}) + codeReviewed(undefined)", context), '');
-assert.ok(vm.runInContext("codeReviewed({reviewed:true, kind:'git-clone', source:'https://github.com/lab/paper', commit:'', opened:0, files_in_snapshot:1, files_opened:[]})", context)
+assert.ok(vm.runInContext("codeReviewed({reviewed:true, kind:'git-clone', source:'https://github.com/lab/paper', commit:'', opened:0, files_in_snapshot:1, files_opened:[], source_cut:0, data_listed:0, data:[]})", context)
   .includes('<code>https://github.com/lab/paper</code><br>0 of 1 file opened</p></div>'));
 // The model asked is never shown as the model that ran.
 assert.ok(!panel.includes('model ran claude-haiku-5-5'));
+// The panel says which data files the review fetched, whole or in part, and that a cut snapshot is not the whole of the code.
+const dataPanel = vm.runInContext(`codeReviewed({reviewed:true, kind:'folder', source:'/x/paper-repo', commit:'', opened:3,
+  files_in_snapshot:2, files_opened:['a.py'], source_cut:2, data_listed:5, data_fetched:2, data_partial:1, data_refused:1,
+  data:[{path:'analysis/<scores>.csv', bytes:367794, stored_bytes:19991, partial:true, changed:''},
+        {path:'analysis/summary.json', bytes:42, stored_bytes:42, partial:false,
+         changed:'changed since the snapshot was taken: 40 byte(s) then, 42 now'}]})`, context);
+for (const text of ['<br>2 of 5 data files fetched, 1 only in part, 1 refused</p>',
+                    '<p class="unverified">2 program source files did not fit in the snapshot, so it is not the whole of the code, and no finding may say the code never does something.</p>',
+                    '<details><summary>Data files fetched (2)</summary><ul><li><code>analysis/&lt;scores&gt;.csv</code>, only the first 19991 of 367794 bytes read</li>',
+                    '<li><code>analysis/summary.json</code>, read whole, 42 bytes, changed since the snapshot was taken: 40 byte(s) then, 42 now</li>']) {
+  assert.ok(dataPanel.includes(text), text);
+}
+// A run whose reviewers fetched no data file and whose snapshot cut nothing says nothing of either.
+assert.ok(!panel.includes('data file') && !panel.includes('did not fit') && !panel.includes('Code check'));
+// Code evidence that is a data file says how much of it the review read.
+assert.ok(vm.runInContext("codeEvidence({code_evidence:{path:'s.csv', start_line:2, end_line:2, text:'P1,1'}, code_data:{path:'s.csv', bytes:900, stored_bytes:300, partial:true, changed:''}})", context)
+  .includes("<code>s.csv</code>, line 2 of the run's code snapshot<br>A data file, only the first 300 of 900 bytes read</p><pre>P1,1</pre>"));
+
+// A finding the code check threw out is listed after every issue, marked as thrown out with the code that
+// disproved it, and is never a card: it takes no decision and no author response.
+vm.runInContext(`review.run.code_check = {cap:20, checked:2, over_cap:1, counts:{confirmed:1, contradicted:1, 'not-shown':0},
+  thrown_out:[{id:'u9', finding_uid:'u9', slot:'spec-numbers', track:'numbers', severity:'major',
+    title:'The mean <hides> the spread', comment:'Show each repeat.', quote:'alpha', document:'paper.md', line:1, end_line:1,
+    basis:'judgement', assumed_method:'The figure plots the mean.', note:'It is the <median>.',
+    code_evidence:{path:'analysis/summary.json', start_line:2, end_line:2, text:'  "figure": "median"', sha256:'x'},
+    code_data:{path:'analysis/summary.json', bytes:42, stored_bytes:42, partial:false, changed:''},
+    start:0, end:5, anchor_text:'alpha', placement:'anchored', page:null, bbox:null}]}; cards();`, context);
+const withThrown = html('#comments');
+const thrown = withThrown.slice(withThrown.indexOf('<details class="thrown-out"'));
+assert.ok(withThrown.includes('<details class="thrown-out" id="thrown-out" open><summary>Thrown out: the code does not do what the finding said (1)</summary>'));
+assert.ok(withThrown.indexOf('<details class="thrown-out"') > withThrown.indexOf('id="note-i04"'));
+for (const text of ['spec-numbers · numbers track · major',
+                    '<p class="thrown-out-mark" role="note">Thrown out by the code check. This is not an open issue: the code does not do what this finding said.</p>',
+                    '<h4>The mean &lt;hides&gt; the spread</h4>', '<blockquote>alpha</blockquote>', '<a href="#line-paper.2emd-1">Go to passage</a>',
+                    '<strong>What the finding took the code to do</strong><br>The figure plots the mean.',
+                    '<strong>Code that contradicts it</strong><br><code>analysis/summary.json</code>, line 2 of the run\'s code snapshot<br>A data file, read whole, 42 bytes</p><pre>  &quot;figure&quot;: &quot;median&quot;</pre>',
+                    '<strong>Code check note</strong><br>It is the &lt;median&gt;.']) {
+  assert.ok(thrown.includes(text), text);
+}
+for (const text of ['<article', 'data-action', 'Accept wording', 'Author comment', '<hides>']) assert.ok(!thrown.includes(text), text);
+assert.ok(!withThrown.includes('id="note-u9"'));
+assert.equal(elements.get('#finding-count').textContent, '1 required · 2 suggestions · 1 from the prior round · 1 thrown out by the code check');
+assert.ok(html('#run-panel').includes('<p class="count">Code check: 2 checked, 1 confirmed, 1 thrown out, 0 not shown in the code, 1 over its cap of 20 left unchecked</p>'));
+// A filter shows only issues, so the thrown-out findings leave the view with it.
+vm.runInContext("filter = 'required'; cards();", context);
+assert.ok(!html('#comments').includes('thrown-out'));
+// A thrown-out finding carried from an earlier draft says so, and is not counted among the open questions.
+vm.runInContext(`filter = 'all'; ledger = [{origin_revision:'original', paper_id:'p', scientific_status:'thrown_out',
+  wording_decision:'no decision', author_feedback:{}, anchor_status:'historical', note:'Thrown out.',
+  finding:review.run.code_check.thrown_out[0]}]; cards(); history();`, context);
+const carried = html('#history-ledger');
+for (const text of ['Thrown out by the code check. This is not an open issue', '<strong>Code that contradicts it</strong>',
+                    'It is the &lt;median&gt;.', 'Origin draft: original']) {
+  assert.ok(carried.includes(text), text);
+}
+assert.ok(!carried.includes('Scientific status'));
+assert.ok(!elements.get('#finding-count').textContent.includes('earlier questions open'));
+vm.runInContext('ledger = []; review.run.code_check = null; cards();', context);
 
 // The run panel shows the fixture ledger, which the engine's own ledger code wrote, as run_view.py hands it over.
 context.ledgerView = JSON.parse(fs.readFileSync('tests/fixtures/citations/view.json', 'utf8'));

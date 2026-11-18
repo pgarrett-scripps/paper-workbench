@@ -142,6 +142,69 @@ class WordReviewTests(unittest.TestCase):
                          'FDR_THRESHOLD = 0.05'):
             self.assertIn(expected, comments)
 
+    def thrown_out(self, base, text):
+        """A finding the code check threw out, raised on ``base`` quoting ``text``, as the ledger keeps it.
+
+        Its keys are those run_view hands over for one, which test_engine_rounds.py
+        checks against a run the engine wrote.
+        """
+        from test_run_view import SUMMARY, SUMMARY_EVIDENCE, THROWN_OUT_NOTE
+        [row] = self.question(base, text)
+        row['scientific_status'] = 'thrown_out'
+        row['finding'].update(id='u-mean', finding_uid='u-mean', title='The mean hides the spread of three repeats',
+                              comment='Show each repeat.', assumed_method='The figure plots the mean.',
+                              code_evidence=SUMMARY_EVIDENCE, note=THROWN_OUT_NOTE,
+                              code_data={'path': SUMMARY_EVIDENCE['path'], 'bytes': len(SUMMARY),
+                                         'stored_bytes': len(SUMMARY), 'partial': False, 'changed': ''})
+        return [row]
+
+    def test_a_finding_the_code_check_threw_out_is_commented_as_thrown_out_with_the_code(self):
+        from test_run_view import THROWN_OUT_NOTE
+        text = 'Each assay was repeated three times and the mean is reported in the figure.'
+        paper = self.draft(text)
+        out = self.folder / 'review.docx'
+        audit = self.patch(self.fixture([text]), out, paper, paper, self.thrown_out(paper, text))
+        with zipfile.ZipFile(out) as archive:
+            comments = visible(ET.fromstring(archive.read('word/comments.xml')))
+        for expected in ('Thrown out by the code check: the code does not do what this finding said. '
+                         'It is not an open question.',
+                         'What the finding took the code to do: The figure plots the mean.',
+                         "Code that contradicts it: analysis/summary.json, line 2 of the run's code snapshot, "
+                         'a data file the review read whole  "figure": "median of three repeats"',
+                         'Code check note: ' + THROWN_OUT_NOTE, 'Origin: original. Finding: u-mean.'):
+            self.assertIn(expected, comments)
+        self.assertNotIn('Open scientific question', comments)
+        self.assertEqual([(item['finding_id'], item['status']) for item in audit['comments']], [('u-mean', 'thrown_out')])
+
+    def test_an_unlocated_thrown_out_finding_is_listed_apart_from_the_open_questions(self):
+        old, new = 'The mean is reported in the figure.', 'Each repeat is shown in the figure.'
+        parent, current = self.draft(old), self.draft(new)
+        out = self.folder / 'review.docx'
+        audit = self.patch(self.fixture([new]), out, parent, current, self.thrown_out(parent, old))
+        self.assertEqual((audit['unlocated_questions'], [item['finding_id'] for item in audit['unlocated_thrown_out']]),
+                         ([], ['u-mean']))
+        with zipfile.ZipFile(out) as archive:
+            body = visible(ET.fromstring(archive.read('word/document.xml')))
+        self.assertIn('Findings the code check threw out', body)
+        self.assertNotIn('Unlocated review questions', body)
+
+    def test_a_member_quoting_a_data_file_says_how_much_of_it_the_review_read(self):
+        from test_run_view import SUMMARY_EVIDENCE
+        text = 'Peptides were filtered at a false discovery rate of one percent.'
+        paper = self.draft(text)
+        ledger = self.question(paper, text)
+        evidence = {**SUMMARY_EVIDENCE, 'path': 'analysis/scores.csv', 'text': 'P1,1'}
+        ledger[0]['finding']['members'] = [{'code_evidence': evidence, 'code_data': {
+            'path': 'analysis/scores.csv', 'bytes': 367794, 'stored_bytes': 19991, 'partial': True,
+            'changed': 'changed since the snapshot was taken: 367794 byte(s) then, 367800 now'}}]
+        out = self.folder / 'review.docx'
+        self.patch(self.fixture([text]), out, paper, paper, ledger)
+        with zipfile.ZipFile(out) as archive:
+            comments = visible(ET.fromstring(archive.read('word/comments.xml')))
+        self.assertIn("Code checked: analysis/scores.csv, line 2 of the run's code snapshot, a data file of which the "
+                      'review read only the first 19991 of 367794 bytes. The file changed since the snapshot was '
+                      'taken: 367794 byte(s) then, 367800 nowP1,1', comments)
+
     def test_ambiguous_changed_paragraph_fails(self):
         parent, current = self.draft('Old text'), self.draft('New text')
         source = self.fixture(['New text', 'New text'])

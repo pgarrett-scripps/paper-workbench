@@ -261,6 +261,8 @@ function history(){
   const feedback=row.author_feedback||{};
   const current=pieceAt(finding.document,finding.line);
   const location=current&&finding.fingerprint&&current.fingerprint===finding.fingerprint?`<p>${lineLink(finding.document,finding.line,'View unchanged passage in this draft')}</p>`:'';
+  // A finding an earlier run's code check threw out is carried to say what the code showed, never as an open question.
+  if(row.scientific_status==='thrown_out')return `<div class="cross-check thrown-out-item"><p class="thrown-out-mark" role="note">${esc(THROWN_OUT)}</p><p><strong>${esc(finding.title||'Finding')}</strong></p><p>${esc(finding.comment||'')}</p><blockquote>${esc(finding.quote||'')}</blockquote>${codeEvidence(finding,'Code that contradicts it')}${finding.note?`<p><strong>Code check note</strong><br>${esc(finding.note)}</p>`:''}<p>Origin draft: ${esc(row.origin_revision||'unknown')}</p></div>`;
   return `<div class="cross-check"><p><strong>${esc(categoryOf(finding))}: ${esc(finding.title||'Historical finding')}</strong></p><p>${esc(finding.comment||'')}</p><blockquote>${esc(finding.quote||'')}</blockquote>${location}<p>Origin draft: ${esc(row.origin_revision||'unknown')}<br>Wording decision: ${esc(row.wording_decision||'proposed')}<br>Scientific status: ${esc(row.scientific_status||'open')}</p>${feedback.author_comment?`<p>Author response: ${esc(feedback.author_comment)}<br>Author status: ${esc(feedback.issue_status)}<br>${esc(feedback.rationale||'')}</p>`:''}<p>${esc(row.note||'Historical anchors require reassessment on this draft.')}</p></div>`;
  }).join('');
 }
@@ -289,13 +291,22 @@ function issueNotes(item){
   (item.audits||[]).length&&`<p class="muted">Specialist reports: ${item.audits.map(esc).join(', ')}</p>`].filter(Boolean);
  return notes.length?`<div class="cross-check">${notes.join('')}</div>`:'';
 }
+// A data file a reviewer fetched: whole, or only its first bytes when it was over the engine's cap.
+// `changed` is the engine's own words for a file that changed after the snapshot listed it.
+function dataRead(data){
+ if(!data||!Number.isInteger(data.bytes)||!Number.isInteger(data.stored_bytes))return '';
+ const read=data.partial===true?`only the first ${data.stored_bytes} of ${plural(data.bytes,'byte')} read`:`read whole, ${plural(data.bytes,'byte')}`;
+ return read+(typeof data.changed==='string'&&data.changed?`, ${data.changed}`:'');
+}
 // A code-checked finding quotes the run's code snapshot as well as the paper: the file, its lines
-// and the text the engine found there. Line numbers count lines of the snapshot file.
-function codeEvidence(member){
+// and the text the engine found there. Line numbers count lines of the snapshot file. Code that
+// is a data file says how much of the file the review read.
+function codeEvidence(member,label='Code checked'){
  const code=member.code_evidence;
  if(!code||typeof code.path!=='string'||!Number.isInteger(code.start_line)||!Number.isInteger(code.end_line))return '';
  const lines=code.start_line===code.end_line?`line ${code.start_line}`:`lines ${code.start_line} to ${code.end_line}`;
- return `<div class="cross-check code-evidence"><p><strong>Code checked</strong><br><code>${esc(code.path)}</code>, ${lines} of the run's code snapshot</p>${typeof code.text==='string'?`<pre>${esc(code.text)}</pre>`:''}</div>`;
+ const data=dataRead(member.code_data);
+ return `<div class="cross-check code-evidence"><p><strong>${esc(label)}</strong><br><code>${esc(code.path)}</code>, ${lines} of the run's code snapshot${data?`<br>A data file, ${esc(data)}`:''}</p>${typeof code.text==='string'?`<pre>${esc(code.text)}</pre>`:''}</div>`;
 }
 // Each member is a reviewer's finding behind the issue, with its own passage on the manuscript.
 function memberItem(item,member,index){
@@ -406,8 +417,34 @@ function codeReviewed(code){
  const counts=[Number.isInteger(code.opened)&&Number.isInteger(code.files_in_snapshot)&&`${code.opened} of ${plural(code.files_in_snapshot,'file')} opened`,
   code.searches>0&&`${code.searches} ${code.searches===1?'search':'searches'}`,code.files_skipped>0&&`${plural(code.files_skipped,'path')} left out of the snapshot`,
   code.truncated&&`the snapshot stopped early: ${code.truncated}`].filter(Boolean);
+ // The engine lists the data files the code ships and copies one in only when a reviewer reads it.
+ const data=code.data_listed>0?[`${code.data_fetched} of ${plural(code.data_listed,'data file')} fetched`,
+  code.data_partial>0&&`${code.data_partial} only in part`,code.data_refused>0&&`${code.data_refused} refused`].filter(Boolean):[];
+ const cut=code.source_cut>0?`<p class="unverified">${esc(`${plural(code.source_cut,'program source file')} did not fit in the snapshot, so it is not the whole of the code, and no finding may say the code never does something.`)}</p>`:'';
  const opened=(code.files_opened||[]).filter(path=>typeof path==='string');
- return `<div class="code-reviewed"><p><strong>Code reviewed</strong><br><code>${esc(source||'the code this run was given')}</code>${esc(commit)}${counts.length?`<br>${esc(counts.join(', '))}`:''}</p>${opened.length?`<details><summary>Files opened (${opened.length})</summary><ul>${opened.map(path=>`<li><code>${esc(path)}</code></li>`).join('')}</ul></details>`:''}</div>`;
+ const fetched=code.data.filter(row=>row&&typeof row.path==='string');
+ return `<div class="code-reviewed"><p><strong>Code reviewed</strong><br><code>${esc(source||'the code this run was given')}</code>${esc(commit)}${counts.length?`<br>${esc(counts.join(', '))}`:''}${data.length?`<br>${esc(data.join(', '))}`:''}</p>${cut}${opened.length?`<details><summary>Files opened (${opened.length})</summary><ul>${opened.map(path=>`<li><code>${esc(path)}</code></li>`).join('')}</ul></details>`:''}${fetched.length?`<details><summary>Data files fetched (${fetched.length})</summary><ul>${fetched.map(row=>`<li><code>${esc(row.path)}</code>, ${esc(dataRead(row))}</li>`).join('')}</ul></details>`:''}</div>`;
+}
+// What the run's code check did with the findings that rest on how a number was computed.
+// A run given no code has no code check.
+function codeCheckCounts(check){
+ if(!check)return '';
+ const counts=check.counts||{};
+ const over=check.over_cap>0?`, ${check.over_cap} over its cap of ${check.cap} left unchecked`:'';
+ return `<p class="count">${esc(`Code check: ${check.checked} checked, ${counts.confirmed??0} confirmed, ${counts.contradicted??0} thrown out, ${counts['not-shown']??0} not shown in the code${over}`)}</p>`;
+}
+// A finding the code check threw out is in no issue and takes no decision. It is shown with the
+// code that disproved it, marked as thrown out, apart from every open issue.
+const THROWN_OUT='Thrown out by the code check. This is not an open issue: the code does not do what this finding said.';
+function thrownOutItem(item){
+ const facts=[item.slot,item.track&&`${item.track} track`,item.severity].filter(Boolean).map(esc).join(' · ');
+ const where=Number.isInteger(item.line)?`<p>${lineLink(item.document||paper.main,item.line,'Go to passage')}</p>`:'';
+ return `<div class="thrown-out-item" id="thrown-out-${esc(item.id)}"><p class="muted">${facts}</p><p class="thrown-out-mark" role="note">${esc(THROWN_OUT)}</p><h4>${esc(item.title||'Finding')}</h4>${item.comment?`<p class="comment-text">${esc(item.comment)}</p>`:''}${item.quote?`<blockquote>${esc(item.quote)}</blockquote>`:''}${where}${item.assumed_method?`<p><strong>What the finding took the code to do</strong><br>${esc(item.assumed_method)}</p>`:''}${codeEvidence(item,'Code that contradicts it')}${item.note?`<p><strong>Code check note</strong><br>${esc(item.note)}</p>`:''}</div>`;
+}
+function thrownOut(check){
+ const items=check?check.thrown_out:[];
+ if(!items.length)return '';
+ return `<details class="thrown-out" id="thrown-out" open><summary>Thrown out: the code does not do what the finding said (${items.length})</summary>${items.map(thrownOutItem).join('')}</details>`;
 }
 function runPanel(){
  const run=review.run;
@@ -435,7 +472,7 @@ function runPanel(){
  const auditHtml=audits.length?`<details><summary>Specialist reports (${audits.length})</summary>${audits.map(([track,text])=>`<details class="audit"><summary>${esc(track)}</summary><pre>${esc(text)}</pre></details>`).join('')}</details>`:'';
  const reviewers=run.agents||[],tracks=Object.entries(run.findings_by_track||{});
  const reviewerHtml=reviewers.length||tracks.length?`<details><summary>Agents (${reviewers.length})</summary><ul>${reviewers.map(row=>`<li>${agentFacts(row)}</li>`).join('')}</ul>${tracks.length?`<p class="muted">Findings by track: ${tracks.map(([track,count])=>`${esc(track)} ${esc(count)}`).join(' · ')}</p>`:''}</details>`:'';
- $('#run-panel').innerHTML=`<p class="count">${facts.map(esc).join(' · ')}</p>${warnings.map(text=>`<p class="error">${esc(text)}</p>`).join('')}${unverified?`<p class="unverified">${esc(unverified)}</p>`:''}${verdictHtml}${codeReviewed(run.code)}${citationPanel(run.citations)}${auditHtml}${reviewerHtml}${(run.limitations||[]).map(text=>`<p class="muted">${esc(text)}</p>`).join('')}`;
+ $('#run-panel').innerHTML=`<p class="count">${facts.map(esc).join(' · ')}</p>${warnings.map(text=>`<p class="error">${esc(text)}</p>`).join('')}${unverified?`<p class="unverified">${esc(unverified)}</p>`:''}${verdictHtml}${codeReviewed(run.code)}${codeCheckCounts(run.code_check)}${citationPanel(run.citations)}${auditHtml}${reviewerHtml}${(run.limitations||[]).map(text=>`<p class="muted">${esc(text)}</p>`).join('')}`;
 }
 // A run card with no engine id is numbered by its place, so it takes no decision. The server refuses one too.
 const NO_ENGINE_ID='This card has no engine id, so a decision on it could land on another card. Re-run the review to decide on it.';
@@ -474,10 +511,12 @@ function grouped(items){
 }
 function runCount(){
  const groups=grouped(review.findings);
- if(review.run.findings_source==='none')return 'No findings';
- if(review.run.findings_source!=='issues')return `${plural(groups.ledger.length,'finding')}, not grouped into issues`;
+ const thrown=review.run.code_check?review.run.code_check.thrown_out.length:0;
+ const thrownText=thrown?` · ${thrown} thrown out by the code check`:'';
+ if(review.run.findings_source==='none')return 'No findings'+thrownText;
+ if(review.run.findings_source!=='issues')return `${plural(groups.ledger.length,'finding')}, not grouped into issues`+thrownText;
  return [`${groups.required.length} required`,`${plural(groups.suggestion.length,'suggestion')}`,
-  groups.closed.length&&`${groups.closed.length} from the prior round`,groups.ledger.length&&`${plural(groups.ledger.length,'finding')} no issue holds`].filter(Boolean).join(' · ');
+  groups.closed.length&&`${groups.closed.length} from the prior round`,groups.ledger.length&&`${plural(groups.ledger.length,'finding')} no issue holds`].filter(Boolean).join(' · ')+thrownText;
 }
 // A run's review: the required changes in rank order, the suggestions under their categories,
 // the prior round's closed issues, then any finding no issue holds.
@@ -497,7 +536,8 @@ function runCards(){
  const sections=[groups.required.length&&`<h3 class="issue-group">Required changes (${groups.required.length})</h3>${groups.required.map(card).join('')}`,
   groups.suggestion.length&&`<h3 class="issue-group">Suggestions (${groups.suggestion.length})</h3>${suggestions.join('')}`,
   groups.closed.length&&`<details class="closed-issues" id="closed-issues"${closedOpen}><summary>Prior round: resolved and unverified (${groups.closed.length})</summary>${groups.closed.map(card).join('')}</details>`,
-  groups.ledger.length&&`<h3 class="issue-group">${loose} (${groups.ledger.length})</h3>${groups.ledger.map(card).join('')}`].filter(Boolean);
+  groups.ledger.length&&`<h3 class="issue-group">${loose} (${groups.ledger.length})</h3>${groups.ledger.map(card).join('')}`,
+  filter==='all'&&thrownOut(run.code_check)].filter(Boolean);
  const empty=review.findings.length||run.publishable!==false?'<div class="empty">No comments in this view.</div>':'';
  return banner+(sections.join('')||empty);
 }

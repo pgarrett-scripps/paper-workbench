@@ -123,6 +123,27 @@ class Revisions(unittest.TestCase):
                          [('i01', 'persisting', 'open', 'accepted'), ('i02', 'resolved', 'resolved', 'proposed'),
                           (None, 'new', 'open', 'proposed')])
 
+    def test_a_finding_the_code_check_threw_out_joins_the_ledger_as_thrown_out_and_takes_no_decision(self):
+        review, decisions = self.proposals()
+        item = {'id': 'u-mean', 'finding_uid': 'u-mean', 'title': 'The mean hides the spread', 'note': 'It is a median.'}
+        review['run'] = {'code_check': {'cap': 20, 'checked': 1, 'over_cap': 0,
+                                        'counts': {'confirmed': 0, 'contradicted': 1, 'not-shown': 0},
+                                        'thrown_out': [item]}}
+        decisions['items']['u-mean'] = 'accepted'
+        create_revision(self.root, review, decisions, 'checked', head(self.root), build=False)
+        rows = read_json(self.root / 'revisions/checked/issue-ledger.json')
+        self.assertEqual(len(rows), len(review['findings']) + 1)
+        self.assertEqual((rows[-1]['finding'], rows[-1]['scientific_status'], rows[-1]['wording_decision']),
+                         (item, 'thrown_out', 'no decision'))
+        self.assertNotIn('issue_id', rows[-1])
+
+    def test_a_run_given_no_code_adds_nothing_thrown_out_to_the_ledger(self):
+        review, decisions = self.proposals()
+        review['run'] = {'code_check': None}
+        create_revision(self.root, review, decisions, 'plain', head(self.root), build=False)
+        rows = read_json(self.root / 'revisions/plain/issue-ledger.json')
+        self.assertNotIn('thrown_out', [row['scientific_status'] for row in rows])
+
     def test_stale_agent_response_stops_before_changes(self):
         response = copyedit_proposals(self.paper)
         response['source_sha256'] = 'stale'

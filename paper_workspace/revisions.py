@@ -56,6 +56,23 @@ def ledger_row(finding, decisions, origin, paper_id):
     return row
 
 
+THROWN_OUT_NOTE = ('The code check threw this finding out: the code does not do what it said. '
+                   'It is not an open question.')
+
+
+def thrown_out_rows(review, origin, paper_id):
+    """The findings a run's code check threw out, as rows of the issue ledger.
+
+    Such a finding is in no issue and takes no decision. It travels with the
+    draft so the next one, and its Word copy, can say what the code showed. A
+    review that is not a run has no code check.
+    """
+    check = review['run']['code_check'] if 'run' in review else None
+    return [{'origin_revision': origin, 'paper_id': paper_id, 'finding': item, 'wording_decision': 'no decision',
+             'author_feedback': {}, 'scientific_status': 'thrown_out', 'anchor_status': 'historical',
+             'note': THROWN_OUT_NOTE} for item in (check['thrown_out'] if check else [])]
+
+
 def valid_id(value):
     if not isinstance(value, str) or not re.fullmatch(r'[a-z0-9_-]{1,50}', value):
         raise ValueError('Invalid revision ID')
@@ -330,6 +347,7 @@ def create_revision(root, review, decisions, revision_id, expected_head, *, buil
             ledger = read_json(parent / 'issue-ledger.json') if (parent / 'issue-ledger.json').exists() else []
             ledger.extend(ledger_row(finding, decisions, expected_head['revision_id'], paper.paper_id)
                           for finding in review['findings'])
+            ledger.extend(thrown_out_rows(review, expected_head['revision_id'], paper.paper_id))
             metadata = {'id': revision_id, 'parent': expected_head['revision_id'],
                 'parent_paper_id': paper.paper_id, 'paper_id': None,
                 'applied_findings': [f['id'] for f in accepted], 'build': build_result,
