@@ -4,11 +4,14 @@
 renders the reports of a run, finished or stopped, exactly as ``peerreview
 review`` and ``peerreview report`` do. ``review`` also takes a Paper Scaffold
 workspace folder in place of the PDF, and reviews its built PDF with its code. ``serve RUN`` opens that run in the viewer.
-``check-fixes`` runs the engine's fix check of a manuscript workspace's
-current draft against the open problems in its issue ledger, and records the
-verdicts there. ``import`` and ``verify`` make and check a manuscript
-workspace without a model call, and the remaining commands revise and export
-a workspace.
+``review`` of a manuscript workspace reviews its current draft and adds the
+problems of the finished review to that draft's issue ledger, as
+``import-run`` does for a run folder. ``decide`` records the author's
+decision on one of them. ``check-fixes`` runs the engine's fix check of a
+manuscript workspace's current draft against the open problems in its issue
+ledger, and records the verdicts there. ``import`` and ``verify`` make and
+check a manuscript workspace without a model call, and the remaining
+commands revise and export a workspace.
 """
 import argparse
 import json
@@ -17,8 +20,8 @@ import sys
 from peerreviewagents.workspace import read_json
 
 ENGINE_COMMANDS = ('review', 'check-fixes', 'report')
-APP_COMMANDS = ('import', 'verify', 'port-scaffold', 'import-scaffold', 'revise', 'revision-loop',
-                'revision-request', 'checkout-revision', 'export-revision', 'export-review', 'serve')
+APP_COMMANDS = ('import', 'verify', 'port-scaffold', 'import-scaffold', 'import-run', 'decide', 'revise',
+                'revision-loop', 'revision-request', 'checkout-revision', 'export-revision', 'export-review', 'serve')
 __all__ = ['APP_COMMANDS', 'ENGINE_COMMANDS', 'build_parser', 'main']
 
 
@@ -36,10 +39,13 @@ def add_app_subcommands(sub):
     p=sub.add_parser('port-scaffold',help='Make a Paper Scaffold reading copy of a review workspace')
     p.add_argument('workspace')
     p.add_argument('output')
-    p=sub.add_parser('import-scaffold',help='Import a Paper Scaffold source tree for editing')
+    p=sub.add_parser('import-scaffold',help='Import a Paper Scaffold source tree for editing, with its built PDF '
+                                            'as the original draft\'s while it matches the source')
     p.add_argument('source')
     p.add_argument('output')
     p.add_argument('--title')
+    from .ledger_commands import add_subcommands
+    add_subcommands(sub)
     p=sub.add_parser('revise',help='Create a source revision from a review response')
     p.add_argument('workspace')
     p.add_argument('response')
@@ -103,23 +109,38 @@ def run_engine(command,argv):
     A Paper Scaffold workspace stands where the PDF does, and
     ``workspace_review`` turns it into the engine's arguments first.
     ``check-fixes`` takes a manuscript workspace, and ``fix_check`` writes
-    the problems from its ledger and records what the engine found.
+    the problems from its ledger and records what the engine found. A review
+    of a manuscript workspace adds the problems of the finished review to its
+    current draft's ledger, and says why when it adds none.
     """
     if command=='check-fixes':
         from .fix_check import check_fixes
         return check_fixes(argv)
     if command=='review':
         from peerreviewagents import review_main
-        from .workspace_review import WorkspaceRefused, engine_argv
+        from .ledger_commands import added_line
+        from .revisions import record_problems
+        from .workspace_review import WorkspaceRefused, engine_argv, ledger_target
+        prog='paper-workbench review'
         try:
-            argv,note=engine_argv(argv)
+            engine,note=engine_argv(argv)
+            target=ledger_target(argv)
         except WorkspaceRefused as exc:
             # Nothing was written and no usage was spent, which is the engine's code 2.
-            print(f'paper-workbench review: {exc}',file=sys.stderr)
+            print(f'{prog}: {exc}',file=sys.stderr)
             return 2
         if note:
             print(note,file=sys.stderr)
-        return review_main(argv,prog='paper-workbench review')
+        status=review_main(engine,prog=prog)
+        if target is None:
+            return status
+        try:
+            result=record_problems(*target)
+        except ValueError as exc:
+            print(f'{prog}: no problems were added to the ledger: {exc}',file=sys.stderr)
+            return status or 1
+        print(f'{prog}: {added_line(result)}',file=sys.stderr)
+        return status
     from peerreviewagents import report_main
     return report_main(argv,prog='paper-workbench report')
 
@@ -142,8 +163,18 @@ def dispatch(parser,args):
         from .scaffold_port import port_workspace
         print(port_workspace(args.workspace,args.output)['statistics'])
     elif args.command=='import-scaffold':
-        from .scaffold_import import import_scaffold
-        print(import_scaffold(args.source,args.output,args.title)['statistics'])
+        from .workspace_review import import_project
+        manifest,note=import_project(args.source,args.output,args.title)
+        print(manifest['statistics'])
+        if note:
+            print(f'paper-workbench import-scaffold: {note}',file=sys.stderr)
+    elif args.command=='import-run':
+        from .ledger_commands import import_run
+        return import_run('paper-workbench import-run',args.workspace,args.run)
+    elif args.command=='decide':
+        from .ledger_commands import decide_problem
+        return decide_problem('paper-workbench decide',args.workspace,args.problem,args.status,
+                              args.rationale,args.note)
     elif args.command=='revise':
         from peerreviewagents.workspace import normalize_review
         from .revisions import snapshot,automation_decisions,create_revision

@@ -252,15 +252,17 @@ function externalFinding(item){
   return card?externalCard(card,[...quotes].join('\n\n')):'<p>External evidence record is unavailable in this review export.</p>';
  }).join('');
 }
-// The issue ledger: one row per problem raised on an earlier draft, under the id it keeps on every draft.
-// A fresh review of this draft is shown beside it, and nothing matches its issues to these rows.
+// The issue ledger: one row per problem raised on this draft or an earlier one, under the id it keeps on every
+// draft. A problem an engine review raised is its own row, and nothing matches it to another review's rows.
 const PROBLEM_STATUS={open:'Open',fixed:'Fixed',declined:'Declined by the author',thrown_out:'Thrown out by the code check',
  not_applicable:'Copyedit, with no scientific status'};
 const AUTHOR_STATUS={open:'open',addressed:'addressed by the author',declined:'declined by the author'};
 function authorDecision(row){
  const author=row.author;
  const said=[author.note&&`Note: ${esc(author.note)}`,author.rationale&&`Rationale: ${esc(author.rationale)}`].filter(Boolean);
- return `<p><strong>Author's decision on draft ${esc(row.raised_on)}</strong><br>Wording ${esc(author.wording)}, issue ${esc(AUTHOR_STATUS[author.status]||author.status)}${said.map(text=>'<br>'+text).join('')}</p>`;
+ // A problem brought in from an engine run has no wording to accept, only the decision on the issue.
+ const issue=esc(AUTHOR_STATUS[author.status]||author.status);
+ return `<p><strong>Author's decision on draft ${esc(row.raised_on)}</strong><br>${author.wording?`Wording ${esc(author.wording)}, issue ${issue}`:`Issue ${issue}`}${said.map(text=>'<br>'+text).join('')}</p>`;
 }
 // One engine fix check of a later draft. Its verdict and basis are printed as the engine names them, and the
 // quote is the passage of the checked draft the verdict rests on. A check that did not reach the problem says why.

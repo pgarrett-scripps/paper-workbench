@@ -11,8 +11,9 @@ from contextlib import contextmanager
 from datetime import datetime, timezone
 from pathlib import Path
 
-from peerreviewagents import export_draft, verify_workspace
+from peerreviewagents import export_draft, read_run, verify_workspace
 from peerreviewagents.names import FIX_VERDICTS
+from peerreviewagents.problems import problems_from_run
 from peerreviewagents.workspace import digest, read_json, save_review, write_json
 
 from .run_view import source_sha256
@@ -29,11 +30,15 @@ PROTECTED = re.compile(r'\b(?:not|no|never|may|might|could|can|cannot|must|shoul
 SYNTAX = re.compile(r'[#@$`\[\]{}<>_=*\\]|//|/\*|\*/')
 # The issue ledger. A draft's ledger holds every problem raised on the drafts before it, one row
 # per problem under an id that never changes. LEDGER is frozen into the draft with its manifest,
-# so the fix checks made on that draft live beside it in FIX_CHECKS until the next draft freezes them.
+# so the fix checks made on that draft live beside it in FIX_CHECKS, and the problems an engine
+# review of that draft raised live beside it in RAISED, until the next draft freezes them.
 LEDGER = 'issue-ledger.json'
 FIX_CHECKS = 'fix-checks.json'
+RAISED = 'raised-problems.json'
 # What the author can say about an issue: still open, addressed in the text, or declined.
 AUTHOR_STATUSES = ('open', 'addressed', 'declined')
+# The longest note and rationale an author's decision keeps, as the viewer takes them.
+NOTE_LIMIT, RATIONALE_LIMIT = 4000, 2000
 # What a ledger entry keeps of the engine's anchored quote of the checked draft.
 DRAFT_EVIDENCE = ('document', 'line', 'end_line', 'page', 'section', 'quote')
 
@@ -139,12 +144,13 @@ def open_problems(ledger, draft=None):
     Each quote's line is a line of the draft the problem was raised on, so
     only the document and the quote go. With ``draft``, a problem a check of
     that draft already gave a verdict is left out, as the same text has
-    nothing new to show a second check.
+    nothing new to show a second check, and so is a problem a review of that
+    draft raised, as that draft is the text it was raised on.
     """
     return [{'id': row['id'], 'statement': row['statement'], 'severity': row['severity'],
              'evidence': [{'document': span['document'], 'quote': span['quote']} for span in row['evidence']],
              'author_reply': author_reply(row)} for row in ledger
-            if problem_status(row) == 'open' and not (draft and checked_on(row, draft))]
+            if problem_status(row) == 'open' and not (draft and (checked_on(row, draft) or row['raised_on'] == draft))]
 
 
 def apply_fix_checks(ledger, draft, entries):
@@ -215,9 +221,11 @@ def fix_check_entries(check, date):
 
 
 def ledger_of(folder):
-    """A draft's issue ledger: the rows frozen into it, with the fix checks recorded on it since."""
+    """A draft's issue ledger: the rows frozen into it and the problems its own reviews raised, with the fix checks recorded on it since."""
     folder = Path(folder)
     rows = read_json(folder / LEDGER) if (folder / LEDGER).exists() else []
+    if (folder / RAISED).exists():
+        rows = [*rows, *read_json(folder / RAISED)['rows']]
     if (folder / FIX_CHECKS).exists():
         record = read_json(folder / FIX_CHECKS)
         rows = apply_fix_checks(rows, record['draft'], record['checks'])
@@ -254,6 +262,132 @@ def record_fix_checks(root, draft, check, date=None):
         apply_fix_checks(ledger_of(folder), draft, entries)
         write_json(path, {'draft': draft, 'checks': [*record['checks'], *entries]})
     return ledger_of(folder)
+
+
+def run_key(name, taken):
+    """The name a run's problems carry in their ids: its folder's name as an id, made unique among ``taken``."""
+    key = re.sub(r'[^a-z0-9_-]+', '-', name.lower()).strip('-')[:40] or 'run'
+    wanted, number = key, 2
+    while wanted in taken:
+        wanted, number = f'{key}-{number}', number + 1
+    return wanted
+
+
+def raised_rows(run, problems, draft, paper_id, key, taken):
+    """The ledger rows of the problems one engine review of draft ``draft`` raised.
+
+    ``run`` is what the engine's ``read_run`` returned and ``problems`` what
+    its ``problems_from_run`` returned for the same run. Each problem is one
+    open row under the id ``draft:key:issue id``, with the issue's name and
+    category, and the issue as the run gave it in ``finding``. The lines of a
+    quote are lines of the manuscript the engine imported from the PDF, not
+    of the draft's own source, so each quote keeps its document and no line.
+    """
+    issues = {str(issue['id']): issue for issue in run['issues']}
+    rows = []
+    for problem in problems['problems']:
+        issue = issues[problem['id']]
+        rows.append({'id': problem_id(draft, key, problem['id'], taken), 'raised_on': draft, 'review_id': key,
+                     'source_id': problem['id'], 'paper_id': paper_id, 'raised_as': 'problem',
+                     'title': issue['name'], 'category': issue['category'], 'statement': problem['statement'],
+                     'severity': problem['severity'],
+                     'evidence': [{'document': span['document'], 'line': None, 'end_line': None,
+                                   'quote': span['quote']} for span in problem['evidence']],
+                     'author': {'wording': None, 'status': 'open', 'note': '', 'rationale': ''},
+                     'fix_checks': [], 'finding': issue})
+    return rows
+
+
+def record_problems(root, run, date=None):
+    """Add the problems one finished engine review of the current draft raised to its ledger.
+
+    ``run`` is the run folder, read only through the engine's ``read_run`` and
+    ``problems_from_run``. Only a complete review is taken, and only when the
+    PDF it read is the current draft's built PDF, by hash. Anything else
+    raises ValueError with the reason and changes nothing. A complete review
+    that is not publishable, such as an author's own check with no editor,
+    is taken with the engine's reasons kept beside it. Each problem is a new
+    open row, matched to no earlier row, as every review is a fresh panel.
+    A run already added to this draft adds nothing. Returns the draft, the
+    run folder, the ids added, how many of the run's issues the problems file
+    left out, why the run is not publishable, and whether it was added before.
+    """
+    review = read_run(run)
+    where = review['run']
+    if not review['complete']:
+        cause = f' ({review["cause"]})' if review['cause'] else ''
+        raise ValueError(f'The review at {where} is {review["status"]}{cause}, and only a finished review '
+                         'adds problems to a ledger.')
+    with tempfile.TemporaryDirectory() as scratch:
+        # The engine writes the problems file beside the review by default, and the run folder stays as it was.
+        problems = problems_from_run(where, Path(scratch) / 'problems.json')
+    read = review['identity']['source_sha256']
+    with revision_lock(root):
+        draft = head(root)['revision_id']
+        folder, paper = snapshot(root, draft)
+        path = folder / RAISED
+        record = read_json(path) if path.exists() else {'draft': draft, 'runs': [], 'rows': []}
+        if any(entry['run'] == where for entry in record['runs']):
+            return {'draft': draft, 'run': where, 'added': [], 'left_out': 0, 'not_publishable_reasons': [],
+                    'already': True}
+        pdf = folder / 'artifacts' / 'paper.pdf'
+        if not pdf.is_file():
+            raise ValueError(f'Draft {draft} has no built PDF, so no review can be shown to be of it.')
+        built = digest(pdf.read_bytes())
+        if not read:
+            raise ValueError(f'The review at {where} does not record the hash of the PDF it read, so it cannot '
+                             f'be shown to be of draft {draft}.')
+        if read != built:
+            raise ValueError(f'The review at {where} is of another PDF than draft {draft}: it read '
+                             f'{review["identity"]["pdf"] or "a PDF"} with hash {read[:12]}, and the PDF of '
+                             f'draft {draft} has hash {built[:12]}.')
+        key = run_key(Path(where).name, {entry['review_id'] for entry in record['runs']})
+        rows = raised_rows(review, problems, draft, paper.paper_id, key, {row['id'] for row in ledger_of(folder)})
+        entry = {'run': where, 'review_id': key, 'date': date or datetime.now(timezone.utc).date().isoformat(),
+                 'pdf_sha256': built, 'added': len(rows), 'left_out': len(review['issues']) - len(rows),
+                 'not_publishable_reasons': review['not_publishable_reasons']}
+        write_json(path, {'draft': draft, 'runs': [*record['runs'], entry], 'rows': [*record['rows'], *rows]})
+    return {'draft': draft, 'run': where, 'added': [row['id'] for row in rows], 'left_out': entry['left_out'],
+            'not_publishable_reasons': entry['not_publishable_reasons'], 'already': False}
+
+
+def decide(root, problem, status, rationale=None, note=None):
+    """Record the author's decision on one problem a review of the current draft raised, and return its row.
+
+    ``status`` is one of AUTHOR_STATUSES, and any status but open needs a
+    rationale, as in the viewer. A rationale or a note left as None keeps the
+    one the row has. Only a problem ``record_problems`` added to the current
+    draft takes a decision. A problem carried from an earlier draft keeps the
+    decision it was carried with, and the ValueError says so.
+    """
+    if status not in AUTHOR_STATUSES:
+        raise ValueError(f'A decision is one of {", ".join(AUTHOR_STATUSES)}, not {status!r}.')
+    with revision_lock(root):
+        draft = head(root)['revision_id']
+        folder, _ = snapshot(root, draft)
+        path = folder / RAISED
+        record = read_json(path) if path.exists() else {'draft': draft, 'runs': [], 'rows': []}
+        row = next((row for row in record['rows'] if row['id'] == problem), None)
+        if row is None:
+            carried = next((row for row in ledger_of(folder) if row['id'] == problem), None)
+            if carried is None:
+                raise ValueError(f'The ledger of draft {draft} has no problem {problem}.')
+            raise ValueError(f'Problem {problem} was raised on draft {carried["raised_on"]} and is carried into '
+                             f'draft {draft} with the decision made then, so it takes no new one.')
+        author = {**row['author'], 'status': status}
+        if rationale is not None:
+            author['rationale'] = rationale
+        if note is not None:
+            author['note'] = note
+        if len(author['note']) > NOTE_LIMIT:
+            raise ValueError(f'A note is at most {NOTE_LIMIT} characters.')
+        if len(author['rationale']) > RATIONALE_LIMIT:
+            raise ValueError(f'A rationale is at most {RATIONALE_LIMIT} characters.')
+        if status != 'open' and not author['rationale'].strip():
+            raise ValueError('An addressed or declined problem needs a rationale.')
+        row['author'] = author
+        write_json(path, record)
+    return {**row, 'status': problem_status(row)}
 
 
 def valid_id(value):

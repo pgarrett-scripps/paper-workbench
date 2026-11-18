@@ -93,7 +93,8 @@ def comment_text(entry, evidence):
             finding.get('assumed_method') and 'What the finding took the code to do: ' + finding['assumed_method'],
             code_quoted('Code that contradicts it', finding.get('code_evidence'), finding.get('code_data')),
             finding.get('note') and 'Code check note: ' + finding['note'], origin]))
-    return '\n\n'.join(filter(None, [finding.get('title'), finding.get('comment'), evidence, code_cited(finding),
+    # The row's title and statement, as a problem brought in from an engine run has no finding title or comment.
+    return '\n\n'.join(filter(None, [entry['title'], entry['statement'], evidence, code_cited(finding),
                                      'Open scientific question. ' + origin]))
 
 
@@ -189,7 +190,8 @@ def patch_document(source, destination, parent, current, ledger, origin):
         if status not in ('open', 'thrown_out'):
             continue
         finding = entry['finding']
-        quote = finding.get('anchor_text') or finding.get('quote', '')
+        # An issue quotes through its members, so the row's own quotes stand in for a quote of the finding.
+        quote = finding.get('anchor_text') or '\n'.join(dict.fromkeys(span['quote'] for span in entry['evidence']))
         reason, piece, paragraph = None, None, None
         was = passage(origin(entry['raised_on']), finding)
         if was is None:

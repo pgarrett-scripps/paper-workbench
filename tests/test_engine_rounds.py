@@ -15,6 +15,9 @@ for a Paper Scaffold workspace, so the snapshot of it shows what the engine
 takes from one and what it leaves out. Round one and the third run are written
 inside that workspace, as ``paper-workbench review . reviews/NAME`` writes them,
 so the snapshot also shows that no run's files are copied in as code.
+test_ledger_import.py builds its runs here too, as only this file reaches the
+engine's server: rounds of a draft's PDF, an author's draft check with no
+editor, and a review the engine opened and no reviewer took up.
 """
 import http.client
 import json
@@ -49,6 +52,20 @@ MEAN = {'title': 'The mean hides the spread of three repeats', 'quote': 'the mea
         'comment': 'With three repeats the mean says little. Show each repeat.',
         'assumed_method': 'The figure plots the mean of the three repeats.'}
 CREDENTIALS = ('ANTHROPIC_API_KEY', 'ANTHROPIC_AUTH_TOKEN', 'OPENAI_API_KEY')
+
+
+@contextmanager
+def offline():
+    """The engine's server with no credentials in the environment and no plugin folder, restored after."""
+    environment = {key: value for key, value in os.environ.items() if key not in CREDENTIALS}
+    with mock.patch.dict(os.environ, environment, clear=True):
+        plugin_root = engine.STATE.get('plugin_root')
+        engine.STATE['plugin_root'] = None
+        try:
+            yield
+        finally:
+            engine.STATE['run'] = None
+            engine.STATE['plugin_root'] = plugin_root
 
 
 def grouped(name, rank, members, **extra):
@@ -162,6 +179,37 @@ def code_round(root, code, lane_finds=True, written=True):
     engine.STATE['run'] = None
 
 
+def check_round(root, texts, source, quote):
+    """A finished draft-check of ``texts`` with the numbers specialist alone and no code.
+
+    The specialist files one finding on ``quote``. The arm runs no editor, so
+    the server writes one issue for it and the run is not publishable.
+    """
+    engine.STATE['run'] = None
+    manuscripts.build(root / 'manuscript', texts, source_sha256=digest(source))
+    opened = engine.ingest(str(root / 'manuscript.pdf'), str(root), arm='draft-check', reviewers=0, tracks=['numbers'])
+    assert 'request_rejected' not in opened, opened
+    codes = {row['slot']: row['claim_code'] for row in opened['claim_codes']}
+    run = engine.current()
+    numbers = engine.claim_agent('spec-numbers', codes.pop('spec-numbers'))['agent_token']
+    engine.read_paper(numbers)
+    stored = engine.submit_finding(numbers, title=MEAN['title'], quote=quote, comment=MEAN['comment'],
+                                   severity='major')
+    assert stored.get('stored'), stored
+    assert engine.submit_report(numbers, 'One.', model=run.models.get('spec-numbers'))['closed']
+    engine.write_review(engine.claim_agent('recorder', codes.pop('recorder'))['agent_token'])
+    engine.STATE['run'] = None
+
+
+def opened_round(root, texts, source):
+    """A reviewers-only review of ``texts`` the engine opened and no reviewer took up, as a run stopped early leaves it."""
+    engine.STATE['run'] = None
+    manuscripts.build(root / 'manuscript', texts, source_sha256=digest(source))
+    opened = engine.ingest(str(root / 'manuscript.pdf'), str(root), arm='reviewers-only', reviewers=2)
+    assert 'request_rejected' not in opened, opened
+    engine.STATE['run'] = None
+
+
 @contextmanager
 def served(root):
     """The viewer's server on one run folder, and a function that sends it a request."""
@@ -199,29 +247,22 @@ class EngineRoundsTests(unittest.TestCase):
         cls.first, cls.second = cls.workspace / 'reviews' / 'first', cls.root / 'second'
         cls.coded = cls.workspace / 'reviews' / 'coded'
         cls.disproved, cls.unwritten = cls.root / 'disproved', cls.root / 'unwritten'
-        environment = {key: value for key, value in os.environ.items() if key not in CREDENTIALS}
-        with mock.patch.dict(os.environ, environment, clear=True):
-            plugin_root = engine.STATE.get('plugin_root')
-            engine.STATE['plugin_root'] = None
-            try:
-                one_round(cls.first, FIRST, 'source-1', [
-                    'twelve samples drawn from one donor', 'controls retromer assembly in all tissues',
-                    'repeated three times'],
-                    lambda uids: [grouped('The sample', 1, [uids[0]]), grouped('The scope', 2, [uids[1]]),
-                                  grouped('The repeats', 3, [uids[2]])])
-                # Round two is a fresh panel on the revised draft. It reads nothing of round one.
-                one_round(cls.second, SECOND, 'source-2', [
-                    'controls retromer assembly in all tissues', 'The authors conclude'],
-                    lambda uids: [grouped('The scope', 1, [uids[0]]), grouped('The attribution', 2, [uids[1]])])
-                # The code is what `paper-workbench review WORKSPACE RUN` hands the engine, with RUN inside it.
-                argv, _ = engine_argv([str(cls.workspace), str(cls.coded), '--arm', 'draft-check'])
-                code_round(cls.coded, Path(argv[argv.index('--code') + 1]))
-                # The same run with the code lane finding nothing, and the same run stopped before its review.
-                code_round(cls.disproved, cls.root / 'code', lane_finds=False)
-                code_round(cls.unwritten, cls.root / 'code', written=False)
-            finally:
-                engine.STATE['run'] = None
-                engine.STATE['plugin_root'] = plugin_root
+        with offline():
+            one_round(cls.first, FIRST, 'source-1', [
+                'twelve samples drawn from one donor', 'controls retromer assembly in all tissues',
+                'repeated three times'],
+                lambda uids: [grouped('The sample', 1, [uids[0]]), grouped('The scope', 2, [uids[1]]),
+                              grouped('The repeats', 3, [uids[2]])])
+            # Round two is a fresh panel on the revised draft. It reads nothing of round one.
+            one_round(cls.second, SECOND, 'source-2', [
+                'controls retromer assembly in all tissues', 'The authors conclude'],
+                lambda uids: [grouped('The scope', 1, [uids[0]]), grouped('The attribution', 2, [uids[1]])])
+            # The code is what `paper-workbench review WORKSPACE RUN` hands the engine, with RUN inside it.
+            argv, _ = engine_argv([str(cls.workspace), str(cls.coded), '--arm', 'draft-check'])
+            code_round(cls.coded, Path(argv[argv.index('--code') + 1]))
+            # The same run with the code lane finding nothing, and the same run stopped before its review.
+            code_round(cls.disproved, cls.root / 'code', lane_finds=False)
+            code_round(cls.unwritten, cls.root / 'code', written=False)
 
     @classmethod
     def tearDownClass(cls):

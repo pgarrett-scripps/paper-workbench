@@ -194,7 +194,8 @@ class WorkspaceReviewTest(unittest.TestCase):
             ('replaced', lambda folder: (folder / 'paper.pdf').write_bytes(b'%PDF-1.4\n% other\n'),
              'is not the file its last build wrote, so it cannot be shown to match the source. ' + build),
             ('not a workspace', lambda folder: (folder / 'paper.typ').unlink(),
-             'is a folder and not a Paper Scaffold workspace: it has no paper.typ.'),
+             'is a folder and not a Paper Scaffold workspace: it has no paper.typ, and it is no manuscript '
+             'workspace made with import-scaffold.'),
         ]
         for label, spoil, message in cases:
             package.write_text('#let one = 1\n')
@@ -233,10 +234,12 @@ class WorkspaceReviewTest(unittest.TestCase):
 
     def test_review_help_names_the_arms_that_review_code(self):
         help_text = ' '.join(parser().format_help().split())
-        self.assertIn('the manuscript PDF, or a Paper Scaffold workspace folder', help_text)
+        self.assertIn('the manuscript PDF, a Paper Scaffold workspace folder, or a manuscript workspace made with '
+                      'import-scaffold', help_text)
         self.assertIn('A run folder inside it is fine', help_text)
         self.assertIn('Only the draft-check and full-two-track arms review code, so on any other arm a workspace '
                       'is reviewed without it.', help_text)
+        self.assertIn("the problems of a finished review are added to that draft's issue ledger", help_text)
 
 
 if __name__ == '__main__':

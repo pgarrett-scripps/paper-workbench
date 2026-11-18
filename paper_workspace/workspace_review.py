@@ -27,17 +27,30 @@ A workspace review hands the engine two things the author did not have to name.
 A run folder inside that code is fine, because the engine leaves every run
 folder out of the code it copies. Nothing in the workspace is executed here,
 and a refusal writes nothing.
+
+A manuscript workspace made with ``import-scaffold`` can stand there too.
+Its current draft is reviewed: the draft's built ``artifacts/paper.pdf``,
+refused when the draft has none, with the draft's own copy of the project,
+``scaffold/``, as the code under the same rules. ``ledger_target`` names
+the workspace and the run folder, so the command adds the review's problems
+to that draft's issue ledger when the review finishes. ``import_project``
+keeps the project's built PDF as the original draft's when it imports one.
 """
 
 import contextlib
 import io
 import json
+import shutil
 from pathlib import Path
 
 from peerreviewagents import review_arms, review_parser
 from peerreviewagents.workspace import digest
 
-__all__ = ['BUILD_RECORD', 'WorkspaceRefused', 'built_pdf', 'code_arms', 'code_root', 'engine_argv', 'parser']
+from .revisions import head, snapshot
+from .scaffold_import import SPANS, import_scaffold
+
+__all__ = ['BUILD_RECORD', 'WorkspaceRefused', 'built_pdf', 'code_arms', 'code_root', 'engine_argv',
+           'import_project', 'ledger_target', 'manuscript_draft', 'parser']
 
 #: Paper Scaffold's record of the last ``just paper`` build, relative to the workspace.
 BUILD_RECORD = Path('.build-state') / 'paper.pdf.json'
@@ -60,18 +73,22 @@ def parser(prog='paper-workbench review'):
     """The engine's review parser, which also takes a workspace folder and ``--no-code``."""
     built = review_parser(prog=prog)
     built.description = ('Review one manuscript with the pra plugin in a headless Claude Code session. '
-                         'The manuscript is a PDF, or a Paper Scaffold workspace folder.')
+                         'The manuscript is a PDF, a Paper Scaffold workspace folder, or a manuscript '
+                         'workspace made with import-scaffold.')
     built.epilog = ('A workspace folder, such as ".", is reviewed from its built paper.pdf, which must '
                     'match the source as `just paper` last recorded it. The code reviewer is handed the '
                     'repository the workspace is in, or the workspace itself outside git. A run folder '
                     'inside it is fine, as the engine leaves run folders out of the code it copies. '
                     '--code FOLDER_OR_URL names other code, and --no-code reviews the paper alone. Only '
                     f'the {listed(code_arms(), "and")} arms review code, so on any other arm a workspace is '
-                    'reviewed without it.')
+                    'reviewed without it. A manuscript workspace made with import-scaffold is reviewed from '
+                    'its current draft\'s built PDF, with that draft\'s copy of the project as the code, and '
+                    'the problems of a finished review are added to that draft\'s issue ledger.')
     # The engine's parser offers no public way to change a positional's help, so the action is found by name.
     for action in built._actions:
         if action.dest == 'workspace':
-            action.help = 'the manuscript PDF, or a Paper Scaffold workspace folder'
+            action.help = ('the manuscript PDF, a Paper Scaffold workspace folder, or a manuscript workspace '
+                           'made with import-scaffold')
     built.add_argument(NO_CODE, action='store_true',
                        help='review a workspace with no code, where the repository would be handed over')
     return built
@@ -83,7 +100,8 @@ def engine_argv(argv):
     A PDF review passes through as typed, without ``--no-code``. A workspace
     review has the folder replaced by its built PDF and, unless the author
     gave ``--code`` or ``--no-code``, ``--code`` with the repository added
-    when the arm reviews code.
+    when the arm reviews code. A manuscript workspace is reviewed from its
+    current draft's built PDF, with the draft's ``scaffold/`` as the code.
     The line is ``None`` for a PDF. Raises :class:`WorkspaceRefused` when the
     folder cannot be reviewed, and exits as argparse does on ``-h`` or a usage
     error.
@@ -97,20 +115,88 @@ def engine_argv(argv):
     workspace = Path(args.workspace)
     if not workspace.is_dir():
         return kept, None
-    if not (workspace / 'paper.typ').is_file():
+    draft = manuscript_draft(workspace)
+    if draft:
+        name, folder = draft
+        pdf = folder / 'artifacts' / 'paper.pdf'
+        if not pdf.is_file():
+            raise WorkspaceRefused(f'Draft {name} of {workspace.resolve()} has no built PDF, so it cannot be '
+                                   'reviewed. Review a draft that was built.')
+        code, reading = folder / 'scaffold', f'draft {name}, {pdf},'
+    elif (workspace / 'paper.typ').is_file():
+        pdf = built_pdf(workspace)
+        code, reading = code_root(workspace), str(pdf)
+    else:
         raise WorkspaceRefused(f'{workspace.resolve()} is a folder and not a Paper Scaffold workspace: it has '
-                               'no paper.typ. Give the manuscript PDF or a workspace folder.')
-    pdf = built_pdf(workspace)
+                               'no paper.typ, and it is no manuscript workspace made with import-scaffold. '
+                               'Give the manuscript PDF or a workspace folder.')
     kept = with_manuscript(command, kept, args, str(pdf))
     if args.code or args.no_code:
         given = f'the code in {args.code}' if args.code else 'no code'
-        return kept, f'paper-workbench review: reviewing {pdf} with {given}.'
-    code = code_root(workspace)
+        return kept, f'paper-workbench review: reviewing {reading} with {given}.'
     if not review_arms()[args.arm]['code']:
-        return kept, (f'paper-workbench review: reviewing {pdf} with no code, because the {args.arm} arm reviews '
-                      f'no code. The {listed(code_arms(), "and")} arms would review it with the code in {code}.')
-    return [*kept, '--code', str(code)], (f'paper-workbench review: reviewing {pdf} with the code in {code}. '
+        return kept, (f'paper-workbench review: reviewing {reading} with no code, because the {args.arm} arm '
+                      f'reviews no code. The {listed(code_arms(), "and")} arms would review it with the code '
+                      f'in {code}.')
+    return [*kept, '--code', str(code)], (f'paper-workbench review: reviewing {reading} with the code in {code}. '
                                           'Give --no-code to review the paper alone.')
+
+
+def manuscript_draft(workspace):
+    """The current draft of a manuscript workspace made with ``import-scaffold``, as its id and folder.
+
+    ``None`` for any other folder. A draft kept under the workspace's
+    ``revisions/`` is refused, as a review is always of the current draft
+    and its problems go into that draft's ledger.
+    """
+    root = Path(workspace).expanduser().resolve()
+    if not ((root / SPANS).is_file() and (root / 'scaffold').is_dir()):
+        return None
+    if root.parent.name == 'revisions' and (root.parent.parent / SPANS).is_file():
+        raise WorkspaceRefused(f'{root} is a draft kept inside the manuscript workspace {root.parent.parent}. '
+                               'Give the workspace, and its current draft is reviewed.')
+    try:
+        name = head(root)['revision_id']
+        folder, _ = snapshot(root, name)
+    except (ValueError, OSError) as exc:
+        raise WorkspaceRefused(f'{root} is not a manuscript workspace with a current draft: {exc}') from exc
+    return name, folder
+
+
+def ledger_target(argv):
+    """The manuscript workspace and the run folder of a review whose problems go into its ledger, or ``None``.
+
+    *argv* is what the author typed, already accepted by :func:`engine_argv`.
+    Only a review of a manuscript workspace has a ledger to add to.
+    """
+    args = parser().parse_args(list(argv))
+    if not (Path(args.workspace).is_dir() and manuscript_draft(args.workspace)):
+        return None
+    return Path(args.workspace).expanduser().resolve(), Path(args.output).expanduser().resolve()
+
+
+def import_project(source, output, title=None):
+    """Import a Paper Scaffold project as a manuscript workspace, keeping its built PDF as the original draft's.
+
+    The PDF is the project's ``paper.pdf`` while :func:`built_pdf` says it
+    matches the source. It is kept as ``artifacts/paper.pdf``, where a built
+    draft keeps its own, so the original draft can be reviewed and checked.
+    Returns the manifest, and a line saying why the original has no PDF or
+    ``None``.
+    """
+    try:
+        pdf = built_pdf(source)
+    except WorkspaceRefused as exc:
+        reason = str(exc).removesuffix(' ' + BUILD)
+        return import_scaffold(source, output, title), (
+            f'{reason} The original draft has no PDF, so it cannot be reviewed or checked. Build the project with '
+            '`just paper` and import it again.')
+
+    def carry(folder, _):
+        (folder / 'artifacts').mkdir()
+        shutil.copyfile(pdf, folder / 'artifacts' / 'paper.pdf')
+
+    return import_scaffold(source, output, title, prepare=carry), None
 
 
 def code_arms():

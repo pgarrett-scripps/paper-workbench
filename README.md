@@ -10,7 +10,7 @@ Start with [the team handoff](HANDOFF.md) for the current architecture, setup an
 
 ## Install
 
-Requires Python 3.11 or newer. The app pins `peerreviewagents` 0.10.0, which is not on PyPI yet, and is tested against its main branch at commit 47c41c6, which reads manuscripts by line, has a model read each page image before every PDF review, can check the paper against its analysis code, throws out a finding when the code does not do what it said and checks a new draft against the problems a review raised. Until it is published, install the engine from its main branch first, then this app:
+Requires Python 3.11 or newer. The app pins `peerreviewagents` 0.10.0, which is not on PyPI yet, and is tested against its main branch at commit 4bd27b6, which reads manuscripts by line, has a model read each page image before every PDF review, can check the paper against its analysis code, throws out a finding when the code does not do what it said, gives the problems a review raised and checks a new draft against them. Until it is published, install the engine from its main branch first, then this app:
 
 ```bash
 python -m pip install 'peerreviewagents @ git+https://github.com/pgarrett-scripps/PeerReviewAgents@main'
@@ -35,7 +35,7 @@ paper-workbench serve runs/example --port 38744
 paper-workbench review manuscript.pdf runs/example --code ../my-paper/analysis
 ```
 
-A Paper Scaffold workspace folder can stand where the PDF does, so a workspace is reviewed from inside it:
+A manuscript workspace made with `import-scaffold` can also stand where the PDF does. The review then reads its current draft's built PDF, with that draft's source as the code, and adds its problems to the draft's issue ledger, as the [fix loop](#fix-loop) says. A Paper Scaffold workspace folder can stand there too, so a workspace is reviewed from inside it:
 
 ```bash
 cd my-paper
@@ -59,17 +59,22 @@ paper-workbench serve workspaces/example --port 38744
 
 ## Fix loop
 
-A fix loop runs on a Paper Scaffold workspace imported with `import-scaffold`, whose drafts are kept under `revisions/`.
+A fix loop runs on a manuscript workspace made from a Paper Scaffold project with `import-scaffold`, whose drafts are kept under `revisions/`. Build the project with `just paper` first, so the original draft has the built PDF a review and a fix check read.
 
-1. Review. A review finds the problems. Every review is a fresh panel that knows nothing of an earlier one.
-2. Decide. `serve` shows each problem as a card. The author accepts or declines its wording and marks it open, addressed or declined, with a rationale.
-3. Revise. The viewer's revision button, or `revise`, builds the next draft from a review and those decisions. The draft's issue ledger keeps one row per problem, under an id that never changes, with the author's decision on it.
+1. Review. `paper-workbench review WORKSPACE RUN` reviews the current draft's built PDF, with that draft's source as the code, and adds the problems of the finished review to the draft's issue ledger. Every review is a fresh panel that knows nothing of an earlier one.
+2. Decide. `paper-workbench decide WORKSPACE PROBLEM STATUS --rationale TEXT` marks a problem open, addressed or declined. Addressed and declined need a rationale, and `--note` leaves a note for the fix check. In `serve`, the cards of a review also take a wording decision.
+3. Revise. The viewer's revision button, or `revise`, builds the next draft. The draft's issue ledger keeps one row per problem, under an id that never changes, with the author's decision on it.
 4. Check fixes. `paper-workbench check-fixes WORKSPACE RUN` checks the current draft against the open problems in its ledger.
-5. Fresh review. Review the new draft whenever you want new problems found. It reads nothing of the ledger.
+5. Fresh review. Review the new draft whenever you want new problems found. It reads nothing of the ledger, and its problems are new rows that match no earlier one.
 
 ```bash
+paper-workbench import-scaffold ../my-paper my-workspace
+paper-workbench review my-workspace runs/r1
+paper-workbench decide my-workspace original:r1:i02 declined --rationale "Out of scope for this paper"
 paper-workbench check-fixes my-workspace runs/fixes-1
 ```
+
+`review` on a manuscript workspace prints the ids it added, or why it added none. `paper-workbench import-run WORKSPACE RUN` adds a review run the same way, such as one started by hand with the draft's `artifacts/paper.pdf`. It reads the run through the engine's `read_run` and `problems_from_run` and takes only a finished review of the current draft's built PDF, checked by hash. It refuses an unfinished run or a review of another PDF and says why. Adding the same run twice adds nothing. A finished review the engine calls not publishable, such as a `draft-check` run with no editor, is added with the engine's reasons printed beside it. A problem raised on the current draft takes a decision from `decide`. A problem carried from an earlier draft keeps the decision it was carried with. A fix check of the draft a problem was raised on leaves that problem out, because that draft is the text it was raised on.
 
 `check-fixes` is the engine's `peerreview check-fixes` on the current draft's built PDF. It writes the problems file itself, to `RUN/problems.json`, from every open problem that draft has no verdict on yet, in severity order, so it takes no `--problems`. The engine gives each problem it reaches a verdict, `fixed`, `not-fixed` or `cannot-tell` in its own words. A `fixed` or `not-fixed` verdict rests on a quote from the new draft or on whether the quote the problem was raised on is still there, and `cannot-tell` gives a reason. It raises nothing new. The app records the verdicts in the draft's ledger, beside the frozen ledger in `fix-checks.json`, and the next draft carries them in its own ledger. A problem is fixed when its latest verdict says so, and a declined problem is never checked again. A check takes at most 40 problems. A problem it did not reach is recorded as not checked, with why, and the next check of the same draft, into a new run folder, takes it again. A blocked or stopped check, or one that cannot be read whole, records nothing and says why. A check is model inference with its own token and wall-clock ceilings, and it needs `claude` on `PATH` as a review does. The viewer shows each problem's latest verdict, its basis and the quote from the new draft, or that the check did not reach it, with the earlier checks below.
 
