@@ -103,7 +103,7 @@ class WorkspaceReviewTest(unittest.TestCase):
             (['--arm', 'draft-check', workspace, run, '--reviewers', '2'],
              ['--arm', 'draft-check', pdf, run, '--reviewers', '2']),
             # An option's value spelled like the workspace stays as typed.
-            (['--prior-issues', workspace, workspace, run], ['--prior-issues', workspace, pdf, run]),
+            (['--editor-model', workspace, workspace, run], ['--editor-model', workspace, pdf, run]),
         ]
         for typed, expected in cases:
             argv, note = engine_argv(typed)

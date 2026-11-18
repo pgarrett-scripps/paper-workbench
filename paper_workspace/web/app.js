@@ -266,28 +266,18 @@ function history(){
   return `<div class="cross-check"><p><strong>${esc(categoryOf(finding))}: ${esc(finding.title||'Historical finding')}</strong></p><p>${esc(finding.comment||'')}</p><blockquote>${esc(finding.quote||'')}</blockquote>${location}<p>Origin draft: ${esc(row.origin_revision||'unknown')}<br>Wording decision: ${esc(row.wording_decision||'proposed')}<br>Scientific status: ${esc(row.scientific_status||'open')}</p>${feedback.author_comment?`<p>Author response: ${esc(feedback.author_comment)}<br>Author status: ${esc(feedback.issue_status)}<br>${esc(feedback.rationale||'')}</p>`:''}<p>${esc(row.note||'Historical anchors require reassessment on this draft.')}</p></div>`;
  }).join('');
 }
-// A run's cards are the editor's issues. Each status is the engine's, against the prior round.
-const ISSUE_STATUS={new:'New this round',persisting:'Persisting from the prior round',regressed:'Regressed since the prior round',
- resolved:'Resolved: the editor read the revision and found it fixed',unverified:'Unverified: not raised again and not shown fixed'};
+// A run's cards are the editor's issues. Every review is a fresh panel, so a card says nothing about an earlier round.
 const categoryLabel=name=>name?String(name).charAt(0).toUpperCase()+String(name).slice(1).replaceAll('-',' '):'No category';
 const isRunCard=item=>Boolean(review.run&&Array.isArray(item.members));
 const plural=(count,noun)=>`${count} ${noun}${count===1?'':'s'}`;
 function issueBadges(item){
- const run=review.run;
- const status=ISSUE_STATUS[item.status];
  const badges=[item.group!=='ledger'&&item.source_id&&`<span class="badge">Issue ${esc(item.source_id)}</span>`,
-  status&&(run.prior_round||item.status!=='new')&&`<span class="badge status ${esc(item.status)}" title="${esc(status)}">${esc(item.status)}</span>`,
-  item.group!=='closed'&&Number.isInteger(item.raised_by)&&`<span class="badge">Raised by ${esc(plural(item.raised_by,'reviewer'))}</span>`,
+  Number.isInteger(item.raised_by)&&`<span class="badge">Raised by ${esc(plural(item.raised_by,'reviewer'))}</span>`,
   item.escalate&&'<span class="badge escalated">Escalated</span>'];
  return `<div class="run-badges">${badges.filter(Boolean).join('')}</div>`;
 }
 function issueNotes(item){
- const quotes=(item.surviving_quotes||[]).filter(row=>row&&row.quote);
- const notes=[item.status_reason&&`<p><strong>${esc(ISSUE_STATUS[item.status]||'Status')}</strong><br>${esc(item.status_reason)}</p>`,
-  Number.isInteger(item.prior_rank)&&`<p class="muted">Rank in the prior round: ${esc(item.prior_rank)}${item.prior_id&&item.prior_id!==item.source_id?`, as issue ${esc(item.prior_id)}`:''}</p>`,
-  item.rebuttal_quote&&`<p><strong>Manuscript text the editor weighed against the computed finding</strong></p><blockquote>${esc(item.rebuttal_quote)}</blockquote>${Number.isInteger(item.rebuttal_line)?`<p>${lineLink(item.rebuttal_document||paper.main,item.rebuttal_line,'Go to passage')}</p>`:''}`,
-  item.text_unchanged_reason&&`<p><strong>Why it is fixed although the passages it cited still read the same</strong><br>${esc(item.text_unchanged_reason)}</p>`,
-  quotes.length&&`<p><strong>The prior round's evidence still in the manuscript</strong></p>${quotes.map(row=>`<blockquote>${esc(row.quote)}</blockquote>${Number.isInteger(row.line)?`<p>${lineLink(row.document||paper.main,row.line,'Go to passage')}</p>`:''}`).join('')}`,
+ const notes=[item.rebuttal_quote&&`<p><strong>Manuscript text the editor weighed against the computed finding</strong></p><blockquote>${esc(item.rebuttal_quote)}</blockquote>${Number.isInteger(item.rebuttal_line)?`<p>${lineLink(item.rebuttal_document||paper.main,item.rebuttal_line,'Go to passage')}</p>`:''}`,
   (item.audits||[]).length&&`<p class="muted">Specialist reports: ${item.audits.map(esc).join(', ')}</p>`].filter(Boolean);
  return notes.length?`<div class="cross-check">${notes.join('')}</div>`:'';
 }
@@ -461,11 +451,8 @@ function runPanel(){
   filter='all';document.querySelectorAll('[data-filter]').forEach(item=>item.setAttribute('aria-pressed',item.dataset.filter==='all'));
  }
  if(!run){$('#run-panel').innerHTML='';return;}
- const prior=run.prior_round;
- const tally=prior&&Object.entries(prior.tally||{}).map(([status,count])=>`${count} ${status}`).join(' · ');
  const facts=[run.arm&&`Arm ${run.arm}`,run.reviewer_count&&`${run.reviewer_count} reviewers`,run.status&&runStatus(run),
   run.issues_source==='editor'&&'Issues grouped by the editor',run.issues_source==='server'&&'Issues written by the server, one per finding, with no editor',
-  prior&&`Prior round ${prior.file||'issues.json'}: ${prior.issues??0} issues carried${tally?`, this round ${tally}`:''}`,
   Number.isInteger(run.escalated_count)&&`${run.escalated_count} escalated`,run.review_guard_status&&`Guard ${run.review_guard_status}`,
   run.quarantined_findings_count?`${run.quarantined_findings_count} quarantined`:'',
   Number.isFinite(run.wall_seconds)&&`${Math.round(run.wall_seconds/60)} min`,Number.isFinite(run.tokens_total)&&`${run.tokens_total} tokens`].filter(Boolean);
@@ -511,7 +498,7 @@ function staleNote(){
  return `<p class="stale-decisions muted" role="note">${esc(`${plural(stale.size,'saved decision')} no longer ${stale.size===1?'matches':'match'} a card in this review. The decisions file is left as it is.`)}</p>`;
 }
 function grouped(items){
- const groups={required:[],suggestion:[],closed:[],ledger:[]};
+ const groups={required:[],suggestion:[],ledger:[]};
  for(const item of items)(groups[item.group]||groups.ledger).push(item);
  return groups;
 }
@@ -522,10 +509,10 @@ function runCount(){
  if(review.run.findings_source==='none')return 'No findings'+thrownText;
  if(review.run.findings_source!=='issues')return `${plural(groups.ledger.length,'finding')}, not grouped into issues`+thrownText;
  return [`${groups.required.length} required`,`${plural(groups.suggestion.length,'suggestion')}`,
-  groups.closed.length&&`${groups.closed.length} from the prior round`,groups.ledger.length&&`${plural(groups.ledger.length,'finding')} no issue holds`].filter(Boolean).join(' · ')+thrownText;
+  groups.ledger.length&&`${plural(groups.ledger.length,'finding')} no issue holds`].filter(Boolean).join(' · ')+thrownText;
 }
 // A run's review: the required changes in rank order, the suggestions under their categories,
-// the prior round's closed issues, then any finding no issue holds.
+// then any finding no issue holds.
 function runCards(){
  const run=review.run;
  const groups=grouped(review.findings.filter(item=>filter==='all'||(filter==='required'&&item.group==='required')
@@ -537,11 +524,9 @@ function runCards(){
   if(item.category!==category){category=item.category;suggestions.push(`<h4 class="issue-category">${esc(categoryLabel(category))}</h4>`);}
   suggestions.push(card(item));
  }
- const closedOpen=$('#closed-issues')?.open?' open':'';
  const loose=run.findings_source==='issues'?'Findings no issue holds':'Findings recorded before any issues were written';
  const sections=[groups.required.length&&`<h3 class="issue-group">Required changes (${groups.required.length})</h3>${groups.required.map(card).join('')}`,
   groups.suggestion.length&&`<h3 class="issue-group">Suggestions (${groups.suggestion.length})</h3>${suggestions.join('')}`,
-  groups.closed.length&&`<details class="closed-issues" id="closed-issues"${closedOpen}><summary>Prior round: resolved and unverified (${groups.closed.length})</summary>${groups.closed.map(card).join('')}</details>`,
   groups.ledger.length&&`<h3 class="issue-group">${loose} (${groups.ledger.length})</h3>${groups.ledger.map(card).join('')}`,
   filter==='all'&&thrownOut(run.code_check)].filter(Boolean);
  const empty=review.findings.length||run.publishable!==false?'<div class="empty">No comments in this view.</div>':'';
@@ -632,7 +617,7 @@ async function start(){
 $('#draft-select').addEventListener('change',event=>setDraftLink(event.target.value));
 $('#review-select').addEventListener('change',event=>loadReview(event.target.value).catch(e=>error(e.message)));
 $('#search').addEventListener('input',applySearch);
-// A link into a collapsed section, such as the prior round's closed issues, opens it, so the target is visible.
+// A link into a collapsed section, such as the thrown-out findings, opens it, so the target is visible.
 window.addEventListener('hashchange',()=>{const target=document.getElementById(decodeURIComponent(location.hash.slice(1)));const box=target?.closest('details');if(box)box.open=true;});
 document.querySelectorAll('[data-mode]').forEach(button=>button.addEventListener('click',()=>{mode=button.dataset.mode;document.querySelectorAll('[data-mode]').forEach(item=>item.setAttribute('aria-pressed',item===button));manuscript();}));
 document.querySelectorAll('[data-filter]').forEach(button=>button.addEventListener('click',()=>{filter=button.dataset.filter;document.querySelectorAll('[data-filter]').forEach(item=>item.setAttribute('aria-pressed',item===button));cards();}));

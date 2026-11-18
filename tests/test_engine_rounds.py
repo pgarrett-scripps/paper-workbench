@@ -3,7 +3,8 @@
 The engine has no public way to build a run folder without a model. Its own
 tests submit the findings through its server as the reviewer slots would and
 do the grouping in Python, so no model is started and nothing reaches the
-network. This file builds two rounds that way, and a third run given analysis
+network. This file builds two rounds that way, each a fresh panel on its own
+draft that knows nothing of the other, and a third run given analysis
 code whose code lane fetches two data files and files one code-checked finding,
 and whose code check throws out the numbers lane's finding, and drives the
 viewer from them, so the hand-written fixture in test_run_view.py is checked
@@ -55,12 +56,11 @@ def grouped(name, rank, members, **extra):
             'members': members, 'statement': f'{name} is stated more strongly than the data carry.', **extra}
 
 
-def one_round(root, texts, source, quotes, issues, prior='', **ruling):
+def one_round(root, texts, source, quotes, issues):
     """One reviewers-only round: core-1 raises a finding per quote, core-2 finds none, the editor groups them."""
     engine.STATE['run'] = None
     manuscripts.build(root / 'manuscript', texts, source_sha256=digest(source))
-    opened = engine.ingest(str(root / 'manuscript.pdf'), str(root), arm='reviewers-only', reviewers=2,
-                           prior_issues=prior)
+    opened = engine.ingest(str(root / 'manuscript.pdf'), str(root), arm='reviewers-only', reviewers=2)
     assert 'request_rejected' not in opened, opened
     codes = {row['slot']: row['claim_code'] for row in opened['claim_codes']}
     # The manuscript is sealed before ingest, so the engine plans no Read stage.
@@ -87,8 +87,7 @@ def one_round(root, texts, source, quotes, issues, prior='', **ruling):
     stored = engine.submit_issues(editor, issues(uids))
     assert 'request_rejected' not in stored, stored
     answer = engine.submit_editor(editor, summary='One question of scope.', significance='Modest.',
-                                  strength_of_evidence='Weak.', verdict_reasoning='The scope is overstated.',
-                                  **ruling)
+                                  strength_of_evidence='Weak.', verdict_reasoning='The scope is overstated.')
     assert answer.get('accepted'), answer
     assert engine.submit_report(editor, 'Grouped.', model=run.models.get('editor'))['closed']
     engine.write_review(token('recorder'))
@@ -210,17 +209,10 @@ class EngineRoundsTests(unittest.TestCase):
                     'repeated three times'],
                     lambda uids: [grouped('The sample', 1, [uids[0]]), grouped('The scope', 2, [uids[1]]),
                                   grouped('The repeats', 3, [uids[2]])])
-                # Round two reads round one's issues.json, and the editor rules on each prior issue.
+                # Round two is a fresh panel on the revised draft. It reads nothing of round one.
                 one_round(cls.second, SECOND, 'source-2', [
                     'controls retromer assembly in all tissues', 'The authors conclude'],
-                    lambda uids: [grouped('The scope', 1, [uids[0]], prior_id='i02', status='persisting',
-                                          status_reason='The sentence is unchanged.'),
-                                  grouped('The attribution', 2, [uids[1]])],
-                    prior=str(cls.first / 'review' / 'issues.json'),
-                    prior_rulings=[{'prior_id': 'i01', 'status': 'resolved',
-                                    'reason': 'The sample now spans four donors.'},
-                                   {'prior_id': 'i03', 'status': 'unverified',
-                                    'reason': 'Nobody raised it again.'}])
+                    lambda uids: [grouped('The scope', 1, [uids[0]]), grouped('The attribution', 2, [uids[1]])])
                 # The code is what `paper-workbench review WORKSPACE RUN` hands the engine, with RUN inside it.
                 argv, _ = engine_argv([str(cls.workspace), str(cls.coded), '--arm', 'draft-check'])
                 code_round(cls.coded, Path(argv[argv.index('--code') + 1]))
@@ -251,32 +243,25 @@ class EngineRoundsTests(unittest.TestCase):
 
     def test_round_one_is_read_as_three_issues(self):
         review = self.view(self.first)
-        self.assertEqual([(f['id'], f['group'], f['status'], f['decidable'], len(f['members']))
-                          for f in review['findings']],
-                         [('i01', 'required', 'new', True, 1), ('i02', 'required', 'new', True, 1),
-                          ('i03', 'required', 'new', True, 1)])
-        self.assertIsNone(review['run']['prior_round'])
+        self.assertEqual([(f['id'], f['group'], f['decidable'], len(f['members'])) for f in review['findings']],
+                         [('i01', 'required', True, 1), ('i02', 'required', True, 1), ('i03', 'required', True, 1)])
+        # The run panel says nothing about an earlier round.
+        self.assertNotIn('prior_round', review['run'])
 
-    def test_round_two_keeps_the_prior_ids(self):
+    def test_round_two_is_a_fresh_panel_with_ids_of_its_own(self):
         review = self.view(self.second)
-        self.assertEqual([(f['id'], f['group'], f['status'], f['prior_id'], f['decidable'])
-                          for f in review['findings']],
-                         [('i02', 'required', 'persisting', 'i02', True), ('i04', 'required', 'new', None, True),
-                          ('i01', 'closed', 'resolved', 'i01', True), ('i03', 'closed', 'unverified', 'i03', True)])
-        self.assertEqual([f['status_reason'] for f in review['findings'][2:]],
-                         ['The sample now spans four donors.', 'Nobody raised it again.'])
-        # The engine records the prior round by its file name and digest. Nothing names the prior run folder.
-        prior = review['run']['prior_round']
-        self.assertEqual(sorted(prior), ['digest', 'file', 'issues', 'tally'])
-        self.assertEqual((prior['file'], prior['issues']), ('issues.json', 3))
-        self.assertEqual(prior['tally'], {'new': 1, 'persisting': 1, 'regressed': 0, 'resolved': 1, 'unverified': 1})
+        self.assertEqual([(f['id'], f['group'], f['title'], f['decidable']) for f in review['findings']],
+                         [('i01', 'required', 'The scope', True), ('i02', 'required', 'The attribution', True)])
+        # Round one's issues are not shown here, and no card is grouped as closed.
+        self.assertEqual({f['group'] for f in review['findings']}, {'required'})
+        self.assertNotIn('prior_round', review['run'])
 
     def test_decisions_stay_with_the_run_folder_they_were_made_in(self):
         with served(self.first) as request:
             status, decisions = request('/api/decisions', {'review_id': 'run', 'annotation_id': 'i02',
                 'status': 'noted', 'revision': 0, 'author_comment': 'Narrowed the claim to HeLa cells.'})
             self.assertEqual((status, decisions['items']), (200, {'i02': 'noted'}))
-        # Round two opens with no decisions, though i02 is the same issue.
+        # Round two opens with no decisions, though it has an issue i02 too. Its ids are its own.
         with served(self.second) as request:
             self.assertEqual(request('/api/decisions?review=run')[1]['items'], {})
             status, decisions = request('/api/decisions', {'review_id': 'run', 'annotation_id': 'i02',

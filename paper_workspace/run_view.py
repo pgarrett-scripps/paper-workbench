@@ -26,8 +26,7 @@ from pathlib import Path
 
 from peerreviewagents import MANUSCRIPT_DIRECTORY, cited_text, read_citation_ledger, read_run
 from peerreviewagents import locate_run, NotARunFolder
-from peerreviewagents.issues import (ISSUE_FIELDS, by_category, closed_issues, is_issue_id, required_issues,
-                                     suggestion_issues)
+from peerreviewagents.issues import ISSUE_FIELDS, by_category, is_issue_id, required_issues, suggestion_issues
 from peerreviewagents.names import CODE_CHECK_VERDICTS
 
 RUN_REVIEW_ID = 'run'
@@ -43,9 +42,9 @@ OLDER_ENGINE = ('This review was made by an older engine, re-run it. Its review 
                 'and no issues.json, and this viewer reads only the issues.json that engine 0.10.0 writes.')
 # The types the viewer reads from each issue in issues.json. A value of another
 # type is a malformed file, and the run is refused with each such value named.
-ISSUE_TEXT = ('id', 'name', 'statement', 'severity', 'category', 'status', 'status_reason',
-              'text_unchanged_reason', 'rebuttal_document', 'rebuttal_quote', 'prior_id')
-ISSUE_NUMBERS = ('rank', 'prior_rank', 'raised_by', 'rebuttal_line')
+# Every review is a fresh panel, so the viewer reads nothing about an earlier round.
+ISSUE_TEXT = ('id', 'name', 'statement', 'severity', 'category', 'rebuttal_document', 'rebuttal_quote')
+ISSUE_NUMBERS = ('rank', 'raised_by', 'rebuttal_line')
 MEMBER_TEXT = ('finding_uid', 'slot', 'track', 'severity', 'kind', 'basis', 'title', 'quote', 'anchor_text',
                'document', 'fingerprint')
 MEMBER_NUMBERS = ('line', 'end_line', 'start', 'end')
@@ -135,11 +134,6 @@ def issue_problems(rows):
         problems += [f'in {name}, {key} is not a whole number' for key in ISSUE_NUMBERS if not is_number(row.get(key))]
         if not is_text_list(row.get('audits')):
             problems.append(f'in {name}, audits is not a list of file names')
-        quotes = row.get('surviving_quotes')
-        if not (quotes is None or (isinstance(quotes, list) and all(
-                isinstance(quote, dict) and is_text(quote.get('quote')) and is_text(quote.get('document'))
-                and is_number(quote.get('line')) for quote in quotes))):
-            problems.append(f'in {name}, surviving_quotes is not a list of quotes')
         members = row.get('members')
         if not (members is None or isinstance(members, list)):
             problems.append(f'in {name}, members is not a list')
@@ -531,7 +525,7 @@ def finding_card(row, ledger, base):
     """A ledger finding no issue holds, as a card of its own with itself as the one member."""
     issue = {**dict.fromkeys(ISSUE_FIELDS), 'id': row.get('finding_uid'), 'name': row.get('title'),
              'severity': row.get('severity'), 'statement': row.get('comment'), 'members': [row], 'raised_by': 1,
-             'surviving_quotes': [], 'audits': []}
+             'audits': []}
     return issue_card(issue, 'ledger', ledger, base)
 
 
@@ -560,8 +554,7 @@ def run_review(review, base):
     """The run as a review that the viewer, the decisions and ``export_draft`` read.
 
     The unit is the editor's issue. Required changes come first in rank order,
-    then the suggestions grouped by category, then the prior round's resolved
-    and unverified issues. A finding that no issue holds, which is every
+    then the suggestions grouped by category. A finding that no issue holds, which is every
     finding of a run that stopped before the editor wrote ``issues.json``, is a
     card of its own after them. A card's ``id`` is its issue id, or the
     finding's ``finding_uid`` for a finding no issue holds. A card whose id is
@@ -584,8 +577,7 @@ def run_review(review, base):
     held |= {row['finding_uid'] for row in check['checks'] if row['verdict'] == CONTRADICTED} if check else set()
     findings = ([issue_card(issue, 'required', ledger, base) for issue in required_issues(issues)]
                 + [issue_card(issue, 'suggestion', ledger, base)
-                   for _, rows in by_category(suggestion_issues(issues)) for issue in rows]
-                + [issue_card(issue, 'closed', ledger, base) for issue in closed_issues(issues)])
+                   for _, rows in by_category(suggestion_issues(issues)) for issue in rows])
     top = max((card['number'] for card in findings if type(card['number']) is int), default=0)
     loose = [finding_card(row, ledger, base) for row in run['findings']
              if not (isinstance(row.get('finding_uid'), str) and row['finding_uid'] in held)]
@@ -621,7 +613,6 @@ def run_review(review, base):
         'not_publishable_reasons': run['not_publishable_reasons'],
         'findings_source': run['findings_source'],
         'issues_source': run['issues_source'],
-        'prior_round': run['prior_round'],
         'counts': run['counts'],
         'escalated_count': len(run['escalations']),
         'review_guard_status': run['guard_status'],

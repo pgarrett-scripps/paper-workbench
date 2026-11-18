@@ -26,25 +26,20 @@ PROTECTED = re.compile(r'\b(?:not|no|never|may|might|could|can|cannot|must|shoul
                        r'significant|nonsignificant)\b', re.I)
 SYNTAX = re.compile(r'[#@$`\[\]{}<>_=*\\]|//|/\*|\*/')
 # The run_view groups whose cards each stand for one PeerReviewAgents issue.
-ISSUE_GROUPS = ('required', 'suggestion', 'closed')
+ISSUE_GROUPS = ('required', 'suggestion')
 
 
 def ledger_row(finding, decisions, origin, paper_id):
     """One card of the review as a row of the issue ledger the next draft carries.
 
-    A card from a PeerReviewAgents run is one issue. Its row keeps the issue id,
-    which the engine carries from round to round, and the issue's status in the
-    round that raised it. ``issue_id`` is None when the run's ids were unusable
-    and its cards were numbered instead. An issue the round found resolved is
-    not an open scientific concern.
+    A card from a PeerReviewAgents run is one issue, and its row keeps the
+    issue id. ``issue_id`` is None when the run's ids were unusable and its
+    cards were numbered instead. Every review is a fresh panel, so the engine
+    says nothing about an earlier issue and the ledger alone remembers it.
+    Every concern but a copyedit is open when it joins the ledger.
     """
     run_issue = finding.get('group') in ISSUE_GROUPS
-    if finding.get('category') == 'copyedit':
-        scientific = 'not_applicable'
-    elif run_issue and finding.get('status') == 'resolved':
-        scientific = 'resolved'
-    else:
-        scientific = 'open'
+    scientific = 'not_applicable' if finding.get('category') == 'copyedit' else 'open'
     row = {'origin_revision': origin, 'paper_id': paper_id, 'finding': finding,
            'wording_decision': decisions['items'].get(finding['id'], 'proposed'),
            'author_feedback': decisions.get('annotations', {}).get(finding['id'], {}),
@@ -52,7 +47,6 @@ def ledger_row(finding, decisions, origin, paper_id):
            'note': 'Anchor refers to the originating draft. Reassess against current text.'}
     if run_issue:
         row['issue_id'] = finding['id'] if finding['id'] == finding.get('source_id') else None
-        row['issue_round_status'] = finding.get('status')
     return row
 
 

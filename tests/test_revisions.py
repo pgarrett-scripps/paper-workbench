@@ -110,18 +110,18 @@ class Revisions(unittest.TestCase):
         review, decisions = self.proposals()
         edit = review['findings'][0]
         review['findings'][0] = {**edit, 'id': 'i01', 'source_id': 'i01', 'group': 'suggestion',
-                                 'category': 'presentation', 'status': 'persisting'}
-        review['findings'][1] = {'id': 'i02', 'source_id': 'i02', 'group': 'closed', 'category': 'reproducibility',
-                                 'status': 'resolved', 'kind': 'issue', 'title': 'Old issue', 'members': []}
-        review['findings'].append({'id': 'run-3', 'source_id': 'i02', 'group': 'required', 'status': 'new',
+                                 'category': 'presentation'}
+        # A status the engine wrote on an issue is not read. Every review is a fresh panel, so its issues are open.
+        review['findings'][1] = {'id': 'i02', 'source_id': 'i02', 'group': 'required', 'category': 'reproducibility',
+                                 'status': 'resolved', 'kind': 'issue', 'title': 'The seed', 'members': []}
+        review['findings'].append({'id': 'run-3', 'source_id': 'i02', 'group': 'required',
                                    'category': 'claims-and-conclusions', 'kind': 'issue', 'title': 'Repeat'})
         decisions['items'] = {'i01': 'accepted'}
         create_revision(self.root, review, decisions, 'issues', head(self.root), build=False)
         rows = read_json(self.root / 'revisions/issues/issue-ledger.json')[-3:]
-        self.assertEqual([(row['issue_id'], row['issue_round_status'], row['scientific_status'], row['wording_decision'])
-                          for row in rows],
-                         [('i01', 'persisting', 'open', 'accepted'), ('i02', 'resolved', 'resolved', 'proposed'),
-                          (None, 'new', 'open', 'proposed')])
+        self.assertEqual([(row['issue_id'], row['scientific_status'], row['wording_decision']) for row in rows],
+                         [('i01', 'open', 'accepted'), ('i02', 'open', 'proposed'), (None, 'open', 'proposed')])
+        self.assertFalse([row for row in rows if 'issue_round_status' in row])
 
     def test_a_finding_the_code_check_threw_out_joins_the_ledger_as_thrown_out_and_takes_no_decision(self):
         review, decisions = self.proposals()

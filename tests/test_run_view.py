@@ -282,8 +282,8 @@ class RunReviewTests(unittest.TestCase):
                          (0, 9, 'The knockdown', FINGERPRINT))
         run = review['run']
         self.assertEqual((run['arm'], run['status'], run['escalated_count'], run['findings_source'],
-                          run['issues_source'], run['prior_round']),
-                         ('full-two-track', 'complete', 1, 'issues', 'editor', None))
+                          run['issues_source']), ('full-two-track', 'complete', 1, 'issues', 'editor'))
+        self.assertNotIn('prior_round', run)
         self.assertEqual((run['counts']['issues'], run['counts']['required'], run['counts']['suggestions']), (2, 1, 1))
         self.assertNotIn('edited', run)
         self.assertEqual(run['none_found'], ['spec-citations'])
@@ -341,31 +341,17 @@ class RunReviewTests(unittest.TestCase):
                          [('i03', 'required', 'claims-and-conclusions'),
                           ('i02', 'suggestion', 'methods-and-reporting'), ('i01', 'suggestion', 'presentation')])
 
-    def test_a_prior_round_gives_each_issue_its_status(self):
-        # As the engine numbers a second round: an issue carried or closed keeps its prior id, and a new
-        # one takes the next id no round has used. test_engine_rounds.py builds such a round through the engine.
-        closed = {'rank': None, 'members': [], 'raised_by': 0}
-        rows = [issue(1, 'The knockdown control is not named', 'major', 'claims-and-conclusions', [AA11, BB22],
-                      status='persisting', prior_id='i01', prior_rank=1, status_reason='The control is still unnamed.'),
-                issue(4, 'The opening sentence needs an article', 'minor', 'presentation', [CC33], rank=2),
-                issue(2, 'The scale bar is missing', 'minor', 'figures-and-tables', [], status='resolved',
-                      prior_id='i02', prior_rank=2, status_reason='Figure 1 now has a scale bar.', **closed),
-                issue(3, 'The seed is not reported', 'moderate', 'reproducibility', [], status='unverified',
-                      prior_id='i03', prior_rank=3, status_reason='No reviewer looked at the code.', **closed)]
-        prior = {'file': 'issues.json', 'digest': '0123456789abcdef', 'issues': 3,
-                 'tally': {'new': 1, 'persisting': 1, 'regressed': 0, 'resolved': 1, 'unverified': 1}}
-        self.write_issues(rows, prior_round=prior)
+    def test_the_viewer_reads_nothing_about_an_earlier_round(self):
+        # Every review is a fresh panel. A field about an earlier round is not read, so a value of any type
+        # in one refuses nothing, and the run panel has no prior round.
+        rows = json.loads(json.dumps(ISSUES))
+        rows[0].update(status=5, prior_id=7, prior_rank='1', status_reason=['x'], text_unchanged_reason={},
+                       surviving_quotes='lowered VPS35')
+        self.write_issues(rows, prior_round={'file': 'issues.json', 'issues': 3})
         review = run_review(self.review, self.base)
-        self.assertEqual([(f['id'], f['group'], f['status'], f['prior_id'], f['number']) for f in review['findings']],
-                         [('i01', 'required', 'persisting', 'i01', 1), ('i04', 'suggestion', 'new', None, 2),
-                          ('i02', 'closed', 'resolved', 'i02', None), ('i03', 'closed', 'unverified', 'i03', None)])
-        self.assertEqual(review['findings'][2]['status_reason'], 'Figure 1 now has a scale bar.')
-        # A closed issue has no members, so it has no anchor and nothing to accept.
-        self.assertEqual([(f['placement'], f['kind'], f['members']) for f in review['findings'][2:]],
-                         [('unplaced', 'issue', [])] * 2)
-        run = review['run']
-        self.assertEqual(run['prior_round'], prior)
-        self.assertEqual((run['counts']['resolved'], run['counts']['unverified']), (1, 1))
+        self.assertEqual([(f['id'], f['group']) for f in review['findings']],
+                         [('i01', 'required'), ('i02', 'suggestion')])
+        self.assertNotIn('prior_round', review['run'])
 
     def test_issues_the_server_made_are_shown_with_the_reason_the_run_is_not_publishable(self):
         rows = [issue(n, row['title'], row['severity'], 'claims-and-conclusions', [row])
@@ -541,8 +527,6 @@ class RunReviewTests(unittest.TestCase):
                              'In issue 1 (i01) member 1, line is not a whole number'),
             'audits as a string': (lambda rows: rows[0].update(audits='audit_stats.md'),
                                    'In issue 1 (i01), audits is not a list of file names'),
-            'surviving_quotes as a string': (lambda rows: rows[0].update(surviving_quotes='lowered VPS35'),
-                                             'In issue 1 (i01), surviving_quotes is not a list of quotes'),
             'evidence_lines as a string': (lambda rows: rows[0]['members'][0].update(evidence_lines='3'),
                                            'In issue 1 (i01) member 1, evidence_lines is not a list of line numbers'),
         }
@@ -563,7 +547,7 @@ class RunReviewTests(unittest.TestCase):
     def test_every_value_of_the_wrong_type_is_counted_and_the_first_few_named(self):
         rows = json.loads(json.dumps(ISSUES))
         for row in rows:
-            row.update(name=5, statement=6, severity=['major'], rank='1', audits='x', surviving_quotes='y')
+            row.update(name=5, statement=6, severity=['major'], rank='1', audits='x', raised_by='y')
         self.write_issues(rows)
         with self.assertRaises(RunError) as raised:
             run_review(self.review, self.base)

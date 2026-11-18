@@ -36,7 +36,7 @@ assert.ok(html('#handoff-ledger').includes('&lt;script&gt;value&lt;/script&gt;')
 assert.ok(!html('#handoff-ledger').includes('<script>'));
 
 // A PeerReviewAgents run shows one card per issue, as run_view.py hands it over: the required
-// changes, the suggestions under their categories, then the prior round's closed issues.
+// changes, then the suggestions under their categories.
 vm.runInContext(`
 paper = {id: 'p', main: 'paper.md', documents: {'paper.md': ['alpha beta gamma']}, assets: [],
   pieces: [{document:'paper.md', lines:[1, 1], kind:'paragraph', section:'Results'}]};
@@ -45,13 +45,16 @@ const member = (uid, extra) => ({finding_uid:uid, slot:'core-1', track:'core', s
   evidence_lines:[1], comment:'Comment '+uid, start:0, end:5, placement:'anchored', ...extra});
 const issue = (id, rank, group, extra) => ({id, source_id:id, number:rank, rank, group, name:'Issue '+id,
   title:'Issue '+id, statement:'Statement '+id, comment:'Statement '+id, severity:'major',
-  category:'statistics-and-inference', status:'new', status_reason:null, prior_id:null, prior_rank:null, raised_by:1,
-  members:[], audits:[], surviving_quotes:[], rebuttal_quote:null, rebuttal_line:null, rebuttal_document:'paper.md',
-  text_unchanged_reason:null, kind:'issue', escalate:false, evidence:[{document:'paper.md', line:1}],
+  category:'statistics-and-inference', raised_by:1,
+  members:[], audits:[], rebuttal_quote:null, rebuttal_line:null, rebuttal_document:'paper.md',
+  kind:'issue', escalate:false, evidence:[{document:'paper.md', line:1}],
   document:'paper.md', line:1, end_line:1, quote:'alpha', start:0, end:5, placement:'anchored', replacement:null, ...extra});
+// Every review is a fresh panel. The fields i01 carries about an earlier round are read by nothing.
 review = {id:'run', summary:'Editor summary', raw_response:undefined, findings:[
   issue('i01', 1, 'required', {raised_by:2, escalate:true, status:'persisting', status_reason:'Still <b>wrong</b>',
-    prior_id:'i01', prior_rank:2, audits:['audit_stats.md'], rebuttal_quote:'gamma', rebuttal_line:1,
+    prior_id:'i01', prior_rank:2, text_unchanged_reason:'Same <b>text</b>',
+    surviving_quotes:[{finding_uid:'old', document:'paper.md', line:1, quote:'beta gamma'}],
+    audits:['audit_stats.md'], rebuttal_quote:'gamma', rebuttal_line:1,
     evidence:[{document:'paper.md', line:1}, {document:'S1.md', line:2}], members:[
       member('u1', {track:'field', basis_reason:'No arithmetic receipt.', escalate:true,
                     source_urls:['https://example.org/a', 'javascript:alert(1)']}),
@@ -63,17 +66,11 @@ review = {id:'run', summary:'Editor summary', raw_response:undefined, findings:[
     end:null, members:[member('u4', {severity:'minor', placement:'unplaced', start:null, end:null, slot:'spec-code',
       track:'code', basis:'code-checked', code_evidence:{path:'analysis/<fdr>.py', start_line:2, end_line:3,
         text:'if q < 0.05:\\n    keep(<row>)', sha256:'fcc34629203ab7066790d8b5d78f005de4b936ea6c4fb30bb4147642ffba90df'}})]}),
-  issue('i04', null, 'closed', {status:'unverified', status_reason:'No editor ruled on it.', prior_id:'i04',
-    prior_rank:4, raised_by:0, document:null, line:null, end_line:null, quote:null, start:null, end:null,
-    placement:'unplaced', evidence:[],
-    surviving_quotes:[{finding_uid:'old', document:'paper.md', line:1, quote:'beta gamma'}]}),
 ], run:{arm:'full-two-track', reviewer_count:3, status:'complete', escalated_count:1, review_guard_status:'clean',
   cause:null, note:'the review was written and the run was marked blocked afterwards: rate limit',
   problems:['runtime.json is not valid JSON <x>'], publishable:false,
   not_publishable_reasons:['1 file(s) could not be read in full, and they are named in problems'],
   findings_source:'issues', issues_source:'editor',
-  prior_round:{file:'issues.json', digest:'0123456789abcdef', issues:2,
-               tally:{new:2, persisting:1, regressed:0, resolved:0, unverified:1}},
   missing_stages:[], none_found:[], limitations:['Advisory only.'],
   verdict:{significance:'High if true', strength_of_evidence:'Weak', reasoning:'Correlation only', basis:'judgement', limitation:'Not a score.'},
   escalation_rulings:[{finding_uid:'u1', ruling:'Accepted as central.'}],
@@ -96,28 +93,31 @@ const panel = html('#run-panel');
 assert.equal(elements.get('#run-panel').hidden, false);
 for (const name of ['required', 'suggestions', 'escalated']) assert.equal(elements.get('#filter-' + name).hidden, false, name);
 for (const name of ['scientific', 'copyedit', 'questions']) assert.equal(elements.get('#filter-' + name).hidden, true, name);
-assert.equal(elements.get('#finding-count').textContent, '1 required · 2 suggestions · 1 from the prior round');
+assert.equal(elements.get('#finding-count').textContent, '1 required · 2 suggestions');
 // A run that is not publishable says so above its comments, with every reason, and only there.
 assert.ok(comments.startsWith('<div class="not-publishable error" role="note"><p><strong>This run is not publishable.</strong>'));
 assert.ok(comments.includes('<li>1 file(s) could not be read in full, and they are named in problems</li>'));
 assert.ok(!html('#run-panel').includes('could not be read in full'));
-// Required changes come first in rank order, then the suggestions under their categories, then the closed issues.
+// Required changes come first in rank order, then the suggestions under their categories.
 const order = ['Required changes (1)', 'id="note-i01"', 'Suggestions (2)', '<h4 class="issue-category">Presentation</h4>',
-               'id="note-i02"', '<h4 class="issue-category">Reproducibility</h4>', 'id="note-i03"', 'id="closed-issues"',
-               'Prior round: resolved and unverified (1)', 'id="note-i04"'];
+               'id="note-i02"', '<h4 class="issue-category">Reproducibility</h4>', 'id="note-i03"'];
 order.forEach((text, index) => {
   assert.ok(comments.includes(text), text);
   if (index) assert.ok(comments.indexOf(text) > comments.indexOf(order[index - 1]), text);
 });
-assert.ok(comments.includes('<details class="closed-issues" id="closed-issues">'));
+// Nothing in the review or the run panel speaks of an earlier round.
+for (const text of ['prior round', 'Prior round', 'closed-issues', 'class="badge status', 'persisting', 'Still &lt;b&gt;wrong',
+                    'Same &lt;b&gt;text', 'beta gamma']) {
+  assert.ok(!comments.includes(text) && !panel.includes(text), text);
+}
 // Nothing of the per-finding viewer is left: no appendix and no fallback for a server without revisions.
 const sources = code + fs.readFileSync('paper_workspace/web/style.css', 'utf8') + fs.readFileSync('paper_workspace/web/index.html', 'utf8');
 for (const text of ['appendix', 'legacyServer']) assert.ok(!sources.includes(text), text);
 const cardOf = id => comments.slice(comments.indexOf(`id="note-${id}"`)).split('</article>')[0];
-// Each card shows the issue, its status against the prior round, how many reviewers raised it and its members as evidence.
-for (const text of ['Major · Statistics and inference', 'Issue i01</span>', 'title="Persisting from the prior round">persisting</span>',
+// Each card shows the issue, how many reviewers raised it and its members as evidence.
+for (const text of ['Major · Statistics and inference', 'Issue i01</span>',
                     'Raised by 2 reviewers', 'Escalated', '<h3>1. Issue i01</h3>', 'Statement i01',
-                    'Still &lt;b&gt;wrong&lt;/b&gt;', 'Rank in the prior round: 2', 'Specialist reports: audit_stats.md',
+                    'Specialist reports: audit_stats.md',
                     'Evidence: 2 findings', 'core-1 · field track · issue · major', 'core-2 · core track · issue · major',
                     'Basis: judgement', 'title="No arithmetic receipt."', 'Basis: two-quotes', 'Comment u1', 'Comment u2',
                     '<blockquote>alpha beta</blockquote>', 'Counterevidence checked', 'Escalation ruling',
@@ -147,20 +147,11 @@ for (const text of ['spec-code · code track', 'Basis: code-checked',
 }
 assert.ok(!cardOf('i03').includes('<fdr>'));
 // A finding with no code_evidence shows no code block.
-for (const id of ['i01', 'i02', 'i04']) assert.ok(!cardOf(id).includes('Code checked'), id);
+for (const id of ['i01', 'i02']) assert.ok(!cardOf(id).includes('Code checked'), id);
 assert.equal(vm.runInContext("codeEvidence({code_evidence:{path:'a.py', start_line:4, end_line:4, text:'x = 1'}})", context),
   '<div class="cross-check code-evidence"><p><strong>Code checked</strong><br><code>a.py</code>, line 4 of the run\'s code snapshot</p><pre>x = 1</pre></div>');
 assert.equal(vm.runInContext("codeEvidence({code_evidence:{path:'a.py', start_line:'4', end_line:4}})", context), '');
-// A closed issue has no members and no rank, and shows the evidence that still stands.
-for (const text of ['title="Unverified: not raised again and not shown fixed">unverified</span>', '<h3>Issue i04</h3>',
-                    'No editor ruled on it.', 'Rank in the prior round: 4', "The prior round's evidence still in the manuscript",
-                    '<blockquote>beta gamma</blockquote><p><a href="#line-paper.2emd-1">Go to passage</a></p>']) {
-  assert.ok(cardOf('i04').includes(text), text);
-}
-assert.ok(!cardOf('i04').includes('Raised by'));
-assert.ok(!cardOf('i04').includes('Evidence:'));
 for (const text of ['Arm full-two-track', '3 reviewers', 'Status complete', 'Issues grouped by the editor',
-                    'Prior round issues.json: 2 issues carried, this round 2 new · 1 persisting · 0 regressed · 0 resolved · 1 unverified',
                     '1 escalated', 'Guard clean', '10 min',
                     "Editor's verdict", 'High if true', 'Basis: judgement. Not a score.', 'Specialist reports (1)',
                     '# Stats audit &lt;script&gt;x&lt;/script&gt;',
@@ -214,7 +205,7 @@ vm.runInContext(`review.run.code_check = {cap:20, checked:2, over_cap:1, counts:
 const withThrown = html('#comments');
 const thrown = withThrown.slice(withThrown.indexOf('<details class="thrown-out"'));
 assert.ok(withThrown.includes('<details class="thrown-out" id="thrown-out" open><summary>Thrown out: the code does not do what the finding said (1)</summary>'));
-assert.ok(withThrown.indexOf('<details class="thrown-out"') > withThrown.indexOf('id="note-i04"'));
+assert.ok(withThrown.indexOf('<details class="thrown-out"') > withThrown.indexOf('id="note-i03"'));
 for (const text of ['spec-numbers · numbers track · major',
                     '<p class="thrown-out-mark" role="note">Thrown out by the code check. This is not an open issue: the code does not do what this finding said.</p>',
                     '<h4>The mean &lt;hides&gt; the spread</h4>', '<blockquote>alpha</blockquote>', '<a href="#line-paper.2emd-1">Go to passage</a>',
@@ -225,7 +216,7 @@ for (const text of ['spec-numbers · numbers track · major',
 }
 for (const text of ['<article', 'data-action', 'Accept wording', 'Author comment', '<hides>']) assert.ok(!thrown.includes(text), text);
 assert.ok(!withThrown.includes('id="note-u9"'));
-assert.equal(elements.get('#finding-count').textContent, '1 required · 2 suggestions · 1 from the prior round · 1 thrown out by the code check');
+assert.equal(elements.get('#finding-count').textContent, '1 required · 2 suggestions · 1 thrown out by the code check');
 assert.ok(html('#run-panel').includes('<p class="count">Code check: 2 checked, 1 confirmed, 1 thrown out, 0 not shown in the code, 1 over its cap of 20 left unchecked</p>'));
 // A filter shows only issues, so the thrown-out findings leave the view with it.
 vm.runInContext("filter = 'required'; cards();", context);
@@ -348,9 +339,9 @@ const shown = name => vm.runInContext(`filter = '${name}'; cards(); review.findi
 assert.equal(shown('required'), 'i01');
 assert.equal(shown('suggestions'), 'i02 i03');
 assert.equal(shown('escalated'), 'i01');
-assert.equal(shown('all'), 'i01 i02 i03 i04');
+assert.equal(shown('all'), 'i01 i02 i03');
 // A workspace filter does not survive onto a run, and a run filter does not survive onto a workspace review.
-assert.equal(shown('questions'), 'i01 i02 i03 i04');
+assert.equal(shown('questions'), 'i01 i02 i03');
 assert.equal(vm.runInContext('filter', context), 'all');
 vm.runInContext("filter = 'escalated'; review = {id:'workspace', findings:[]}; cards();", context);
 assert.equal(vm.runInContext('filter', context), 'all');
@@ -361,7 +352,7 @@ for (const name of ['scientific', 'copyedit', 'questions']) assert.equal(element
 // A run that is not publishable and has nothing to show says why, not that the review is empty.
 vm.runInContext(`review = {id:'run', summary:'', findings:[], run:{status:'complete', problems:[], publishable:false,
   not_publishable_reasons:['the run folder has no readable issues.json'], findings_source:'none', issues_source:null,
-  prior_round:null, missing_stages:[], agents:[], limitations:[]}}; cards();`, context);
+  missing_stages:[], agents:[], limitations:[]}}; cards();`, context);
 assert.equal(html('#comments'), '<div class="not-publishable error" role="note"><p><strong>This run is not publishable.</strong> '
   + 'It has no review to show.</p><ul><li>the run folder has no readable issues.json</li></ul></div>');
 assert.equal(elements.get('#finding-count').textContent, 'No findings');
@@ -369,8 +360,8 @@ assert.equal(elements.get('#finding-count').textContent, 'No findings');
 // A run with no issues shows its recorded findings under their own heading.
 vm.runInContext(`review.run.findings_source = 'ledger';
 review.findings = [{id:'aa11', source_id:'aa11', number:1, group:'ledger', title:'Recorded finding', comment:'Comment',
-  severity:'major', category:null, status:null, raised_by:1, kind:'issue', document:'paper.md', line:1, end_line:1,
-  quote:'beta', start:6, end:10, placement:'anchored', evidence:[], audits:[], surviving_quotes:[],
+  severity:'major', category:null, raised_by:1, kind:'issue', document:'paper.md', line:1, end_line:1,
+  quote:'beta', start:6, end:10, placement:'anchored', evidence:[], audits:[],
   members:[{finding_uid:'aa11', slot:'core-1', title:'Recorded finding', comment:'Comment', quote:'beta',
             document:'paper.md', line:1, end_line:1, start:6, end:10, placement:'anchored', evidence_lines:[]}]}];
 cards();`, context);
@@ -383,9 +374,9 @@ assert.equal(html('#comments').split('Recorded finding').length - 1, 1);
 // A card with no engine id is numbered by its place and takes no decision. A decision saved
 // under its number is neither shown nor applied, and it is counted with the other stale ones.
 vm.runInContext(`review.findings = [{id:'run-1', source_id:'not a uid', number:1, group:'ledger', decidable:false,
-  title:'Recorded edit', comment:'Comment', severity:'minor', category:null, status:null, raised_by:1, kind:'edit',
+  title:'Recorded edit', comment:'Comment', severity:'minor', category:null, raised_by:1, kind:'edit',
   replacement:'delta', document:'paper.md', line:1, end_line:1, quote:'gamma', start:11, end:16, placement:'anchored',
-  evidence:[], audits:[], surviving_quotes:[], members:[{finding_uid:'not a uid', slot:'core-1', title:'Recorded edit',
+  evidence:[], audits:[], members:[{finding_uid:'not a uid', slot:'core-1', title:'Recorded edit',
   comment:'Comment', kind:'edit', replacement:'delta', quote:'gamma', document:'paper.md', line:1, end_line:1, start:11,
   end:16, placement:'anchored', evidence_lines:[]}]}];
 decisions = {items:{'run-1':'accepted'}, annotations:{'run-1':{author_comment:'Saved on another card', issue_status:'open', rationale:''}}};
@@ -401,7 +392,7 @@ assert.ok(placed.startsWith('<p class="stale-decisions muted" role="note">1 save
 // holds, are counted once above the cards. A file with none says nothing.
 vm.runInContext(`review = {id:'run', summary:'', findings:[issue('i05', 1, 'required', {raised_by:2, members:[
   member('u5', {}), member('u6', {slot:'core-2'})]})], run:{status:'complete', problems:[], publishable:true,
-  not_publishable_reasons:[], findings_source:'issues', issues_source:'editor', prior_round:null, missing_stages:[],
+  not_publishable_reasons:[], findings_source:'issues', issues_source:'editor', missing_stages:[],
   agents:[], limitations:[]}};
 decisions = {items:{'f-0001':'noted', i05:'noted', i09:'noted'}, annotations:{'f-0001':{author_comment:'Old'}, 'f-0002':{author_comment:'Old'}}};
 cards();`, context);

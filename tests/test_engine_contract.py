@@ -58,13 +58,6 @@ class AppCommandTest(unittest.TestCase):
         # The reader always runs on a PDF review, so there is no switch to turn it off.
         self.assertNotIn('--no-ai-read', output.getvalue())
 
-    def test_review_help_lists_the_prior_issues_option(self):
-        # A second round passes the first round's issues.json, so its issue ids carry over.
-        output = io.StringIO()
-        with contextlib.redirect_stdout(output), self.assertRaises(SystemExit):
-            main(['review', '-h'])
-        self.assertIn('--prior-issues PATH', output.getvalue())
-
 
 class EngineCommandTest(unittest.TestCase):
     def setUp(self):
