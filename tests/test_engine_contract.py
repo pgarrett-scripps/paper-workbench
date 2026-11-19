@@ -282,8 +282,8 @@ class EngineOutputContractTest(unittest.TestCase):
 
 class PublicSurfaceTest(unittest.TestCase):
     PRIVATE = ('engine', 'plugin', 'cli', 'runs')
-    # The engine has no public way to build a run folder without a model. test_engine_rounds.py builds two
-    # rounds through the engine's own server, as the engine's tests do. It has no public ledger writer
+    # test_engine_rounds.py builds its rounds with scripted_review, which does not claim the code check's
+    # slot, so that one slot acts through the engine's own server. The engine has no public ledger writer
     # either, so the fixture generator imports its ledger module. No test runs the generator.
     ALLOWED = ['tests/fixtures/citations/generate.py: ' + 'peerreviewagents.' + 'engine',
                'tests/test_engine_rounds.py: ' + 'peerreviewagents.' + 'plugin']

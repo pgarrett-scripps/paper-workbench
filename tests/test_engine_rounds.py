@@ -1,23 +1,25 @@
-"""Two review rounds built by the engine's own code, read by the viewer.
+"""Two review rounds built by the engine's scripted review, read by the viewer.
 
-The engine has no public way to build a run folder without a model. Its own
-tests submit the findings through its server as the reviewer slots would and
-do the grouping in Python, so no model is started and nothing reaches the
-network. This file builds two rounds that way, each a fresh panel on its own
-draft that knows nothing of the other, and a third run given analysis
-code whose code lane fetches two data files and files one code-checked finding,
-and whose code check throws out the numbers lane's finding, and drives the
-viewer from them, so the hand-written fixture in test_run_view.py is checked
-against what the engine writes. Two more runs on that code have the code lane
-find nothing, so the one finding is thrown out, and stop before the review is
-written. The third run's code is what a workspace review hands over
-for a Paper Scaffold workspace, so the snapshot of it shows what the engine
-takes from one and what it leaves out. Round one and the third run are written
-inside that workspace, as ``paper-workbench review . reviews/NAME`` writes them,
-so the snapshot also shows that no run's files are copied in as code.
-test_ledger_import.py builds its runs here too, as only this file reaches the
-engine's server: rounds of a draft's PDF, an author's draft check with no
-editor, and a review the engine opened and no reviewer took up.
+``scripted_review`` opens a real review on a sealed manuscript with every slot
+the arm plans claimed, and this file acts as each slot in turn through that
+slot's own tools, so no model is started and nothing reaches the network. This
+file builds two rounds that way, each a fresh panel on its own draft that knows
+nothing of the other, and a third run given analysis code whose code lane
+fetches two data files and files one code-checked finding, and whose code check
+throws out the numbers lane's finding, and drives the viewer from them, so the
+hand-written fixture in test_run_view.py is checked against what the engine
+writes. Two more runs on that code have the code lane find nothing, so the one
+finding is thrown out, and stop before the review is written. The code check is
+the one slot ``scripted_review`` does not claim, so it alone acts through the
+engine's server, which is the one private import here. The third run's code is
+what a workspace review hands over for a Paper Scaffold workspace, so the
+snapshot of it shows what the engine takes from one and what it leaves out.
+Round one and the third run are written inside that workspace, as
+``paper-workbench review . reviews/NAME`` writes them, so the snapshot also
+shows that no run's files are copied in as code. test_ledger_import.py builds
+its runs here too: rounds of a draft's PDF, an author's draft check with no
+editor, and a review the engine opened and that stopped before any slot
+reported.
 """
 import http.client
 import json
@@ -29,7 +31,8 @@ from contextlib import contextmanager
 from pathlib import Path
 from unittest import mock
 
-from peerreviewagents import read_manuscript, read_run
+from peerreviewagents import ReviewRefused, read_manuscript, read_run, scripted_review
+# The code check's slot alone, which scripted_review does not claim.
 from peerreviewagents.plugin import server as engine
 from peerreviewagents.workspace import digest
 
@@ -56,16 +59,10 @@ CREDENTIALS = ('ANTHROPIC_API_KEY', 'ANTHROPIC_AUTH_TOKEN', 'OPENAI_API_KEY')
 
 @contextmanager
 def offline():
-    """The engine's server with no credentials in the environment and no plugin folder, restored after."""
+    """No credentials in the environment while a round is built, restored after."""
     environment = {key: value for key, value in os.environ.items() if key not in CREDENTIALS}
     with mock.patch.dict(os.environ, environment, clear=True):
-        plugin_root = engine.STATE.get('plugin_root')
-        engine.STATE['plugin_root'] = None
-        try:
-            yield
-        finally:
-            engine.STATE['run'] = None
-            engine.STATE['plugin_root'] = plugin_root
+        yield
 
 
 def grouped(name, rank, members, **extra):
@@ -73,42 +70,41 @@ def grouped(name, rank, members, **extra):
             'members': members, 'statement': f'{name} is stated more strongly than the data carry.', **extra}
 
 
+def models(review):
+    """The model the engine planned for each slot, which the slot's report names as the one it ran on."""
+    return {row['slot']: row['model'] for row in review.opened['models']}
+
+
+def refused(tool, *arguments, **named):
+    """Whether the engine refuses one call of a scripted review's ``tool``."""
+    try:
+        tool(*arguments, **named)
+    except ReviewRefused:
+        return True
+    return False
+
+
 def one_round(root, texts, source, quotes, issues):
     """One reviewers-only round: core-1 raises a finding per quote, core-2 finds none, the editor groups them."""
-    engine.STATE['run'] = None
     manuscripts.build(root / 'manuscript', texts, source_sha256=digest(source))
-    opened = engine.ingest(str(root / 'manuscript.pdf'), str(root), arm='reviewers-only', reviewers=2)
-    assert 'request_rejected' not in opened, opened
-    codes = {row['slot']: row['claim_code'] for row in opened['claim_codes']}
-    # The manuscript is sealed before ingest, so the engine plans no Read stage.
-    assert opened['reader'] is None and 'reader' not in codes, opened
-    run = engine.current()
-
-    def token(slot):
-        return engine.claim_agent(slot, codes.pop(slot))['agent_token']
-
-    core = token('core-1')
-    # The engine refuses findings and issues from a slot it has not served the whole manuscript.
-    engine.read_paper(core)
-    uids = []
-    for quote in quotes:
-        stored = engine.submit_finding(core, title='Claim', quote=quote,
-                                       comment='The sentence asserts more than it shows.', severity='major')
-        assert stored.get('stored'), stored
-        uids.append(stored['finding_uid'])
-    assert engine.submit_report(core, 'Checked.', model=run.models.get('core-1'))['closed']
-    other = token('core-2')
-    assert engine.submit_report(other, 'Nothing.', none_found=True, model=run.models.get('core-2'))['closed']
-    editor = token('editor')
-    engine.read_paper(editor)
-    stored = engine.submit_issues(editor, issues(uids))
-    assert 'request_rejected' not in stored, stored
-    answer = engine.submit_editor(editor, summary='One question of scope.', significance='Modest.',
-                                  strength_of_evidence='Weak.', verdict_reasoning='The scope is overstated.')
-    assert answer.get('accepted'), answer
-    assert engine.submit_report(editor, 'Grouped.', model=run.models.get('editor'))['closed']
-    engine.write_review(token('recorder'))
-    engine.STATE['run'] = None
+    with scripted_review(root / 'manuscript.pdf', root, arm='reviewers-only', reviewers=2) as review:
+        # The manuscript is sealed before ingest, so the engine plans no Read stage.
+        assert review.opened['reader'] is None and 'reader' not in review.slots, review.opened
+        model = models(review)
+        uids = []
+        for quote in quotes:
+            stored = review.submit_finding(slot='core-1', title='Claim', quote=quote,
+                                           comment='The sentence asserts more than it shows.', severity='major')
+            assert stored.get('stored'), stored
+            uids.append(stored['finding_uid'])
+        assert review.submit_report('Checked.', slot='core-1', model=model['core-1'])['closed']
+        assert review.submit_report('Nothing.', slot='core-2', none_found=True, model=model['core-2'])['closed']
+        review.submit_issues(issues(uids))
+        answer = review.submit_editor(summary='One question of scope.', significance='Modest.',
+                                      strength_of_evidence='Weak.', verdict_reasoning='The scope is overstated.')
+        assert answer.get('accepted'), answer
+        assert review.submit_report('Grouped.', slot='editor', model=model['editor'])['closed']
+        review.write()
 
 
 def code_round(root, code, lane_finds=True, written=True):
@@ -123,60 +119,51 @@ def code_round(root, code, lane_finds=True, written=True):
     run stops before the recorder writes the review. The manuscript is sealed
     before ingest, so the engine plans no reader.
     """
-    engine.STATE['run'] = None
     (code / 'analysis').mkdir(parents=True, exist_ok=True)
     (code / CODE_EVIDENCE['path']).write_text(PIPELINE)
     (code / SUMMARY_EVIDENCE['path']).write_text(SUMMARY)
     (code / 'analysis' / 'scores.csv').write_text(SCORES)
     manuscripts.build(root / 'manuscript', CODE_TEXTS, source_sha256=digest('source-code'))
-    opened = engine.ingest(str(root / 'manuscript.pdf'), str(root), arm='draft-check', reviewers=0,
-                           tracks=['numbers'], code=str(code))
-    assert 'request_rejected' not in opened, opened
-    codes = {row['slot']: row['claim_code'] for row in opened['claim_codes']}
-    assert opened['reader'] is None and 'reader' not in codes, opened
-    run = engine.current()
-
-    def token(slot, paper=True):
-        agent = engine.claim_agent(slot, codes.pop(slot))['agent_token']
-        if paper:
-            engine.read_paper(agent)
-        return agent
-
-    lane = token('spec-code')
-    assert 'request_rejected' not in engine.read_code(lane, CODE_EVIDENCE['path'])
-    whole = engine.read_code(lane, SUMMARY_EVIDENCE['path'])
-    assert (whole.get('data'), whole.get('partial')) == (True, False), whole
-    part = engine.read_code(lane, 'analysis/scores.csv')
-    assert (part.get('data'), part.get('partial')) == (True, True), part
-    assert 'request_rejected' in engine.read_code(lane, 'paper.pdf')
-    if lane_finds:
-        stored = engine.submit_finding(lane, title='The threshold in the methods is not the one in the code',
-                                       quote='a false discovery rate of one percent', severity='major',
-                                       comment='The methods say one percent and the pipeline filters at five.',
-                                       code_path=CODE_EVIDENCE['path'], code_start_line=CODE_EVIDENCE['start_line'],
-                                       code_end_line=CODE_EVIDENCE['end_line'], code_quote=CODE_EVIDENCE['text'])
+    with scripted_review(root / 'manuscript.pdf', root, arm='draft-check', reviewers=0, tracks=['numbers'],
+                         code=str(code)) as review:
+        assert review.opened['reader'] is None and 'reader' not in review.slots, review.opened
+        model = models(review)
+        review.read_code(CODE_EVIDENCE['path'])
+        whole = review.read_code(SUMMARY_EVIDENCE['path'])
+        assert (whole.get('data'), whole.get('partial')) == (True, False), whole
+        part = review.read_code('analysis/scores.csv')
+        assert (part.get('data'), part.get('partial')) == (True, True), part
+        assert refused(review.read_code, 'paper.pdf')
+        if lane_finds:
+            stored = review.submit_finding(
+                slot='spec-code', title='The threshold in the methods is not the one in the code',
+                quote='a false discovery rate of one percent', severity='major',
+                comment='The methods say one percent and the pipeline filters at five.',
+                code_path=CODE_EVIDENCE['path'], code_start_line=CODE_EVIDENCE['start_line'],
+                code_end_line=CODE_EVIDENCE['end_line'], code_quote=CODE_EVIDENCE['text'])
+            assert stored.get('stored'), stored
+            assert review.submit_report('Checked.', slot='spec-code', model=model['spec-code'])['closed']
+        else:
+            assert review.submit_report('Nothing.', slot='spec-code', none_found=True,
+                                        model=model['spec-code'])['closed']
+        stored = review.submit_finding(slot='spec-numbers', severity='major', **MEAN)
         assert stored.get('stored'), stored
-        assert engine.submit_report(lane, 'Checked.', model=run.models.get('spec-code'))['closed']
-    else:
-        assert engine.submit_report(lane, 'Nothing.', none_found=True, model=run.models.get('spec-code'))['closed']
-    numbers = token('spec-numbers')
-    stored = engine.submit_finding(numbers, severity='major', **MEAN)
-    assert stored.get('stored'), stored
-    assert engine.submit_report(numbers, 'One.', model=run.models.get('spec-numbers'))['closed']
-    # The code check reads no paper. It is handed the findings that rest on a method and reads the code.
-    check = token('code-check', paper=False)
-    claims = engine.method_claims(check)
-    assert [row['finding_uid'] for row in claims['claims']] == [stored['finding_uid']], claims
-    verdict = engine.submit_code_check(check, stored['finding_uid'], 'contradicted',
-                                       code_path=SUMMARY_EVIDENCE['path'],
-                                       code_start_line=SUMMARY_EVIDENCE['start_line'],
-                                       code_end_line=SUMMARY_EVIDENCE['end_line'],
-                                       code_quote=SUMMARY_EVIDENCE['text'], note=THROWN_OUT_NOTE)
-    assert 'request_rejected' not in verdict, verdict
-    assert engine.submit_report(check, 'Checked one.', model=run.models.get('code-check'))['closed']
-    if written:
-        engine.write_review(engine.claim_agent('recorder', codes.pop('recorder'))['agent_token'])
-    engine.STATE['run'] = None
+        assert review.submit_report('One.', slot='spec-numbers', model=model['spec-numbers'])['closed']
+        # The code check reads no paper. It is handed the findings that rest on a method and reads the code.
+        # scripted_review does not claim its slot, so it acts through the engine's server.
+        codes = {row['slot']: row['claim_code'] for row in review.opened['claim_codes']}
+        check = engine.claim_agent('code-check', codes['code-check'])['agent_token']
+        claims = engine.method_claims(check)
+        assert [row['finding_uid'] for row in claims['claims']] == [stored['finding_uid']], claims
+        verdict = engine.submit_code_check(check, stored['finding_uid'], 'contradicted',
+                                           code_path=SUMMARY_EVIDENCE['path'],
+                                           code_start_line=SUMMARY_EVIDENCE['start_line'],
+                                           code_end_line=SUMMARY_EVIDENCE['end_line'],
+                                           code_quote=SUMMARY_EVIDENCE['text'], note=THROWN_OUT_NOTE)
+        assert 'request_rejected' not in verdict, verdict
+        assert engine.submit_report(check, 'Checked one.', model=model['code-check'])['closed']
+        if written:
+            review.write()
 
 
 def check_round(root, texts, source, quote):
@@ -185,29 +172,19 @@ def check_round(root, texts, source, quote):
     The specialist files one finding on ``quote``. The arm runs no editor, so
     the server writes one issue for it and the run is not publishable.
     """
-    engine.STATE['run'] = None
     manuscripts.build(root / 'manuscript', texts, source_sha256=digest(source))
-    opened = engine.ingest(str(root / 'manuscript.pdf'), str(root), arm='draft-check', reviewers=0, tracks=['numbers'])
-    assert 'request_rejected' not in opened, opened
-    codes = {row['slot']: row['claim_code'] for row in opened['claim_codes']}
-    run = engine.current()
-    numbers = engine.claim_agent('spec-numbers', codes.pop('spec-numbers'))['agent_token']
-    engine.read_paper(numbers)
-    stored = engine.submit_finding(numbers, title=MEAN['title'], quote=quote, comment=MEAN['comment'],
-                                   severity='major')
-    assert stored.get('stored'), stored
-    assert engine.submit_report(numbers, 'One.', model=run.models.get('spec-numbers'))['closed']
-    engine.write_review(engine.claim_agent('recorder', codes.pop('recorder'))['agent_token'])
-    engine.STATE['run'] = None
+    with scripted_review(root / 'manuscript.pdf', root, arm='draft-check', reviewers=0, tracks=['numbers']) as review:
+        stored = review.submit_finding(slot='spec-numbers', title=MEAN['title'], quote=quote, comment=MEAN['comment'],
+                                       severity='major')
+        assert stored.get('stored'), stored
+        assert review.submit_report('One.', slot='spec-numbers', model=models(review)['spec-numbers'])['closed']
+        review.write()
 
 
 def opened_round(root, texts, source):
-    """A reviewers-only review of ``texts`` the engine opened and no reviewer took up, as a run stopped early leaves it."""
-    engine.STATE['run'] = None
+    """A reviewers-only review of ``texts`` that stopped before any slot reported, as a run stopped early leaves it."""
     manuscripts.build(root / 'manuscript', texts, source_sha256=digest(source))
-    opened = engine.ingest(str(root / 'manuscript.pdf'), str(root), arm='reviewers-only', reviewers=2)
-    assert 'request_rejected' not in opened, opened
-    engine.STATE['run'] = None
+    scripted_review(root / 'manuscript.pdf', root, arm='reviewers-only', reviewers=2).close()
 
 
 @contextmanager
