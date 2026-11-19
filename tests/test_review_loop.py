@@ -4,10 +4,10 @@ The original is imported from a built Paper Scaffold project and reviewed.
 The author decides on each problem, edits the project's source and makes
 draft-2 with ``revise``, whose PDF the fix check reads. The problem the check
 found not fixed is decided again on draft-2, the source is edited once more,
-and ``revise`` makes draft-3. The review is written by the engine's own code
-through the builders in test_engine_rounds.py, as the engine has no scripted
-finished review, and the fix check by ``peerreviewagents.scripted_fix_check``,
-with no model run. typst is the stand-in of test_fix_check.py.
+and ``revise`` makes draft-3. The review is written by
+``peerreviewagents.scripted_review`` through the builders in
+test_engine_rounds.py, and the fix check by
+``peerreviewagents.scripted_fix_check``, with no model run. typst is the stand-in of test_fix_check.py.
 """
 import contextlib
 import io
