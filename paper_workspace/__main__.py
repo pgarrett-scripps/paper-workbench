@@ -153,9 +153,9 @@ def dispatch(parser,args):
         from .scaffold_port import port_workspace
         print(port_workspace(args.workspace,args.output)['statistics'])
     elif args.command=='import-scaffold':
-        from .workspace_review import import_project
+        from .workspace_review import import_project, imported_line
         manifest,note=import_project(args.source,args.output,args.title)
-        print(manifest['statistics'])
+        print(f'paper-workbench import-scaffold: {imported_line(manifest,args.output,note)}')
         if note:
             print(f'paper-workbench import-scaffold: {note}',file=sys.stderr)
     elif args.command=='import-run':

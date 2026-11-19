@@ -199,6 +199,19 @@ def import_project(source, output, title=None):
     return import_scaffold(source, output, title, prepare=carry), None
 
 
+def imported_line(manifest, output, note):
+    """One line saying what :func:`import_project` wrote: the paper, where, its size, and whether it kept the PDF.
+
+    *note* is the line :func:`import_project` returned, ``None`` when the
+    original draft kept the project's built PDF.
+    """
+    stats = manifest['statistics']
+    pdf = 'no PDF' if note else "its built PDF as the original draft's"
+    return (f'imported "{manifest["title"]}" as paper {manifest["paper_id"]} into '
+            f'{Path(output).expanduser().resolve()}: {stats["pieces"]} pieces, {stats["total_words"]:,} words and '
+            f'{stats["reference_entries"]} references, with {pdf}.')
+
+
 def code_arms():
     """The arms that review code, in name order, as the engine's ``review_arms`` says."""
     return [name for name, arm in review_arms().items() if arm['code']]

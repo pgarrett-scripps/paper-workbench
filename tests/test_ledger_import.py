@@ -357,6 +357,13 @@ class ImportProjectTest(unittest.TestCase):
         root = self.temp / 'workspace'
         status, out, errors, _ = command('import-scaffold', str(project), str(root))
         self.assertEqual((status, errors), (0, ''))
+        manifest = json.loads((root / 'manifest.json').read_text())
+        stats = manifest['statistics']
+        self.assertGreater(stats['pieces'], 0)
+        self.assertEqual(out, f'paper-workbench import-scaffold: imported "{manifest["title"]}" as paper '
+                              f'{manifest["paper_id"]} into {root}: {stats["pieces"]} pieces, '
+                              f'{stats["total_words"]:,} words and {stats["reference_entries"]} references, '
+                              "with its built PDF as the original draft's.\n")
         pdf = root / 'artifacts' / 'paper.pdf'
         self.assertEqual(pdf.read_bytes(), (project / 'paper.pdf').read_bytes())
         verify_workspace(root)
@@ -378,6 +385,8 @@ class ImportProjectTest(unittest.TestCase):
             root = self.temp / f'workspace-{label}'
             status, out, errors, _ = command('import-scaffold', str(project), str(root))
             self.assertEqual(status, 0, label)
+            self.assertTrue(out.startswith('paper-workbench import-scaffold: imported '), out)
+            self.assertTrue(out.endswith(' references, with no PDF.\n'), out)
             self.assertIn(reason, errors, label)
             self.assertTrue(errors.startswith('paper-workbench import-scaffold: '), errors)
             self.assertTrue(errors.endswith(' The original draft has no PDF, so it cannot be reviewed or checked. '
