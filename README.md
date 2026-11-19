@@ -10,15 +10,14 @@ Start with [the team handoff](HANDOFF.md) for the current architecture, setup an
 
 ## Install
 
-Requires Python 3.11 or newer. The app pins `peerreviewagents` 0.10.0, which is not on PyPI yet, and is tested against its main branch at commit 4bd27b6, which reads manuscripts by line, has a model read each page image before every PDF review, can check the paper against its analysis code, throws out a finding when the code does not do what it said, gives the problems a review raised and checks a new draft against them. Until it is published, install the engine from its main branch first, then this app:
+Requires Python 3.11 or newer. PeerReviewAgents 0.10.0 is not released yet, so the app pins the engine to its main branch at commit 4bd27b6, as GitHub's archive of that commit with the archive's hash. That engine reads manuscripts by line, has a model read each page image before every PDF review, can check the paper against its analysis code, throws out a finding when the code does not do what it said, gives the problems a review raised and checks a new draft against them. Installing the app installs that engine from GitHub, with no git needed:
 
 ```bash
-python -m pip install 'peerreviewagents @ git+https://github.com/pgarrett-scripps/PeerReviewAgents@main'
 python -m pip install -e '.[documents,test]'
 paper-workbench --help
 ```
 
-A PeerReviewAgents checkout works too, with `python -m pip install -e ../PeerReviewAgents` as the first command.
+To run the app against a PeerReviewAgents checkout instead, run `python -m pip install -e ../PeerReviewAgents` after the app, and again after each reinstall of the app, which puts the pinned engine back.
 
 Poppler is required for PDF import and page inspection. Word and PDF export can additionally require LibreOffice or Typst. Paper Scaffold integrations accept an explicit checkout path. Source verification and the viewer do not require those renderers.
 
@@ -94,7 +93,7 @@ paper-workbench revise my-workspace ../my-paper --id draft-3
 
 See [the engine contract](docs/shared-core.md) for what the app reads from a run.
 
-CI runs the viewer checks first, with Node only. It then installs this package with its test dependencies from PyPI, so the Python tests fail at the install step until PeerReviewAgents 0.10.0 is published there.
+CI runs the viewer checks first, with Node only. It then installs this package with its test dependencies, which brings the pinned engine commit from GitHub, and runs the Python tests with Poppler. No test runs typst. A test that builds a draft hands it a stand-in that writes the PDF.
 
 ## Validation status
 
