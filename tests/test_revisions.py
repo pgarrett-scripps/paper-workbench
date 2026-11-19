@@ -1,5 +1,4 @@
 """Revision safety and loop stopping behavior, without review inference."""
-import copy
 from pathlib import Path
 import tempfile
 import unittest
@@ -8,8 +7,10 @@ from unittest.mock import patch
 from peerreviewagents import verify_workspace
 from peerreviewagents.workspace import normalize_review, read_json
 
-from paper_workspace.revisions import (agent_request, automation_decisions, checkout, copyedit_proposals,
-    create_revision, head, run_loop, safety_reasons, snapshot)
+from manuscripts import line_of
+from paper_workspace.revisions import (apply_fix_checks, automation_decisions, checkout,
+    copyedit_proposals, create_revision, head, ledger_rows, open_problems, problem_id, problem_status, run_loop,
+    safety_reasons, snapshot)
 from paper_workspace.scaffold_import import import_scaffold
 
 FIXTURE = Path(__file__).parent / 'fixtures/scaffold-revision'
@@ -20,11 +21,20 @@ class Revisions(unittest.TestCase):
         self.temp = tempfile.TemporaryDirectory()
         self.addCleanup(self.temp.cleanup)
         self.root = Path(self.temp.name) / 'workspace'
-        self.paper = import_scaffold(FIXTURE, self.root)
+        import_scaffold(FIXTURE, self.root)
+        self.paper = verify_workspace(self.root)
 
     def proposals(self):
         review = normalize_review(self.paper, copyedit_proposals(self.paper), 'copyedit')
         return review, automation_decisions(self.paper, review)
+
+    def edit(self, text, quote, replacement, review_id):
+        """A review of one edit on the line that holds ``text``, and a decision accepting it."""
+        response = {'findings': [{'kind': 'edit', 'line': line_of(self.paper, text), 'quote': quote,
+                                  'replacement': replacement}]}
+        review = normalize_review(self.paper, response, review_id)
+        return review, {'paper_id': self.paper.paper_id, 'review_id': review['id'],
+                        'items': {f'{review_id}-1': 'accepted'}}
 
     def test_round_trip_preserves_original_and_all_unedited_files(self):
         before = (self.root / 'scaffold/paper.typ').read_bytes()
@@ -33,11 +43,17 @@ class Revisions(unittest.TestCase):
         self.assertEqual(len(metadata['applied_findings']), 2)
         self.assertEqual((self.root / 'scaffold/paper.typ').read_bytes(), before)
         draft, _ = snapshot(self.root, 'first')
-        self.assertIn('to assess', (draft / 'scaffold/paper.typ').read_text())
-        self.assertIn('were imaged', (draft / 'scaffold/paper.typ').read_text())
+        source = (draft / 'scaffold/paper.typ').read_text()
+        self.assertIn('to assess', source)
+        # The line folds the source's double space, and the edit leaves that space as the author wrote it.
+        self.assertIn('Seedlings were  imaged at 6 hours to track bending.', source)
         for name in ('config.typ', 'references.bib', 'results.typ'):
             self.assertEqual((draft / 'scaffold' / name).read_bytes(), (FIXTURE / name).read_bytes())
         self.assertIn('changes.patch', read_json(draft / 'manifest.json')['files'])
+        # The patch is the diff from the original's source, and names only the file the edits changed.
+        patch = (draft / 'changes.patch').read_text()
+        self.assertTrue(patch.startswith('--- before/paper.typ\n+++ after/paper.typ\n'), patch)
+        self.assertEqual(patch.count('\n--- '), 0)
         verify_workspace(self.root)
         verify_workspace(draft)
 
@@ -82,15 +98,154 @@ class Revisions(unittest.TestCase):
 
     def test_scientific_findings_survive_accepted_copyedits(self):
         response = copyedit_proposals(self.paper)
-        block = next(b for b in self.paper['blocks'] if 'protein activity' in b['text'])
-        response['findings'].append({'kind': 'question', 'category': 'scientific', 'block_id': block['id'],
-            'quote': 'protein activity', 'comment': 'Clarify mechanistic support.', 'evidence_blocks': [block['id']]})
+        line = line_of(self.paper, 'protein activity')
+        response['findings'].append({'kind': 'question', 'category': 'scientific', 'line': line,
+            'quote': 'protein activity', 'comment': 'Clarify mechanistic support.', 'evidence_lines': [line]})
         review = normalize_review(self.paper, response, 'mixed')
         decisions = automation_decisions(self.paper, review)
         create_revision(self.root, review, decisions, 'mixed', head(self.root), build=False)
         ledger = read_json(self.root / 'revisions/mixed/issue-ledger.json')
-        self.assertEqual(ledger[-1]['scientific_status'], 'open')
-        self.assertEqual(ledger[-1]['anchor_status'], 'historical')
+        question = review['findings'][-1]['id']
+        self.assertEqual([problem_status(row) for row in ledger], ['not_applicable', 'not_applicable', 'open'])
+        self.assertEqual((ledger[-1]['id'], ledger[-1]['source_id'], ledger[-1]['raised_on'], ledger[-1]['statement']),
+                         (f'original:mixed:{question}', question, 'original', 'Clarify mechanistic support.'))
+        self.assertEqual(ledger[-1]['evidence'],
+                         [{'document': 'paper.md', 'line': line, 'end_line': line, 'quote': 'protein activity'}])
+        self.assertEqual(ledger[-1]['fix_checks'], [])
+        self.assertNotIn('status', ledger[-1])
+
+    def test_run_issue_cards_keep_their_issue_id_in_the_ledger(self):
+        # Shaped as run_view hands them over: one card per issue, keyed by the issue id.
+        review, decisions = self.proposals()
+        edit = review['findings'][0]
+        review['findings'][0] = {**edit, 'id': 'i01', 'source_id': 'i01', 'group': 'suggestion',
+                                 'category': 'presentation', 'decidable': True}
+        # A status the engine wrote on an issue is not read. Every review is a fresh panel, so its issues are open.
+        review['findings'][1] = {'id': 'i02', 'source_id': 'i02', 'group': 'required', 'category': 'reproducibility',
+                                 'status': 'resolved', 'kind': 'issue', 'title': 'The seed', 'decidable': True,
+                                 'members': [{'document': 'paper.md', 'line': 3, 'end_line': 3, 'quote': 'seed'},
+                                             {'document': 'paper.md', 'line': 3, 'end_line': 3, 'quote': 'seed'},
+                                             {'document': 'S1.md', 'line': 1, 'end_line': 2, 'quote': 'random'}]}
+        # A card numbered by its place has no id of the review's, so the ledger makes one.
+        review['findings'].append({'id': 'run-3', 'source_id': 'i02', 'group': 'required', 'decidable': False,
+                                   'category': 'claims-and-conclusions', 'kind': 'issue', 'title': 'Repeat'})
+        decisions['items'] = {'i01': 'accepted'}
+        create_revision(self.root, review, decisions, 'issues', head(self.root), build=False)
+        rows = read_json(self.root / 'revisions/issues/issue-ledger.json')[-3:]
+        self.assertEqual([(row['id'], row['source_id'], problem_status(row), row['wording']) for row in rows],
+                         [('original:copyedit:i01', 'i01', 'open', 'accepted'),
+                          ('original:copyedit:i02', 'i02', 'open', 'proposed'),
+                          ('original:copyedit:ledger-1', None, 'open', 'proposed')])
+        # An issue's evidence is its members' quotes, each passage once.
+        self.assertEqual(rows[1]['evidence'], [{'document': 'paper.md', 'line': 3, 'end_line': 3, 'quote': 'seed'},
+                                               {'document': 'S1.md', 'line': 1, 'end_line': 2, 'quote': 'random'}])
+
+    def test_a_review_id_already_taken_gets_a_ledger_made_id(self):
+        taken = {'original:run:i01', 'original:run:ledger-1'}
+        self.assertEqual(problem_id('original', 'run', 'i02', taken), 'original:run:i02')
+        self.assertEqual(problem_id('original', 'run', 'i01', taken), 'original:run:ledger-2')
+        self.assertEqual(problem_id('original', 'run', None, taken), 'original:run:ledger-3')
+        self.assertEqual(len(taken), 5)
+
+    def test_problem_ids_hold_across_drafts(self):
+        for run_id in ('a', 'b'):
+            run_loop(self.root, run_id, max_edits=1, build=False)
+        first, second = (read_json(self.root / f'revisions/{run_id}-1/issue-ledger.json') for run_id in ('a', 'b'))
+        # The second draft copies the first draft's rows as they are and adds its own review's.
+        self.assertEqual(second[:len(first)], first)
+        self.assertEqual({row['raised_on'] for row in first}, {'original'})
+        self.assertTrue(second[len(first):])
+        self.assertEqual({row['raised_on'] for row in second[len(first):]}, {'a-1'})
+        self.assertEqual(len({row['id'] for row in second}), len(second))
+
+    def test_a_finding_the_code_check_threw_out_joins_the_ledger_as_thrown_out_and_takes_no_decision(self):
+        review, decisions = self.proposals()
+        item = {'id': 'u-mean', 'finding_uid': 'u-mean', 'title': 'The mean hides the spread', 'note': 'It is a median.'}
+        review['run'] = {'code_check': {'cap': 20, 'checked': 1, 'over_cap': 0,
+                                        'counts': {'confirmed': 0, 'contradicted': 1, 'not-shown': 0},
+                                        'thrown_out': [item]}}
+        decisions['items']['u-mean'] = 'accepted'
+        create_revision(self.root, review, decisions, 'checked', head(self.root), build=False)
+        rows = read_json(self.root / 'revisions/checked/issue-ledger.json')
+        self.assertEqual(len(rows), len(review['findings']) + 1)
+        self.assertEqual((rows[-1]['id'], rows[-1]['finding'], problem_status(rows[-1]), rows[-1]['wording'],
+                          rows[-1]['decisions']), ('original:copyedit:u-mean', item, 'thrown_out', None, []))
+
+    def test_a_run_given_no_code_adds_nothing_thrown_out_to_the_ledger(self):
+        review, decisions = self.proposals()
+        review['run'] = {'code_check': None}
+        create_revision(self.root, review, decisions, 'plain', head(self.root), build=False)
+        rows = read_json(self.root / 'revisions/plain/issue-ledger.json')
+        self.assertNotIn('thrown_out', [problem_status(row) for row in rows])
+
+    def problems(self):
+        """A ledger of one problem of each kind, raised on the original by one review."""
+        cards = [{'id': f'i0{n}', 'title': f'Problem {n}', 'category': 'methods', 'severity': 'major',
+                  'comment': f'Statement {n}.', 'members': [{'document': 'paper.md', 'line': n, 'end_line': n,
+                                                             'quote': f'quote {n}'}]} for n in (1, 2, 3)]
+        cards.append({'id': 'copyedit-1', 'category': 'copyedit', 'comment': 'Shorter.', 'quote': 'in order to'})
+        review = {'id': 'run', 'findings': cards, 'run': {'code_check': {'thrown_out': [
+            {'id': 'u-mean', 'title': 'The mean', 'comment': 'Show each repeat.', 'quote': 'the mean'}]}}}
+        decisions = {'items': {'i01': 'noted', 'i02': 'noted', 'i03': 'noted'}, 'annotations': {
+            'i01': {'author_comment': 'We added the seed.', 'issue_status': 'open', 'rationale': ''},
+            'i02': {'author_comment': '', 'issue_status': 'addressed', 'rationale': 'Table 2 now lists it.'},
+            'i03': {'author_comment': '', 'issue_status': 'declined', 'rationale': 'Out of scope.'}}}
+        return ledger_rows(review, decisions, 'original', 'p', set())
+
+    def check(self, problem, verdict, reason=''):
+        """One problem's entry in a fix check, in the shape ``fix_check_entries`` gives it.
+
+        test_fix_check.py records entries made from checks the engine wrote.
+        These rules hold whatever check the entries came from.
+        """
+        return {'id': f'original:run:{problem}', 'run': '/runs/check', 'date': '2026-11-17', 'verdict': verdict,
+                'basis': 'old-quote-gone' if verdict else '', 'evidence': None, 'old_evidence': [], 'searches': [],
+                'reason': reason, 'note': 'The quoted sentence is gone.' if verdict else ''}
+
+    def test_status_is_read_from_the_row_and_its_latest_verdict(self):
+        ledger = self.problems()
+        self.assertEqual([problem_status(row) for row in ledger],
+                         ['open', 'open', 'declined', 'not_applicable', 'thrown_out'])
+        ledger = apply_fix_checks(ledger, 'second', [self.check('i01', 'fixed'), self.check('i02', 'not-fixed')])
+        self.assertEqual([problem_status(row) for row in ledger[:2]], ['fixed', 'open'])
+        # A check that did not reach a problem gives it no verdict, so the one before it stands.
+        unreached = self.check('i02', None, 'No checker reached it before the check was written.')
+        ledger = apply_fix_checks(ledger, 'third', [unreached])
+        self.assertEqual(problem_status(ledger[1]), 'open')
+        ledger = apply_fix_checks(ledger, 'third', [self.check('i02', 'fixed')])
+        self.assertEqual(problem_status(ledger[1]), 'fixed')
+        entry = {key: value for key, value in self.check('i02', 'fixed').items() if key != 'id'}
+        self.assertEqual(ledger[1]['fix_checks'], [
+            {'draft': 'second', **entry, 'verdict': 'not-fixed'},
+            {'draft': 'third', **{key: value for key, value in unreached.items() if key != 'id'}},
+            {'draft': 'third', **entry}])
+
+    def test_open_problems_are_what_a_fix_check_takes(self):
+        ledger = apply_fix_checks(self.problems(), 'second', [
+            self.check('i01', None, 'Past the cap of 40 problems one fix check reads.'),
+            self.check('i02', 'cannot-tell')])
+        rows = [{'id': 'original:run:i01', 'statement': 'Statement 1.', 'severity': 'major',
+                 'evidence': [{'document': 'paper.md', 'quote': 'quote 1'}], 'author_reply': 'We added the seed.'},
+                {'id': 'original:run:i02', 'statement': 'Statement 2.', 'severity': 'major',
+                 'evidence': [{'document': 'paper.md', 'quote': 'quote 2'}], 'author_reply': 'Table 2 now lists it.'}]
+        self.assertEqual(open_problems(ledger), rows)
+        # The next check of the same draft takes only what this one did not reach.
+        self.assertEqual(open_problems(ledger, 'second'), rows[:1])
+        self.assertEqual(open_problems(ledger, 'third'), rows)
+
+    def test_a_fix_check_must_name_an_open_problem_once_with_a_known_verdict(self):
+        ledger = self.problems()
+        cases = {'no problem in the ledger': [self.check('i09', 'fixed')],
+                 'already has a verdict from a check of draft second': [self.check('i01', 'cannot-tell'),
+                                                                        self.check('i01', 'not-fixed')],
+                 'is declined': [self.check('i03', 'fixed')],
+                 'is thrown_out': [self.check('u-mean', 'fixed')],
+                 'not .partly.': [self.check('i01', 'partly')],
+                 'has no verdict from the check, and the entry does not say why': [self.check('i01', None)]}
+        for message, entries in cases.items():
+            with self.subTest(message), self.assertRaisesRegex(ValueError, message):
+                apply_fix_checks(ledger, 'second', entries)
+        self.assertEqual([row['fix_checks'] for row in ledger], [[]] * len(ledger))
 
     def test_stale_agent_response_stops_before_changes(self):
         response = copyedit_proposals(self.paper)
@@ -101,29 +256,30 @@ class Revisions(unittest.TestCase):
         self.assertEqual(head(self.root)['version'], 0)
 
     def test_numeric_removal_and_reordering_rejected(self):
-        block = next(b for b in self.paper['blocks'] if '8 of 12' in b['text'])
+        quote = 'Root bending was observed in 8 of 12 seedlings.'
         for replacement in ('Root bending was observed in 12 of 8 seedlings.', 'Root bending was observed in seedlings.'):
-            response = {'findings': [{'kind': 'edit', 'block_id': block['id'],
-                'quote': 'Root bending was observed in 8 of 12 seedlings.', 'replacement': replacement}]}
-            review = normalize_review(self.paper, response, 'numeric')
-            decisions = {'paper_id': self.paper['id'], 'review_id': review['id'], 'items': {'numeric-1': 'accepted'}}
+            review, decisions = self.edit('8 of 12', quote, replacement, 'numeric')
             with self.assertRaisesRegex(ValueError, 'Numerical'):
                 create_revision(self.root, review, decisions, 'bad', head(self.root), build=False)
 
     def test_locked_markup_cannot_be_accepted(self):
-        block = next(b for b in self.paper['blocks'] if '$x^2$' in b['text'])
-        response = {'findings': [{'kind': 'edit', 'block_id': block['id'], 'quote': 'background', 'replacement': 'context'}]}
-        review = normalize_review(self.paper, response, 'locked')
-        decisions = {'paper_id': self.paper['id'], 'review_id': review['id'], 'items': {'locked-1': 'accepted'}}
+        review, decisions = self.edit('$x^2$', 'background', 'context', 'locked')
         with self.assertRaisesRegex(ValueError, 'no editable'):
             create_revision(self.root, review, decisions, 'bad', head(self.root), build=False)
 
+    def test_edit_across_a_line_break_in_the_source_lands_in_place(self):
+        # The paragraph is wrapped over two source lines and renders as one manuscript line.
+        review, decisions = self.edit('could distinguish', 'distinguish the proposed', 'separate the proposed', 'wrap')
+        create_revision(self.root, review, decisions, 'wrap', head(self.root), build=False)
+        source = (self.root / 'revisions/wrap/scaffold/paper.typ').read_text()
+        self.assertIn('could separate the proposed mechanism', source)
+        draft = verify_workspace(self.root / 'revisions/wrap')
+        self.assertIn('could separate the proposed mechanism', draft.line_text(line_of(draft, 'associative')))
+
     def test_guard_rejects_markup_injection_and_negation_removal(self):
-        block = next(b for b in self.paper['blocks'] if 'not measure' in b['text'])
+        quote = 'We did not measure protein activity directly.'
         for replacement in ('We did measure protein activity directly.', '#include "evil.typ"'):
-            review = normalize_review(self.paper, {'findings': [{'kind': 'edit', 'block_id': block['id'],
-                'quote': 'We did not measure protein activity directly.', 'replacement': replacement}]}, 'unsafe')
-            decisions = {'paper_id': self.paper['id'], 'review_id': review['id'], 'items': {'unsafe-1': 'accepted'}}
+            review, decisions = self.edit('not measure', quote, replacement, 'unsafe')
             with self.assertRaisesRegex(ValueError, 'source-aware'):
                 create_revision(self.root, review, decisions, 'bad', head(self.root), build=False)
 
@@ -165,16 +321,6 @@ class Revisions(unittest.TestCase):
         (self.root / 'scaffold/unrecorded.typ').write_text('New content')
         with self.assertRaisesRegex(ValueError, 'inventory changed'):
             verify_workspace(self.root)
-
-    def test_agent_handoff_tracks_current_draft(self):
-        before = agent_request(self.root)
-        run_loop(self.root, 'agent', build=False)
-        after = agent_request(self.root)
-        self.assertNotEqual(before['source_sha256'], after['source_sha256'])
-        self.assertEqual(after['head']['revision_id'], 'agent-1')
-        self.assertEqual(len(after['historical_issues']), 2)
-        self.assertTrue((self.root / 'reviews/agent-r1.json').exists())
-        self.assertTrue((self.root / 'revisions/agent-1/reviews/agent-r2.json').exists())
 
 
 if __name__ == '__main__':

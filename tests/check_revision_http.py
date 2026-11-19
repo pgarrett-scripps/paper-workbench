@@ -9,8 +9,10 @@ from unittest.mock import patch
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
+from peerreviewagents import verify_workspace
 from peerreviewagents.workspace import digest, save_review, write_json
 
+from manuscripts import line_of
 from paper_workspace.revisions import copyedit_proposals, create_revision as real_create_revision
 from paper_workspace.scaffold_import import import_scaffold
 from paper_workspace.server import make_server
@@ -21,14 +23,15 @@ FIXTURE = Path(__file__).parent / "fixtures/scaffold-revision"
 
 with tempfile.TemporaryDirectory() as temporary:
     root = Path(temporary) / "workspace"
-    paper = import_scaffold(FIXTURE, root)
+    import_scaffold(FIXTURE, root)
+    paper = verify_workspace(root)
     response = copyedit_proposals(paper)
-    scientific_block = next(block for block in paper["blocks"] if "protein activity" in block["text"])
+    line = line_of(paper, "protein activity")
     response["findings"].append({
         "category": "scientific", "kind": "question",
-        "block_id": scientific_block["id"], "quote": "protein activity",
+        "line": line, "quote": "protein activity",
         "title": "Mechanistic support", "comment": "Clarify the evidence.",
-        "evidence_blocks": [scientific_block["id"]]
+        "evidence_lines": [line]
     })
     review = save_review(root, response, "ui")
     server = make_server(root, 0)
@@ -73,17 +76,31 @@ with tempfile.TemporaryDirectory() as temporary:
         assert request("/api/decisions?draft=original", decision)[0] == 409
         assert request("/api/decisions?draft=original", decision,
                        origin="http://bad.example")[0] == 403
+        # The author can decline an issue, with a reason, and no other status is taken.
+        question = review["findings"][-1]
+        decline = {"review_id": "ui", "annotation_id": question["id"], "status": "noted", "revision": 1,
+                   "author_comment": "", "issue_status": "declined", "rationale": ""}
+        assert request("/api/decisions?draft=original", decline)[0] == 400
+        assert request("/api/decisions?draft=original", {**decline, "issue_status": "dropped",
+                                                          "rationale": "No."})[0] == 400
+        decline["rationale"] = "The mechanism is outside this paper."
+        status, decisions = request("/api/decisions?draft=original", decline)
+        assert status == 200 and decisions["annotations"][question["id"]]["issue_status"] == "declined"
 
-        create = {"revision_id": "ui-1", "review_id": "ui", "decision_revision": 1,
+        create = {"revision_id": "ui-1", "review_id": "ui", "decision_revision": 2,
                   "expected_head": state["head"]}
         with patch("paper_workspace.server.create_revision", side_effect=source_only_revision):
             status, created = request("/api/revisions?draft=original", create)
         assert status == 201 and created["head"]["revision_id"] == "ui-1"
         status, revised = request("/api/paper")
-        assert status == 200 and revised["id"] != paper["id"]
+        assert status == 200 and revised["id"] != paper.paper_id
         assert request("/api/reviews?draft=ui-1")[1] == []
         ledger = request("/api/ledger?draft=ui-1")[1]
-        assert ledger and ledger[0]["anchor_status"] == "historical"
+        # Each problem keeps the id it was raised under and says where it stands.
+        assert [row["status"] for row in ledger] == ["not_applicable", "not_applicable", "declined"]
+        assert ledger[-1]["id"] == "original:ui:" + question["id"]
+        assert ledger[-1]["decisions"] == [{"draft": "original", "status": "declined", "note": "",
+                                            "rationale": "The mechanism is outside this paper."}]
         export_folder = root / 'exports' / 'verified'
         export_folder.mkdir(parents=True)
         (export_folder / 'paper.pdf').write_bytes(b'%PDF-fixture')
@@ -104,7 +121,7 @@ with tempfile.TemporaryDirectory() as temporary:
         status, checked_out = request("/api/checkout?draft=ui-1", {
             "revision_id": "original", "expected_head": created["head"]})
         assert status == 200 and checked_out["revision_id"] == "original"
-        assert request("/api/paper")[1]["id"] == paper["id"]
+        assert request("/api/paper")[1]["id"] == paper.paper_id
         print("Revision HTTP QA passed")
     finally:
         server.shutdown()

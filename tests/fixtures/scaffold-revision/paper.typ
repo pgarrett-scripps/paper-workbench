@@ -13,13 +13,14 @@ We studied root bending in 12 seedlings in order to assess an association with t
 
 = Methods
 
-Seedlings were  imaged at 6 hours. We did not measure protein activity directly.
+Seedlings were  imaged at 6 hours in order to track bending. We did not measure protein activity directly.
 
 #include "results.typ"
 
 = Interpretation
 
-The observations are associative. Additional experiments could distinguish the proposed mechanism from an indirect effect.
+The observations are associative. Additional experiments could distinguish
+the proposed mechanism from an indirect effect.
 
 The reference @doe provides background. Inline notation $x^2$ remains protected.
 // <<< BODY END

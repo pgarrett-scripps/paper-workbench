@@ -22,14 +22,54 @@ import zipfile
 from peerreviewagents import export_draft, verify_workspace
 from peerreviewagents.workspace import digest, read_json, write_json
 
-from .revisions import checkout, create_revision, head, snapshot, valid_id
-from .run_view import RUN_REVIEW_ID, locate, run_review
+from .revisions import (AUTHOR_STATUSES, checkout, create_revision, head, ledger_of, ledger_view, snapshot,
+                        source_spans, valid_id)
+from .run_view import (NO_ENGINE_ID, RUN_REVIEW_ID, RunError, applicable, locate, main_document, run_review,
+                       source_sha256)
 
 
 LOCK = threading.Lock()
 ASSETS = Path(__file__).parent / "web"
 REVIEW_ID = re.compile(r"[a-z0-9_-]{1,50}")
 STALE_RENDER_SECONDS = 300
+# Where the engine's import keeps the PDF it read, inside a manuscript workspace.
+ORIGINAL_PDF = Path("original") / "original.pdf"
+
+
+def paper_view(base):
+    """The manuscript as the viewer reads it: each document's lines and the map row of every piece.
+
+    A piece has no id. The viewer finds a passage by its document and line, as a finding cites it.
+    ``pages`` is each page's size in the points a box is written in, so the viewer can place a box on
+    a page image. It is empty when the sizes were not recorded, and the viewer then draws no box.
+    A piece of a Scaffold draft also carries ``native``: the source file it was read from, whether
+    that source can be edited in place, and the Word geometry of a table when its source had one.
+    ``ai_read`` is the engine's account of its Read stage: whether a model read the page images, which
+    model, and ``lost_pages``, the pages the converter returned nothing from. Each map row's ``source``
+    says whether its text is the converter's (``text``), read again from the page image by that model
+    (``ai-reconstructed``, with the converter's reading in ``original``) or written by it (``ai``).
+    """
+    manifest = base.manifest
+    native = {(document, tuple(entry["lines"])): entry
+              for document, entries in source_spans(base).items() for entry in entries}
+    pieces = []
+    for row in base.rows:
+        entry = native.get((row.get("document") or main_document(base), tuple(row["lines"])))
+        if entry is not None:
+            row = {**row, "native": {"file": entry["file"], "editable": entry["editable"],
+                                     "table_structure": entry.get("table_structure")}}
+        pieces.append(row)
+    return {"id": base.paper_id, "title": base.title, "source_sha256": source_sha256(base),
+            "statistics": manifest.get("statistics") or {}, "warnings": manifest.get("warnings") or [],
+            "assets": manifest.get("assets") or [], "main": main_document(base),
+            "documents": {name: base.lines[name] for name in base.document_names()},
+            "pieces": pieces, "pages": manifest.get("pages") or [], "ai_read": manifest.get("ai_read") or {}}
+
+
+def pdf_pages(base):
+    """How many pages the imported PDF has, or 0 when the workspace holds none."""
+    pages = (base.manifest.get("statistics") or {}).get("pdf_pages")
+    return pages if type(pages) is int and pages > 0 else 0
 
 
 def clear_stale_renders(folder):
@@ -44,7 +84,12 @@ def clear_stale_renders(folder):
 
 def make_server(root, port=38744):
     root, run = locate(root)
-    original = verify_workspace(root)
+    try:
+        original = verify_workspace(root)
+    except ValueError as exc:
+        # The engine refuses a manuscript that does not say which shape it is, or no longer matches its
+        # manifest, by name. serve prints that refusal as it is, not as a traceback.
+        raise RunError(str(exc)) from None
     if run:
         # Read the run once before serving, so a run the viewer cannot open fails here in plain words.
         run_review(run, original)
@@ -53,7 +98,7 @@ def make_server(root, port=38744):
     def selected(query):
         requested = query.get("draft", [None])[0]
         if requested is None:
-            requested = head(root)["revision_id"] if original.get("source_format") == "scaffold-typst" else "original"
+            requested = head(root)["revision_id"] if (root / "scaffold").is_dir() else "original"
         valid_id(requested)
         path, paper = snapshot(root, requested)
         return requested, path, paper
@@ -77,7 +122,7 @@ def make_server(root, port=38744):
                 valid_id(path.parent.name)
             except (ValueError, OSError):
                 continue
-            if record.get('paper_id') == paper['id'] and record.get('source_sha256') == paper['source_sha256']:
+            if record.get('paper_id') == paper.paper_id and record.get('source_sha256') == source_sha256(paper):
                 records.append({'id':path.parent.name, 'modified':path.stat().st_mtime,
                     'files':[name for name in ('paper.pdf','paper.docx','review.docx') if name in record.get('files',{})]})
         return sorted(records, key=lambda record: record['modified'], reverse=True)
@@ -93,12 +138,12 @@ def make_server(root, port=38744):
         review_for(path, paper, rid)
         target = path / "decisions" / f"{rid}.json"
         return read_json(target) if target.exists() else {
-            "paper_id": paper["id"], "review_id": rid, "revision": 0,
+            "paper_id": paper.paper_id, "review_id": rid, "revision": 0,
             "items": {}, "annotations": {},
         }
 
     def revision_state(draft):
-        revisions = [{"id": "original", "parent": None, "paper_id": original["id"]}]
+        revisions = [{"id": "original", "parent": None, "paper_id": original.paper_id}]
         folder = root / "revisions"
         if folder.is_dir():
             for path in sorted(folder.iterdir()):
@@ -111,9 +156,9 @@ def make_server(root, port=38744):
         path, paper = snapshot(root, draft)
         return {
             "selected": draft, "head": current,
-            "native": paper.get("source_format") == "scaffold-typst",
+            "native": (path / "scaffold").is_dir(),
             "revisions": revisions,
-            "has_original_pdf": (root / "original.pdf").is_file(),
+            "has_original_pdf": (root / ORIGINAL_PDF).is_file(),
             "has_revision_pdf": (path / "artifacts" / "paper.pdf").is_file(),
             "has_source": (path / "scaffold").is_dir(),
         }
@@ -175,10 +220,7 @@ def make_server(root, port=38744):
                 draft, workspace, paper = selected(query)
                 rid = query.get("review", ["workspace"])[0]
                 if url.path == "/api/paper":
-                    if paper.get('port_provenance'):
-                        from .table_structure import enrich_tables
-                        paper = enrich_tables(workspace / 'scaffold', paper)
-                    return self.send(200, paper)
+                    return self.send(200, paper_view(paper))
                 if url.path == "/api/revisions":
                     return self.send(200, revision_state(draft))
                 if url.path == '/api/exports':
@@ -205,18 +247,17 @@ def make_server(root, port=38744):
                 if url.path == "/api/decisions":
                     return self.send(200, decisions_for(workspace, paper, rid))
                 if url.path == "/api/ledger":
-                    ledger = workspace / "issue-ledger.json"
-                    return self.send(200, read_json(ledger) if ledger.exists() else [])
+                    return self.send(200, ledger_view(ledger_of(workspace)))
                 if url.path == "/api/export":
                     verify_workspace(workspace)
                     review = review_for(workspace, paper, rid)
-                    package = export_draft(paper, review, decisions_for(workspace, paper, rid))
+                    package = export_draft(paper, review, applicable(review, decisions_for(workspace, paper, rid)))
                     # A run's verdict, tracks and specialist reports travel with its package.
                     if "run" in review:
                         package["run"] = review["run"]
                     return self.send(200, package)
                 if url.path == "/original.pdf":
-                    target = root / "original.pdf"
+                    target = root / ORIGINAL_PDF
                     if not target.is_file():
                         return self.send(404, {"error": "Original PDF is unavailable"})
                     return self.send(200, target.read_bytes(), "application/pdf")
@@ -240,7 +281,8 @@ def make_server(root, port=38744):
                 match = re.fullmatch(r"/pages/(\d+)\.png", url.path)
                 if match:
                     page = int(match.group(1))
-                    if not 1 <= page <= paper["statistics"]["pdf_pages"]:
+                    # Pages are the original PDF's, whichever draft is selected.
+                    if not 1 <= page <= pdf_pages(original):
                         raise ValueError("Unknown PDF page")
                     target = root / "page_images" / f"{page:03d}.png"
                     if not target.exists():
@@ -252,7 +294,7 @@ def make_server(root, port=38744):
                                     output = Path(scratch) / "page"
                                     try:
                                         subprocess.run(["pdftoppm", "-f", str(page), "-l", str(page),
-                                            "-scale-to", "1800", "-singlefile", "-png", str(root / "original.pdf"),
+                                            "-scale-to", "1800", "-singlefile", "-png", str(root / ORIGINAL_PDF),
                                             str(output)], check=True, capture_output=True, timeout=30)
                                     except subprocess.SubprocessError:
                                         # The exception text holds the full command and workspace paths.
@@ -301,6 +343,8 @@ def make_server(root, port=38744):
                                         if item["id"] == value["annotation_id"]), None)
                         if finding is None:
                             raise ValueError("Unknown annotation")
+                        if finding.get("decidable") is False:
+                            raise ValueError(NO_ENGINE_ID)
                         status = value["status"]
                         allowed = ("accepted", "rejected", "proposed") if finding["kind"] == "edit" else ("noted", "proposed")
                         if status not in allowed:
@@ -312,14 +356,14 @@ def make_server(root, port=38744):
                         rationale = value.get("rationale", previous.get("rationale", ""))
                         if not isinstance(comment, str) or len(comment) > 4000:
                             raise ValueError("Author comment is too long")
-                        if issue_status not in ("open", "addressed"):
-                            raise ValueError("Issue status must be open or addressed")
+                        if issue_status not in AUTHOR_STATUSES:
+                            raise ValueError("Issue status must be open, addressed or declined")
                         if not isinstance(rationale, str) or len(rationale) > 2000:
                             raise ValueError("Issue rationale is too long")
-                        if issue_status == "addressed" and not rationale.strip():
-                            raise ValueError("Addressed issues require a rationale")
+                        if issue_status != "open" and not rationale.strip():
+                            raise ValueError("Addressed and declined issues require a rationale")
                         decisions["items"][finding["id"]] = status
-                        export_draft(paper, review, decisions)
+                        export_draft(paper, review, applicable(review, decisions))
                         next_revision = decisions["revision"] + 1
                         history = list(previous.get("history", []))
                         history.append({"revision": next_revision,
@@ -343,7 +387,8 @@ def make_server(root, port=38744):
                         decisions = decisions_for(workspace, paper, rid)
                         if value.get("decision_revision") != decisions["revision"]:
                             return self.send(409, {"error": "Decisions changed before the revision build. Reload and retry."})
-                        metadata = create_revision(root, review, decisions, revision_id, expected, build=True)
+                        metadata = create_revision(root, review, applicable(review, decisions), revision_id, expected,
+                                                   build=True)
                         return self.send(201, {"revision": metadata, "head": head(root)})
                     target = valid_id(value["revision_id"])
                     updated = checkout(root, target, value["expected_head"])

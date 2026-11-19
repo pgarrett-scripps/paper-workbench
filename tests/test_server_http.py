@@ -10,22 +10,16 @@ import unittest
 from pathlib import Path
 from unittest.mock import patch
 
-from peerreviewagents.workspace import digest, write_json
-
+import manuscripts
 from paper_workspace import server as server_module
-from paper_workspace.server import make_server
+from paper_workspace.server import make_server, paper_view
 
 
 class ServerHttpTests(unittest.TestCase):
     def setUp(self):
         self.temporary = tempfile.TemporaryDirectory()
         self.root = Path(self.temporary.name)
-        text = 'A claim with 12 samples.'
-        write_json(self.root / 'paper.json', {'id': 'qa', 'title': 'QA', 'source_sha256': 'qa',
-            'blocks': [{'id': 'b1', 'text': text, 'sha256': digest(text)}],
-            'statistics': {'pdf_pages': 2}})
-        write_json(self.root / 'manifest.json', {'files': {
-            'paper.json': digest((self.root / 'paper.json').read_bytes())}})
+        manuscripts.build(self.root, ['A claim with 12 samples.'])
         self.server = make_server(self.root, 0)
         self.port = self.server.server_port
         self.thread = threading.Thread(target=self.server.serve_forever, daemon=True)
@@ -59,6 +53,24 @@ class ServerHttpTests(unittest.TestCase):
             return response.status, response.read()
         finally:
             connection.close()
+
+    def test_the_served_paper_says_which_pieces_a_model_wrote(self):
+        # The engine's writer keeps whose text each piece is, and a model's reading keeps the converter's.
+        # The viewer gets the rows as written and the manifest's account of the Read stage. No page was
+        # read here, so the manifest names the model the writer said wrote those pieces, not a reader.
+        equation = {'kind': 'equation', 'latex': 'x = 1', 'text': 'x = 1', 'page': 1, 'bbox': list(manuscripts.BOX),
+                    'source': 'ai-reconstructed', 'original': {'latex': 'x - 1', 'number': None, 'text': 'x - 1'}}
+        description = {'kind': 'figure-description', 'text': 'A bar chart.', 'page': 1, 'source': 'ai',
+                       'original': {}}
+        base = manuscripts.build(self.root / 'read', ['Converted.'], extra=[equation, description],
+                                 ai_model='claude-sonnet-5-5')
+        paper = paper_view(base)
+        self.assertEqual([(row['kind'], row['source'], row.get('original')) for row in paper['pieces']],
+                         [('title', 'text', None), ('paragraph', 'text', None),
+                          ('equation', 'ai-reconstructed', equation['original']), ('figure-description', 'ai', {})])
+        self.assertEqual(paper['ai_read'], base.manifest['ai_read'])
+        self.assertEqual((paper['ai_read']['read'], paper['ai_read']['ai_model'], paper['ai_read']['lost_pages']),
+                         (False, 'claude-sonnet-5-5', []))
 
     def test_missing_host_is_rejected(self):
         for path in ('/', '/api/paper', '/pages/1.png'):
@@ -126,11 +138,11 @@ class ServerHttpTests(unittest.TestCase):
         with patch.object(server_module, 'snapshot', side_effect=AssertionError('verified')):
             for path in ('/', '/index.html', '/app.js', '/style.css'):
                 self.assertEqual(self.request(path)[0], 200, path)
-        (self.root / 'paper.json').write_text('{"id": "changed"}')
+        (self.root / 'paper.md').write_text('# Changed\n')
         self.assertEqual(self.request('/')[0], 200)
         status, body = self.request('/api/paper')
         self.assertEqual(status, 400)
-        self.assertIn('Manuscript source changed', json.loads(body)['error'])
+        self.assertIn('paper.md', json.loads(body)['error'])
 
     def test_page_render_failure_returns_a_short_error_and_leaves_no_image(self):
         def fail(command, **kwargs):
