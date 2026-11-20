@@ -209,7 +209,8 @@ class Revisions(unittest.TestCase):
         ledger = apply_fix_checks(ledger, 'second', [self.check('i01', 'fixed'), self.check('i02', 'not-fixed')])
         self.assertEqual([problem_status(row) for row in ledger[:2]], ['fixed', 'open'])
         # A check that did not reach a problem gives it no verdict, so the one before it stands.
-        unreached = self.check('i02', None, 'No checker reached it before the check was written.')
+        unreached = self.check('i02', None, 'fix-1 claimed its batch and stopped without reporting, so the new '
+                                            'draft was never read against it')
         ledger = apply_fix_checks(ledger, 'third', [unreached])
         self.assertEqual(problem_status(ledger[1]), 'open')
         ledger = apply_fix_checks(ledger, 'third', [self.check('i02', 'fixed')])
@@ -222,7 +223,7 @@ class Revisions(unittest.TestCase):
 
     def test_open_problems_are_what_a_fix_check_takes(self):
         ledger = apply_fix_checks(self.problems(), 'second', [
-            self.check('i01', None, 'Past the cap of 40 problems one fix check reads.'),
+            self.check('i01', None, "past this check's limit of 40 problems: it was never dealt to a checker"),
             self.check('i02', 'cannot-tell')])
         rows = [{'id': 'original:run:i01', 'statement': 'Statement 1.', 'severity': 'major',
                  'evidence': [{'document': 'paper.md', 'quote': 'quote 1'}], 'author_reply': 'We added the seed.'},

@@ -11,12 +11,12 @@ from contextlib import contextmanager
 from datetime import datetime, timezone
 from pathlib import Path
 
-from peerreviewagents import MANUSCRIPT_DIRECTORY, export_draft, read_run, verify_workspace
+from peerreviewagents import export_draft, read_run, verify_workspace
 from peerreviewagents.names import FIX_VERDICTS
 from peerreviewagents.problems import problems_from_run
 from peerreviewagents.workspace import digest, read_json, save_review, write_json
 
-from .run_view import reader_ran, source_sha256
+from .run_view import source_sha256
 from .scaffold_import import SPANS, copy_project, import_scaffold, scaffold_spans, span_at
 from .source_edits import NATIVE_CITATION, citation_markers, decode_span, encode_span
 
@@ -43,6 +43,8 @@ AUTHOR_STATUSES = ('open', 'addressed', 'declined')
 NOTE_LIMIT, RATIONALE_LIMIT = 4000, 2000
 # What a ledger entry keeps of the engine's anchored quote of the checked draft.
 DRAFT_EVIDENCE = ('document', 'line', 'end_line', 'page', 'section', 'quote')
+# The reason a problem with no verdict is entered with when the engine wrote no row for it.
+NO_REASON = 'The engine recorded no reason this problem has no verdict.'
 
 
 def problem_id(raised_on, review_id, key, taken):
@@ -209,7 +211,8 @@ def fix_check_entries(check, date):
     checker's note. A problem with no verdict is entered as not checked, with
     ``verdict`` None and the engine's reason: past the check's cap, or dealt to
     a lane that stopped. ``lane`` is the checker's seat, or '' for a problem
-    dealt to none.
+    dealt to none. The engine writes a row with both for every problem it left
+    with no verdict, so the app does not guess a cause where a row is missing.
 
     Every entry also says what was wrong with the check as a whole, so no
     verdict reads as one from a clean check: ``check_incomplete`` is why the
@@ -229,18 +232,14 @@ def fix_check_entries(check, date):
     unchecked = {str(row['id']): row for row in check['unchecked']}
     whole = {'check_incomplete': check_incomplete(check, len(given)), 'read_failed': fix_check_unread(check)}
     entries = []
-    for place, problem in enumerate(given):
+    for problem in given:
         entry = {'id': problem, 'run': check['run'], 'date': date, 'verdict': None, 'basis': '',
                  'evidence': None, 'old_evidence': [], 'searches': [], 'reason': '', 'note': '', 'lane': '',
                  **whole}
         row = answered.get(problem)
         if row is None:
             left = unchecked.get(problem) or {}
-            past = check['cap'] is not None and place >= check['cap']
-            # A check written before engine d702d89 gives no reason, so the app says what it can.
-            entry.update(lane=left.get('lane') or '', reason=left.get('reason') or (
-                f'Past the cap of {check["cap"]} problems one fix check reads.' if past
-                else 'No checker reached it before the check was written.'))
+            entry.update(lane=left.get('lane') or '', reason=left.get('reason') or NO_REASON)
         else:
             quoted = row['draft_evidence']
             entry.update(verdict=row['verdict'], basis=row['basis'], lane=row.get('slot') or '',
@@ -255,8 +254,7 @@ def fix_check_entries(check, date):
 def check_incomplete(check, given):
     """Why a fix check left problems with no verdict, in the engine's words, or '' for one that answered them all.
 
-    A check written before engine d702d89 is judged only by its problems with
-    no verdict and carries no reason, so the app counts them.
+    Where the engine gives no reason, the app counts the problems with no verdict.
     """
     if not check['incomplete']:
         return ''
@@ -266,17 +264,14 @@ def check_incomplete(check, given):
 def fix_check_unread(check):
     """Why the reader of a fix check did not read the checked draft's pages, or '' when it did.
 
-    A reader that fails leaves the draft sealed as converted, and the check goes
-    on from the converter's text. ``read_fix_check`` does not say so, so it is
-    read from the run's manuscript manifest when the reader seat ran.
+    ``read_fix_check``'s ``read`` is the engine's record of the Read stage, or
+    None for a check that had none. A reader that failed left the draft sealed
+    as converted, and the check went on from the converter's text.
     """
-    if not reader_ran(check['agents']):
+    read = check['read']
+    if not read or not read['reader_failed']:
         return ''
-    path = Path(check['run']) / MANUSCRIPT_DIRECTORY / 'manifest.json'
-    read = read_json(path).get('ai_read') if path.is_file() else None
-    if not isinstance(read, dict) or read.get('read'):
-        return ''
-    return read.get('reason') or 'The reader did not read the pages of the checked draft.'
+    return read['reason'] or 'The reader did not read the pages of the checked draft.'
 
 
 def ledger_of(folder):

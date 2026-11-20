@@ -498,19 +498,22 @@ function codeReviewed(code){
  return `<div class="code-reviewed"><p><strong>Code reviewed</strong><br><code>${esc(source||'the code this run was given')}</code>${esc(commit)}${counts.length?`<br>${esc(counts.join(', '))}`:''}${data.length?`<br>${esc(data.join(', '))}`:''}</p>${cut}${opened.length?`<details><summary>Files opened (${opened.length})</summary><ul>${opened.map(path=>`<li><code>${esc(path)}</code></li>`).join('')}</ul></details>`:''}${fetched.length?`<details><summary>Data files fetched (${fetched.length})</summary><ul>${fetched.map(row=>`<li><code>${esc(row.path)}</code>, ${esc(dataRead(row))}</li>`).join('')}</ul></details>`:''}</div>`;
 }
 // What the run's code check did with the findings that rest on how a number was computed.
-// A run given no code has no code check. A check that fell silent or answered only some of the claims
-// it was handed is incomplete, and the run panel says why above its comments.
+// A run given no code has no code check. A check that answered only some of the claims it was handed
+// is incomplete, and a silent one filed no report at all. The run panel says which, and why, above its comments.
 function codeCheckCounts(check){
  if(!check)return '';
  const counts=check.counts||{};
  const missed=check.not_checked>0?`, ${check.not_checked} handed to it and not checked`:'';
  const over=check.over_cap>0?`, ${check.over_cap} over its cap${check.cap===null?'':` of ${check.cap}`} left unchecked`:'';
- return `<p class="count">${esc(`Code check${check.incomplete?', incomplete':''}: ${check.checked} checked, ${counts.confirmed??0} confirmed, ${counts.contradicted??0} thrown out, ${counts['not-shown']??0} not shown in the code${missed}${over}`)}</p>`;
+ const state=check.silent?', silent':check.incomplete?', incomplete':'';
+ return `<p class="count">${esc(`Code check${state}: ${check.checked} checked, ${counts.confirmed??0} confirmed, ${counts.contradicted??0} thrown out, ${counts['not-shown']??0} not shown in the code${missed}${over}`)}</p>`;
 }
 // Why a run's code check left claims unread against the code, in the engine's words.
 function codeCheckIncomplete(check){
- if(!check||!check.incomplete)return '';
- return `The code check is incomplete, so a finding it did not reach stands as its reviewer filed it: ${check.incomplete_reason||`${plural(check.not_checked,'claim')} not read against the code.`}`;
+ if(!check||!(check.incomplete||check.silent))return '';
+ const opening=check.silent?'The code check filed no report, so every finding it was handed stands as its reviewer filed it'
+  :'The code check is incomplete, so a finding it did not reach stands as its reviewer filed it';
+ return `${opening}: ${check.incomplete_reason||`${plural(check.not_checked,'claim')} not read against the code.`}`;
 }
 // A reader that failed leaves the manuscript sealed as converted, and the run goes on from the converter's text.
 function readerFailed(read){
@@ -547,7 +550,7 @@ function runPanel(){
   Number.isFinite(run.tokens_total)&&`${count(run.tokens_total)} tokens${spentRows(run).length?' spent':''}`].filter(Boolean);
  // Why a run is not publishable is shown once, above its comments.
  const warnings=[run.cause,run.note,...(run.problems||[]),(run.missing_stages||[]).length&&`Stages that did not report: ${run.missing_stages.join(', ')}`,
-  readerFailed(run.manuscript_read),codeCheckIncomplete(run.code_check)].filter(Boolean);
+  readerFailed(run.read),codeCheckIncomplete(run.code_check)].filter(Boolean);
  const unverified=unverifiedNote(run.models_unverified);
  const verdict=run.verdict;
  const verdictHtml=verdict?`<details open><summary>Editor's verdict</summary><p><strong>Significance</strong><br>${esc(verdict.significance)}</p><p><strong>Strength of evidence</strong><br>${esc(verdict.strength_of_evidence)}</p>${verdict.reasoning?`<p><strong>Reasoning</strong><br>${esc(verdict.reasoning)}</p>`:''}<p class="muted">Basis: ${esc(verdict.basis||'unstated')}. ${esc(verdict.limitation||'')}</p></details>`:'';

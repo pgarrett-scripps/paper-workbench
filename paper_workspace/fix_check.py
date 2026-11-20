@@ -112,10 +112,16 @@ def check_fixes(argv):
         print(f'{PROG}: {exc}', file=sys.stderr)
         return 2
     status = check_fixes_main(engine, prog=PROG)
+    check = None
     try:
-        ledger = record_fix_checks(root, draft, read_fix_check(run))
+        check = read_fix_check(run)
+        ledger = record_fix_checks(root, draft, check)
     except ValueError as exc:
         print(f'{PROG}: {exc} The ledger of draft {draft} is unchanged.', file=sys.stderr)
+        # A check that stopped is not recorded, but it still says why each problem has no verdict.
+        if check is not None and not check['complete']:
+            for line in unchecked_lines(check['unchecked']):
+                print(f'{PROG}: {line}', file=sys.stderr)
         return status or 1
     entries = [check for row in ledger for check in row['fix_checks'] if check['run'] == str(run)]
     verdicts = [entry['verdict'] for entry in entries]
@@ -125,6 +131,15 @@ def check_fixes(argv):
     for line in warnings(entries[0]):
         print(f'{PROG}: {line}', file=sys.stderr)
     return status
+
+
+def unchecked_lines(rows):
+    """One line for each lane and reason in the engine's rows of problems with no verdict, naming its problems."""
+    grouped = {}
+    for row in rows:
+        grouped.setdefault((row.get('lane') or '', row.get('reason') or ''), []).append(str(row['id']))
+    return [f'No verdict on {", ".join(ids)}{f" ({lane})" if lane else ""}: '
+            f'{(reason or "the engine gave no reason").rstrip(".")}.' for (lane, reason), ids in grouped.items()]
 
 
 def warnings(entry):
