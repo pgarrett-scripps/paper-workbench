@@ -78,7 +78,7 @@ The engine writes every manuscript as one base: `paper.md` and any supplement do
 | `counts.quarantined`, `code_check.counts.contradicted` | whether a `complete-without-findings` run had nothing raised, had everything held by the guard or had everything thrown out by the code check |
 | `stages.missing`, `stages.none_found`, `runtime.tokens_total`, `runtime.wall_seconds` | the run facts |
 | `agents` | one line per agent, with its tokens, tool calls and state, and the tasks in `labels` when an agent ran more than one |
-| `agents[].assigned_model`, `agents[].model` | each agent line shows both, as "model asked" and "model ran". A `model` of `None` shows as "model ran not recorded" and is never filled from `assigned_model` |
+| `agents[].assigned_model`, `agents[].model` | each agent line shows both, as "model asked" and "model ran". A `model` of `None` shows as "model ran not recorded" and is never filled from `assigned_model`. Since engine dd7451f the recorder is the engine's own process, so the run asks no model of it. `run_view.py` marks its row `in_process` when it has neither model and another slot has a model asked, and its line shows "in process, no model" in their place |
 | `identity.models_unverified` | a run panel note naming the slots with a model asked and no model ran, when the list is not empty |
 | `reports.audits` | each specialist report, read as plain text up to 400,000 bytes |
 | `agents[].role` | a `citation-worker` line says the worker writes no findings |

@@ -164,6 +164,10 @@ for (const text of ['Arm full-two-track', '3 reviewers', 'Status complete', 'Iss
   assert.ok(panel.includes(text), text);
 }
 assert.ok(!panel.includes('<script>'));
+// The recorder the engine ran in its own process says so, in place of a model asked and a model ran.
+assert.equal(vm.runInContext("agentFacts({slot:'recorder', role:'recorder', track:'ingest', assigned_model:null, model:null,"
+  + " in_process:true, attempt:1, tool_calls:4, tokens:0, state:'done', findings:0, none_found:false, labels:['recorder']})", context),
+  'recorder · ingest track · in process, no model · attempt 1 · 4 tool calls · 0 tokens · done');
 // The panel says which code the run was reviewed against, naming a local folder by its own name only.
 assert.ok(panel.includes('<div class="code-reviewed"><p><strong>Code reviewed</strong><br><code>paper-repo</code> at 0123456789ab with uncommitted changes'
   + '<br>1 of 3 files opened, 2 searches, 1 path left out of the snapshot, the snapshot stopped early: more than 400 files of text source</p>'

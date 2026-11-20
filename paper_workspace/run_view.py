@@ -550,6 +550,19 @@ def thrown_out(check, ledger, data, base):
     return items
 
 
+def in_process(row, rows):
+    """Whether an agent row is the recorder the engine ran in its own process, with no model.
+
+    Since engine dd7451f the recorder is the command's own Python and not an agent, so the
+    run asks no model of it and none runs, while every slot that is an agent has a model asked.
+    An earlier run's recorder was an agent with a model asked, and its row keeps both model
+    facts. A run from before engine commit bfc8aae asked no model of any slot, so a recorder
+    there with none asked is not read as in process either.
+    """
+    return (row.get('slot') == 'recorder' and not row.get('assigned_model') and not row.get('model')
+            and any(other.get('assigned_model') for other in rows))
+
+
 def run_review(review, base):
     """The run as a review that the viewer, the decisions and ``export_draft`` read.
 
@@ -621,8 +634,10 @@ def run_review(review, base):
         'missing_stages': list(stages.get('missing') or []),
         'none_found': none_found,
         # Each agent row keeps `assigned_model`, the model asked, beside `model`, the model ran,
-        # which is None when nothing observed it. Neither stands in for the other.
-        'agents': [{**row, 'findings': per_slot.get(row.get('slot'), 0), 'none_found': row.get('slot') in none_found}
+        # which is None when nothing observed it. Neither stands in for the other. `in_process`
+        # marks the recorder the engine ran itself, which has neither.
+        'agents': [{**row, 'findings': per_slot.get(row.get('slot'), 0), 'none_found': row.get('slot') in none_found,
+                    'in_process': in_process(row, run['agents'])}
                    for row in run['agents']],
         'models_unverified': list(run['identity'].get('models_unverified') or []),
         'findings_by_track': dict(Counter(row['track'] for row in run['findings'] if row.get('track'))),

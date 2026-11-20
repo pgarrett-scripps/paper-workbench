@@ -371,8 +371,11 @@ function runStatus(run){
 function agentFacts(row){
  const tasks=(row.labels||[]).filter(label=>label!==row.slot);
  const raises=['core','specialist'].includes(row.role)||row.findings>0||row.none_found;
- return [row.slot,row.track&&`${row.track} track`,row.role==='citation-worker'&&'citation worker, writes no findings',`model asked ${row.assigned_model||'not recorded'}`,
-  `model ran ${row.model||'not recorded'}`,Number.isInteger(row.attempt)&&`attempt ${row.attempt}`,
+ // The recorder the engine ran in its own process has no model asked and none ran.
+ const models=row.in_process?['in process, no model']
+  :[`model asked ${row.assigned_model||'not recorded'}`,`model ran ${row.model||'not recorded'}`];
+ return [row.slot,row.track&&`${row.track} track`,row.role==='citation-worker'&&'citation worker, writes no findings',...models,
+  Number.isInteger(row.attempt)&&`attempt ${row.attempt}`,
   Number.isInteger(row.tool_calls)&&`${row.tool_calls} tool calls`,Number.isFinite(row.tokens)&&`${row.tokens} tokens`,row.state,
   tasks.length&&`tasks ${tasks.join(', ')}`,
   raises&&(row.none_found?'reported no findings':`${row.findings||0} findings`)].filter(Boolean).map(esc).join(' · ');

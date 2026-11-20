@@ -476,6 +476,37 @@ class RunReviewTests(unittest.TestCase):
             self.assertTrue(any(line.startswith('spec-citations was assigned') and 'ran claude-opus-5-5' in line
                                 for line in lines), lines)
 
+    def test_the_recorder_the_engine_ran_itself_is_in_process_with_no_model(self):
+        # This fixture's recorder is an agent with a model asked, as before engine dd7451f.
+        run = run_review(self.review, self.base)['run']
+        self.assertEqual({row['slot']: row['in_process'] for row in run['agents']},
+                         {'cite-1': False, 'core-1': False, 'recorder': False, 'spec-citations': False,
+                          'spec-numbers': False})
+        # Since dd7451f the plan asks no model of the recorder, and its one stream row is the run itself.
+        protocol = json.loads((self.review / 'protocol.json').read_text())
+        protocol['agents']['recorder'].update(model=None, assigned_model=None)
+        del protocol['models']['recorder']
+        write_json(self.review / 'protocol.json', protocol)
+        runtime = json.loads((self.review / 'runtime.json').read_text())
+        runtime['agents'] = [row for row in runtime['agents'] if row.get('agentType') != 'pra:recorder'] + [
+            {'label': 'recorder', 'agentType': 'recorder', 'attempt': 1, 'tokens': 0, 'toolCalls': 4, 'model': None,
+             'state': 'done', 'ending': 'in process', 'seconds': 1.5,
+             'detail': 'the run itself: every recorder tool was called in this process, with no model'}]
+        write_json(self.review / 'runtime.json', runtime)
+        run = run_review(self.review, self.base)['run']
+        recorder = next(row for row in run['agents'] if row['slot'] == 'recorder')
+        self.assertEqual((recorder['in_process'], recorder['assigned_model'], recorder['model'], recorder['tokens']),
+                         (True, None, None, 0))
+        self.assertEqual([row['slot'] for row in run['agents'] if row['in_process']], ['recorder'])
+        # A slot with no model asked is not one whose model is unverified.
+        self.assertEqual((run['models_unverified'], run['publishable']), ([], True))
+        # A run from before bfc8aae asked no model of any slot, so its recorder is not read as in process.
+        for record in protocol['agents'].values():
+            record['assigned_model'] = None
+        write_json(self.review / 'protocol.json', protocol)
+        run = run_review(self.review, self.base)['run']
+        self.assertEqual([row['slot'] for row in run['agents'] if row['in_process']], [])
+
     def test_a_review_without_findings_is_publishable_unless_the_guard_held_some(self):
         self.write_issues([], findings_delivered=0, findings_submitted=0, escalation_rulings=[], escalated_count=0)
         (self.review / 'findings.jsonl').write_text('')

@@ -259,6 +259,13 @@ class EngineRoundsTests(unittest.TestCase):
             self.assertEqual(sorted(issues_document()), sorted(document))
         self.assertIsNone(json.loads((self.first / 'review' / 'issues.json').read_text())['code_check'])
 
+    def test_the_engine_runs_the_recorder_in_process_with_no_model(self):
+        # The recorder is the engine's own Python, so the run asks no model of it, and it alone is in process.
+        agents = self.view(self.first)['run']['agents']
+        recorder = next(row for row in agents if row['slot'] == 'recorder')
+        self.assertEqual((recorder['in_process'], recorder['assigned_model'], recorder['model']), (True, None, None))
+        self.assertEqual([row['slot'] for row in agents if row['in_process']], ['recorder'])
+
     def test_round_one_is_read_as_three_issues(self):
         review = self.view(self.first)
         self.assertEqual([(f['id'], f['group'], f['decidable'], len(f['members'])) for f in review['findings']],
