@@ -15,6 +15,7 @@
     "retry_wait": 300,
     "waited": 0.0,
     "unchecked_reason": null,
+    "hosts_reached": true,
     "lookups": 13,
     "at": "2026-11-16T06:25:31.661317+00:00"
   },

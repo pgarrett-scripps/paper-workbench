@@ -421,6 +421,7 @@ function unverifiedNote(slots){
 const REFERENCE_STATES={'yes':'found in an index','no':'DOI not held by the DOI resolver','not located':'title not located in Crossref or Europe PMC',
  'could not check':'could not be checked','never looked up':'never looked up','not recorded':'state not recorded'};
 const PRINTED_FIELDS={title:'title',first_author:'first author',year:'year',venue:'venue'};
+const NO_NETWORK='No lookup host could be reached from the machine that ran the review, so no reference was checked. This says nothing about whether the works are real.';
 const quoted=(label,text)=>text?`<blockquote class="untrusted"><span class="muted">${esc(label)}</span><br>${esc(text)}</blockquote>`:'';
 const sourceLink=(url,text)=>typeof url==='string'&&url.startsWith('https://')?`<a href="${esc(url)}" target="_blank" rel="noopener noreferrer">${esc(text)}</a>`:'';
 const workText=work=>[work.first_author,work.year,work.title,work.venue,work.doi&&`DOI ${work.doi}`].filter(Boolean).join('. ');
@@ -468,14 +469,18 @@ function citationCounts(counts){
 function citationPanel(citations){
  if(!citations)return '';
  const counts=citations.counts||{},shown=citations.ledger&&citations.readable;
+ // With no network the lane looked nothing up, and the panel says that first.
+ const offline=citations.no_network===true;
  // An unreadable ledger has its own engine line, which says why. This one is for a ledger that came with none.
  const lines=[citations.ledger&&!citations.readable&&!citations.problems.length&&'The citation ledger could not be read, so the panel shows no citation counts.',
-  shown&&!citations.complete&&'The citation check did not finish, so these counts do not cover the whole reference list.',
+  offline&&NO_NETWORK,
+  shown&&!offline&&!citations.complete&&'The citation check did not finish, so these counts do not cover the whole reference list.',
   ...citations.problems].filter(Boolean);
  const more=(count,noun)=>count?`<p class="muted">${esc(count)} more ${noun} not shown.</p>`:'';
  const references=citations.references.length?`<details><summary>References to check (${citations.references.length})</summary><ul>${citations.references.map(referenceItem).join('')}</ul>${more(citations.references_not_shown,'references')}</details>`:'';
  const uses=citations.uses.length?`<details><summary>Worker verdicts on in-text uses (${citations.uses.length})</summary><ul>${citations.uses.map(useItem).join('')}</ul>${more(citations.uses_not_shown,'uses')}</details>`:'';
- const title=shown?`Citations: ${counts.references??0} references, ${counts.uses??0} in-text uses${citations.complete?'':', check incomplete'}`:'Citations';
+ const title=offline?'Citations not checked, no network'
+  :shown?`Citations: ${counts.references??0} references, ${counts.uses??0} in-text uses${citations.complete?'':', check incomplete'}`:'Citations';
  return `<details class="citations"${citations.complete&&!citations.problems.length?'':' open'}><summary>${esc(title)}</summary>${shown?citationCounts(counts).map(text=>`<p class="count">${esc(text)}</p>`).join(''):''}${lines.map(text=>`<p class="error">${esc(text)}</p>`).join('')}${references||uses?'<p class="muted">Indexed records and source passages were fetched from the internet, and the notes were written by a citation worker. The panel shows them as quoted text.</p>':''}${references}${uses}</details>`;
 }
 const RUN_FILTERS=['required','suggestions','escalated'],WORKSPACE_FILTERS=['scientific','copyedit','questions'];

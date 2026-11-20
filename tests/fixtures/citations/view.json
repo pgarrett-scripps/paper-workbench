@@ -1,5 +1,6 @@
 {
  "complete": false,
+ "no_network": false,
  "problems": [
   "1 of 6 references were never looked up, so the citations were not fully checked",
   "1 reference(s) could not be checked because the lookups did not answer, which says nothing about whether they exist",
