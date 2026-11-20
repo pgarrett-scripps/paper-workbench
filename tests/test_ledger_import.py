@@ -26,7 +26,7 @@ from paper_workspace.revisions import (DECIDED, LEDGER, RAISED, automation_decis
                                        snapshot)
 from paper_workspace.scaffold_import import import_scaffold
 from reader_fixture import pdf_bytes
-from test_engine_rounds import FIRST, check_round, grouped, offline, one_round, opened_round
+from test_engine_rounds import FIRST, check_round, grouped, offline, one_round, silent_round
 from test_fix_check import DATE, FIXTURE, Draft, printed, typst
 
 QUOTES = ['twelve samples drawn from one donor', 'controls retromer assembly in all tissues', 'repeated three times']
@@ -55,9 +55,9 @@ def checked(root, source):
 
 
 def stopped(root, source):
-    """A review of ``source`` the engine opened and no reviewer took up."""
+    """A review of ``source`` whose reviewers never answered, so the engine stopped it."""
     with offline():
-        opened_round(root, FIRST, source)
+        silent_round(root, FIRST, source)
     return root.resolve()
 
 

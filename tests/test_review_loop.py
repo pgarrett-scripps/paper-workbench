@@ -44,9 +44,7 @@ def run(*argv, checker=None, compiler=None):
 
     def check_fixes(argv, prog):
         args = check_fixes_parser(prog=prog).parse_args(argv)
-        with scripted_fix_check(args.workspace, args.output, args.problems) as check:
-            checker(check)
-            check.write()
+        scripted_fix_check(args.workspace, args.output, args.problems, {'fix-check': checker})
         return 0
 
     out, errors = io.StringIO(), io.StringIO()
@@ -140,9 +138,9 @@ class ReviewLoopTest(Project):
         frozen = (second / LEDGER).read_bytes()
 
         # The fix check of draft-2 takes the two open problems: the sample is not fixed, the repeats are.
-        def checker(check):
-            answer(check, sample, 'not-fixed', 'one donor line', note='One donor line is still one donor.')
-            answer(check, repeats, 'fixed', 'three repeats', note='The result names its repeats.')
+        def checker(slot):
+            answer(slot, sample, 'not-fixed', 'one donor line', note='One donor line is still one donor.')
+            answer(slot, repeats, 'fixed', 'three repeats', note='The result names its repeats.')
 
         self.assertEqual(run('check-fixes', str(self.root), str(self.temp / 'check-1'), checker=checker), (
             0, '', 'paper-workbench check-fixes: recorded on draft draft-2: fixed 1, not-fixed 1, cannot-tell 0, '

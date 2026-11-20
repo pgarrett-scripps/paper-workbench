@@ -10,7 +10,7 @@ Start with [the team handoff](HANDOFF.md) for the current architecture, setup an
 
 ## Install
 
-Requires Python 3.11 or newer. PeerReviewAgents 0.10.0 is not released yet, so the app pins the engine to its main branch at commit 3d96d92, as GitHub's archive of that commit with the archive's hash. That engine reads manuscripts by line, has a model read each page image before every PDF review, can check the paper against its analysis code, throws out a finding when the code does not do what it said, gives the problems a review raised and checks a new draft against them. Installing the app installs that engine from GitHub, with no git needed:
+Requires Python 3.11 or newer. PeerReviewAgents 0.10.0 is not released yet, so the app pins the engine to its main branch at commit a61e7c5, as GitHub's archive of that commit with the archive's hash. That engine reads manuscripts by line, has a model read each page image before every PDF review, can check the paper against its analysis code, throws out a finding when the code does not do what it said, gives the problems a review raised and checks a new draft against them. Installing the app installs that engine from GitHub, with no git needed:
 
 ```bash
 python -m pip install -e '.[documents,test]'
@@ -104,7 +104,7 @@ python -m unittest discover -s tests -p 'test_*.py'
 node tests/test_review_evidence_ui.js
 ```
 
-Tests use synthetic or local fixtures and never start a review or a fix check. A finished review in a test is written by the engine's `scripted_review`, and a fix check by its `scripted_fix_check`, with no model. The read manuscript fixture is built by the engine's scripted reader with no model, which needs Poppler. Some optional rendering checks require local document tooling.
+Tests use synthetic or local fixtures and never start a review or a fix check. A review in a test is run by the engine's `scripted_review`, and a fix check by its `scripted_fix_check`, through the engine's own orchestrator with a script in each seat in place of a model. The read manuscript fixture is built by the engine's scripted reader with no model, which needs Poppler. Some optional rendering checks require local document tooling.
 
 ## Provenance
 
