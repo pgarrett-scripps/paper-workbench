@@ -79,6 +79,8 @@ The engine writes every manuscript as one base: `paper.md` and any supplement do
 | `stages.missing`, `stages.none_found`, `runtime.tokens_total`, `runtime.wall_seconds` | the run facts |
 | `agents` | one line per agent, with its tokens, tool calls and state, and the tasks in `labels` when an agent ran more than one |
 | `agents[].assigned_model`, `agents[].model` | each agent line shows both, as "model asked" and "model ran". A `model` of `None` shows as "model ran not recorded" and is never filled from `assigned_model` |
+| `agents[].ending`, `agents[].detail` | the engine's word for how the agent ended, after the state in brackets when it says more, such as "failed (out of time)". An `ending` of `in process` is the recorder the engine ran itself, and its line shows "in process, no model" in place of both models. `detail` is the engine's sentence, on its own line under the agent, except for the recorder |
+| `agents[]` token fields, `peerreviewagents.names.TOKEN_FIELDS` | "N tokens spent" is `tokens_cumulative`, every call added up with cache reads included, followed by its four parts. "Peak context" is `tokens_peak_context`, the largest single call, and is the figure that compares with a run from before engine 0.10.0. A row without them, from before engine 3d96d92, shows `tokens` as "N tokens". A run whose rows have them calls its `runtime.tokens_total` "tokens spent", and its agent list says once what the two figures mean |
 | `identity.models_unverified` | a run panel note naming the slots with a model asked and no model ran, when the list is not empty |
 | `reports.audits` | each specialist report, read as plain text up to 400,000 bytes |
 | `agents[].role` | a `citation-worker` line says the worker writes no findings |
