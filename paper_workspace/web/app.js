@@ -513,12 +513,12 @@ function codeCheckIncomplete(check){
  if(!check||!(check.incomplete||check.silent))return '';
  const opening=check.silent?'The code check filed no report, so every finding it was handed stands as its reviewer filed it'
   :'The code check is incomplete, so a finding it did not reach stands as its reviewer filed it';
- return `${opening}: ${check.incomplete_reason||`${plural(check.not_checked,'claim')} not read against the code.`}`;
+ return `${opening}: ${check.incomplete_reason}`;
 }
 // A reader that failed leaves the manuscript sealed as converted, and the run goes on from the converter's text.
 function readerFailed(read){
  if(!read||!read.reader_failed)return '';
- return `The reader did not read the pages of this manuscript, so the reviewers read the converter's text: ${read.reason||'the reader gave no reason.'}`;
+ return `The reader did not read the pages of this manuscript, so the reviewers read the converter's text: ${read.reason}`;
 }
 // A finding the code check threw out is in no issue and takes no decision. It is shown with the
 // code that disproved it, marked as thrown out, apart from every open issue.

@@ -43,8 +43,6 @@ AUTHOR_STATUSES = ('open', 'addressed', 'declined')
 NOTE_LIMIT, RATIONALE_LIMIT = 4000, 2000
 # What a ledger entry keeps of the engine's anchored quote of the checked draft.
 DRAFT_EVIDENCE = ('document', 'line', 'end_line', 'page', 'section', 'quote')
-# The reason a problem with no verdict is entered with when the engine wrote no row for it.
-NO_REASON = 'The engine recorded no reason this problem has no verdict.'
 
 
 def problem_id(raised_on, review_id, key, taken):
@@ -212,7 +210,8 @@ def fix_check_entries(check, date):
     ``verdict`` None and the engine's reason: past the check's cap, or dealt to
     a lane that stopped. ``lane`` is the checker's seat, or '' for a problem
     dealt to none. The engine writes a row with both for every problem it left
-    with no verdict, so the app does not guess a cause where a row is missing.
+    with no verdict, and a check missing one is refused rather than given a
+    cause the engine did not write.
 
     Every entry also says what was wrong with the check as a whole, so no
     verdict reads as one from a clean check: ``check_incomplete`` is why the
@@ -230,7 +229,7 @@ def fix_check_entries(check, date):
                              'which it was not given')
         answered[str(row['problem_id'])] = row
     unchecked = {str(row['id']): row for row in check['unchecked']}
-    whole = {'check_incomplete': check_incomplete(check, len(given)), 'read_failed': fix_check_unread(check)}
+    whole = {'check_incomplete': check_incomplete(check), 'read_failed': fix_check_unread(check)}
     entries = []
     for problem in given:
         entry = {'id': problem, 'run': check['run'], 'date': date, 'verdict': None, 'basis': '',
@@ -238,8 +237,10 @@ def fix_check_entries(check, date):
                  **whole}
         row = answered.get(problem)
         if row is None:
-            left = unchecked.get(problem) or {}
-            entry.update(lane=left.get('lane') or '', reason=left.get('reason') or NO_REASON)
+            if problem not in unchecked:
+                raise ValueError(f'The fix check at {check["run"]} has no verdict on problem {problem} '
+                                 'and no row saying why')
+            entry.update(lane=unchecked[problem]['lane'] or '', reason=unchecked[problem]['reason'])
         else:
             quoted = row['draft_evidence']
             entry.update(verdict=row['verdict'], basis=row['basis'], lane=row.get('slot') or '',
@@ -251,14 +252,13 @@ def fix_check_entries(check, date):
     return entries
 
 
-def check_incomplete(check, given):
-    """Why a fix check left problems with no verdict, in the engine's words, or '' for one that answered them all.
-
-    Where the engine gives no reason, the app counts the problems with no verdict.
-    """
+def check_incomplete(check):
+    """Why a fix check left problems with no verdict, in the engine's words, or '' for one that answered them all."""
     if not check['incomplete']:
         return ''
-    return check['incomplete_reason'] or f'{check["not_checked"]} of {given} problems have no verdict.'
+    if not check['incomplete_reason']:
+        raise ValueError(f'The fix check at {check["run"]} is incomplete and does not say why')
+    return check['incomplete_reason']
 
 
 def fix_check_unread(check):
@@ -271,7 +271,9 @@ def fix_check_unread(check):
     read = check['read']
     if not read or not read['reader_failed']:
         return ''
-    return read['reason'] or 'The reader did not read the pages of the checked draft.'
+    if not read['reason']:
+        raise ValueError(f'The reader of the fix check at {check["run"]} failed and the check does not say why')
+    return read['reason']
 
 
 def ledger_of(folder):
@@ -304,13 +306,15 @@ def record_fix_checks(root, draft, check, date=None):
     ``check`` is what the engine's ``read_fix_check`` returned for the run.
     Only a complete check that was read whole is recorded. A blocked or
     stopped run, or one with a file the reading could not read, changes
-    nothing, and the ValueError says why. Every problem it was given must be
+    nothing, and the ValueError says why. A run whose ``stopped`` says why it
+    stopped is refused by its status alone, because ``check-fixes`` prints
+    ``stopped`` once beside the rows that point at it. Every problem it was given must be
     open with no verdict from an earlier check of this draft, and a run is
     recorded once. A draft can take several checks, and the next draft made
     from it carries them all in its own ledger.
     """
     if not check['complete']:
-        cause = f' ({check["cause"]})' if check['cause'] else ''
+        cause = f' ({check["cause"]})' if check['cause'] and not check['stopped'] else ''
         raise ValueError(f'The fix check at {check["run"]} is {check["status"]}{cause}, and only a complete '
                          'check is recorded.')
     if check['file_problems']:

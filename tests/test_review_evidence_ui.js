@@ -450,8 +450,6 @@ assert.equal(vm.runInContext(`codeCheckCounts(${partial})`, context),
   '<p class="count">Code check, incomplete: 1 checked, 0 confirmed, 0 thrown out, 0 not shown in the code, 1 handed to it and not checked</p>');
 assert.equal(vm.runInContext(`codeCheckIncomplete(${partial})`, context),
   'The code check is incomplete, so a finding it did not reach stands as its reviewer filed it: code-check answered 1 of 2');
-assert.equal(vm.runInContext(`codeCheckIncomplete({...${partial}, incomplete_reason:null, not_checked:2})`, context),
-  'The code check is incomplete, so a finding it did not reach stands as its reviewer filed it: 2 claims not read against the code.');
 assert.equal(vm.runInContext(`codeCheckIncomplete({...${partial}, incomplete:false, not_checked:0})`, context), '');
 const whole = vm.runInContext(`codeCheckCounts({...${partial}, incomplete:false, not_checked:0})`, context);
 assert.ok(!whole.includes('incomplete') && !whole.includes('silent'), whole);

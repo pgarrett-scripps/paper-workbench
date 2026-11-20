@@ -118,9 +118,10 @@ def check_fixes(argv):
         ledger = record_fix_checks(root, draft, check)
     except ValueError as exc:
         print(f'{PROG}: {exc} The ledger of draft {draft} is unchanged.', file=sys.stderr)
-        # A check that stopped is not recorded, but it still says why each problem has no verdict.
+        # A check that stopped is not recorded, but it still says why each problem has no verdict. Why the
+        # run stopped is printed once, and each row that stopped with it says so and points there.
         if check is not None and not check['complete']:
-            for line in unchecked_lines(check['unchecked']):
+            for line in stopped_lines(check):
                 print(f'{PROG}: {line}', file=sys.stderr)
         return status or 1
     entries = [check for row in ledger for check in row['fix_checks'] if check['run'] == str(run)]
@@ -133,13 +134,19 @@ def check_fixes(argv):
     return status
 
 
-def unchecked_lines(rows):
-    """One line for each lane and reason in the engine's rows of problems with no verdict, naming its problems."""
+def stopped_lines(check):
+    """Why a check that is not complete stopped, once, then one line per lane and reason naming its problems.
+
+    ``stopped`` is the engine's cause, kept once on the check, and a row whose
+    lane never started says only that the run stopped first. A check with no
+    ``stopped`` was refused with its cause, so only its rows are printed.
+    """
     grouped = {}
-    for row in rows:
-        grouped.setdefault((row.get('lane') or '', row.get('reason') or ''), []).append(str(row['id']))
-    return [f'No verdict on {", ".join(ids)}{f" ({lane})" if lane else ""}: '
-            f'{(reason or "the engine gave no reason").rstrip(".")}.' for (lane, reason), ids in grouped.items()]
+    for row in check['unchecked']:
+        grouped.setdefault((row['lane'] or '', row['reason']), []).append(str(row['id']))
+    return [*([f'Stopped: {check["stopped"].rstrip(".")}.'] if check['stopped'] else []),
+            *(f'No verdict on {", ".join(ids)}{f" ({lane})" if lane else ""}: {reason.rstrip(".")}.'
+              for (lane, reason), ids in grouped.items())]
 
 
 def warnings(entry):
