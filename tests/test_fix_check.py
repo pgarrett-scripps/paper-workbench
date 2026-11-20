@@ -41,8 +41,12 @@ NOT_REACHED = 'fix-1 claimed its batch and stopped without reporting, so the new
 PROG = 'paper-workbench check-fixes: '
 # A reader that never answers. On a draft the converter reads whole, the check goes on from the converter's text.
 UNREAD = {'reader': lambda slot: NO_ANSWER}
-BLOCKED = (r'is blocked \(check-fixes: the reader did not seal the new draft and it could not be sealed as '
-           r'converted: .*\), and only a complete check is recorded\.')
+# A check blocked in the Read stage is refused by its status. Why it stopped is the check's ``stopped``.
+BLOCKED = r'is blocked, and only a complete check is recorded\.'
+STOPPED = 'the reader did not seal the new draft and it could not be sealed as converted: '
+# The engine's row for a problem whose lane never started because the run stopped first.
+NEVER_STARTED = ('fix-1 never claimed its batch, so nothing read the draft against it; the run stopped first, '
+                 'and stopped says why')
 
 
 def printed(project):
@@ -216,6 +220,8 @@ class FixCheckTest(Draft):
         # The engine says so on its record of the Read stage, with the reason each entry carries.
         self.assertTrue(check['complete'])
         self.assertEqual((check['read']['reader_failed'], check['read']['sealed']), (True, True))
+        # The attempts are the reader's real sessions: the one that never answered and the retry.
+        self.assertEqual(check['read']['attempts'], 2)
         reason = check['read']['reason']
         self.assertTrue(reason)
         ledger = record_fix_checks(self.root, 'second', check, date=DATE)
@@ -225,8 +231,17 @@ class FixCheckTest(Draft):
     def test_a_check_that_is_not_complete_or_not_read_whole_changes_nothing(self):
         stopped = self.temp / 'stopped'
         blocked(stopped, open_problems(ledger_of(self.folder), 'second'))
-        with self.assertRaisesRegex(ValueError, BLOCKED):
-            record_fix_checks(self.root, 'second', read_fix_check(stopped))
+        check = read_fix_check(stopped)
+        with self.assertRaisesRegex(ValueError, BLOCKED) as refused:
+            record_fix_checks(self.root, 'second', check)
+        # The cause is kept once, as stopped, and the refusal leaves it to the command to print.
+        self.assertTrue(check['stopped'].startswith(STOPPED), check['stopped'])
+        self.assertNotIn(check['stopped'], str(refused.exception))
+        self.assertEqual({row['reason'] for row in check['unchecked']}, {NEVER_STARTED})
+        # A run blocked in the Read stage says the reader failed, that nothing was sealed, and why.
+        read = check['read']
+        self.assertEqual((read['reader_failed'], read['sealed'], read['reason']), (True, False, check['stopped']))
+        self.assertIsInstance(read['attempts'], int)
         damaged = self.temp / 'damaged'
         self.check(damaged, self.first_check)
         # A process killed while writing leaves a file that is not JSON.
@@ -255,10 +270,12 @@ class FixCheckTest(Draft):
                          [('fixed', 'fix-1', ''), (None, 'fix-3', NOT_REACHED.replace('fix-1', 'fix-3')),
                           (None, '', "past this check's limit of 40 problems: it was never dealt to a checker")])
         self.assertEqual({entry['check_incomplete'] for entry in entries}, {check['incomplete_reason']})
-        # A check written before engine d702d89 gives no reasons, and the app does not guess one from a position.
-        older = fix_check_entries({**check, 'unchecked': [], 'incomplete_reason': None}, DATE)
-        self.assertEqual([entry['reason'] for entry in older[::20]], ['', revisions.NO_REASON, revisions.NO_REASON])
-        self.assertEqual({entry['check_incomplete'] for entry in older}, {'40 of 41 problems have no verdict.'})
+        # The engine writes a row for every problem with no verdict and says why a check is incomplete, so a
+        # check missing either is refused, not entered with a reason the engine did not give.
+        with self.assertRaisesRegex(ValueError, 'has no verdict on problem p02 and no row saying why'):
+            fix_check_entries({**check, 'unchecked': []}, DATE)
+        with self.assertRaisesRegex(ValueError, 'is incomplete and does not say why'):
+            fix_check_entries({**check, 'incomplete_reason': None}, DATE)
 
 
 class CheckFixesCommandTest(Draft):
@@ -356,15 +373,14 @@ class CheckFixesCommandTest(Draft):
     def test_a_check_that_is_not_complete_or_not_read_whole_leaves_the_ledger_unchanged(self):
         status, errors, _ = self.command(str(self.root), str(self.temp / 'stopped'), stopped=True)
         self.assertEqual(status, 1)
-        self.assertRegex(errors, BLOCKED + r' The ledger of draft second is unchanged\.')
-        # The engine gives each problem with no verdict its lane and why, and the command says it once per reason.
-        unchecked = read_fix_check(self.temp / 'stopped')['unchecked']
-        self.assertEqual([row['id'] for row in unchecked], [self.major, self.moderate, self.minor])
-        self.assertEqual({row['lane'] for row in unchecked}, {'fix-1'})
-        reason = unchecked[0]['reason']
-        self.assertTrue(reason.startswith('fix-1 never claimed its batch, so nothing read the draft against it'))
-        self.assertTrue(errors.endswith(f'{PROG}No verdict on {self.major}, {self.moderate}, {self.minor} '
-                                        f'(fix-1): {reason.rstrip(".")}.\n'), errors)
+        self.assertRegex(errors, BLOCKED + r' The ledger of draft second is unchanged\.\n')
+        # Why the run stopped is printed once, and the line for its problems points there in the engine's words.
+        check = read_fix_check(self.temp / 'stopped')
+        self.assertEqual([row['id'] for row in check['unchecked']], [self.major, self.moderate, self.minor])
+        self.assertEqual(errors.count(check['stopped']), 1, errors)
+        self.assertTrue(errors.endswith(f'{PROG}Stopped: {check["stopped"].rstrip(".")}.\n'
+                                        f'{PROG}No verdict on {self.major}, {self.moderate}, {self.minor} '
+                                        f'(fix-1): {NEVER_STARTED}.\n'), errors)
 
         def damaged(run):
             # A process killed while writing leaves a file that is not JSON.
