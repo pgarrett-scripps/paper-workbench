@@ -117,7 +117,23 @@ def check_fixes(argv):
     except ValueError as exc:
         print(f'{PROG}: {exc} The ledger of draft {draft} is unchanged.', file=sys.stderr)
         return status or 1
-    verdicts = [check['verdict'] for row in ledger for check in row['fix_checks'] if check['run'] == str(run)]
+    entries = [check for row in ledger for check in row['fix_checks'] if check['run'] == str(run)]
+    verdicts = [entry['verdict'] for entry in entries]
     counts = ', '.join(f'{verdict} {verdicts.count(verdict)}' for verdict in FIX_VERDICTS)
     print(f'{PROG}: recorded on draft {draft}: {counts}, not checked {verdicts.count(None)}.', file=sys.stderr)
+    # An incomplete check, or one that read the converter's text, is said so under its counts.
+    for line in warnings(entries[0]):
+        print(f'{PROG}: {line}', file=sys.stderr)
     return status
+
+
+def warnings(entry):
+    """What was wrong with the check as a whole, from one of its entries, one line each."""
+    lines = []
+    if entry['check_incomplete']:
+        lines.append(f'This check is incomplete, so a problem not checked is still open: '
+                     f'{entry["check_incomplete"].rstrip(".")}.')
+    if entry['read_failed']:
+        lines.append(f'The reader did not read the pages of draft {entry["draft"]}, so the check read the '
+                     f'converter\'s text: {entry["read_failed"].rstrip(".")}.')
+    return lines

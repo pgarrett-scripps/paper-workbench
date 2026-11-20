@@ -17,9 +17,12 @@ over for a Paper Scaffold workspace, so the snapshot of it shows what the
 engine takes from one and what it leaves out. Round one and the third run are
 written inside that workspace, as ``paper-workbench review . reviews/NAME``
 writes them, so the snapshot also shows that no run's files are copied in as
-code. test_ledger_import.py builds its runs here too: rounds of a draft's PDF,
-an author's draft check with no editor, and a review whose reviewers never
-answered.
+code. Three more runs show what went wrong in a run that still finished: a
+code check that never answered, a reader that never answered, so the
+manuscript was sealed as the converter read it, and a seat that spent past its
+token ceiling after it reported. test_ledger_import.py builds its runs here
+too: rounds of a draft's PDF, an author's draft check with no editor, and a
+review whose reviewers never answered.
 """
 import http.client
 import json
@@ -39,6 +42,7 @@ import manuscripts
 from paper_workspace.run_view import run_review
 from paper_workspace.server import make_server
 from paper_workspace.workspace_review import engine_argv
+from reader_fixture import pdf_bytes
 from test_run_view import (CODE_EVIDENCE, PIPELINE, SUMMARY, SUMMARY_EVIDENCE, THROWN_OUT_NOTE, finding, issue,
                            issues_document)
 from test_workspace_review import make_workspace
@@ -54,6 +58,8 @@ MEAN = {'title': 'The mean hides the spread of three repeats', 'quote': 'the mea
         'comment': 'With three repeats the mean says little. Show each repeat.',
         'assumed_method': 'The figure plots the mean of the three repeats.'}
 CREDENTIALS = ('ANTHROPIC_API_KEY', 'ANTHROPIC_AUTH_TOKEN', 'OPENAI_API_KEY')
+# The per-seat token ceiling of the round one seat spends past.
+CEILING_TOKENS = 5000
 
 
 @contextmanager
@@ -215,6 +221,56 @@ def silent_round(root, texts, source):
                         reviewers=2), 'blocked')
 
 
+def numbers_lane(slot):
+    """The numbers specialist filing the one finding of MEAN, which names the method it assumed."""
+    slot.whole_paper()
+    stored = slot.submit_finding(severity='major', **MEAN)
+    assert stored.get('stored'), stored
+    reported(slot, 'One.')
+
+
+def silent_code_round(root, code):
+    """A draft-check given ``code`` whose code check never answers, so the one claim it was handed is not checked.
+
+    The code lane finds nothing, and the numbers lane files the finding of
+    MEAN, which rests on a method, so the code check is handed it.
+    """
+    (code / 'analysis').mkdir(parents=True, exist_ok=True)
+    (code / CODE_EVIDENCE['path']).write_text(PIPELINE)
+    scripts = {'spec-code': lambda slot: (slot.whole_paper(), reported(slot, 'Nothing.', none_found=True)),
+               'spec-numbers': numbers_lane, 'code-check': lambda slot: NO_ANSWER}
+    ran(scripted_review(sealed(root, CODE_TEXTS, 'source-code'), root, scripts, arm='draft-check', reviewers=0,
+                        tracks=['numbers'], code=str(code)), 'complete')
+
+
+def unread_round(root):
+    """A draft-check of a PDF no manuscript was sealed from, whose reader never answers.
+
+    The engine seals the manuscript as converted and the numbers lane reviews
+    the converter's text.
+    """
+    root.mkdir(parents=True)
+    pdf = root / 'manuscript.pdf'
+    pdf.write_bytes(pdf_bytes([[(11, FIRST[2])]]))
+    review = scripted_review(pdf, root, {'reader': lambda slot: NO_ANSWER, 'spec-numbers': numbers_lane},
+                             arm='draft-check', reviewers=0, tracks=['numbers'])
+    assert (review.status, review.summary['read']['reader_failed']) == ('complete', True), review.summary
+
+
+def ceiling_round(root):
+    """A reviewers-only round whose core-2 reports and then spends past its token ceiling of 5000.
+
+    Each seat the round has no script for answers with the engine's default.
+    """
+    def over(slot):
+        slot.whole_paper()
+        reported(slot, 'Nothing.', none_found=True)
+        slot.spend(slot.task.token_ceiling + 1)
+
+    ran(scripted_review(sealed(root, FIRST, 'source-ceiling'), root, {'core-2': over}, arm='reviewers-only',
+                        reviewers=2, per_agent_tokens=CEILING_TOKENS), 'complete')
+
+
 @contextmanager
 def served(root):
     """The viewer's server on one run folder, and a function that sends it a request."""
@@ -252,6 +308,7 @@ class EngineRoundsTests(unittest.TestCase):
         cls.first, cls.second = cls.workspace / 'reviews' / 'first', cls.root / 'second'
         cls.coded = cls.workspace / 'reviews' / 'coded'
         cls.disproved, cls.unwritten = cls.root / 'disproved', cls.root / 'unwritten'
+        cls.silent_code, cls.unread, cls.ceiling = cls.root / 'silent-code', cls.root / 'unread', cls.root / 'ceiling'
         with offline():
             one_round(cls.first, FIRST, 'source-1', [
                 'twelve samples drawn from one donor', 'controls retromer assembly in all tissues',
@@ -268,6 +325,9 @@ class EngineRoundsTests(unittest.TestCase):
             # The same run with the code lane finding nothing, and the same run stopped before its review.
             code_round(cls.disproved, cls.root / 'code', lane_finds=False)
             code_round(cls.unwritten, cls.root / 'code', written=False)
+            silent_code_round(cls.silent_code, cls.root / 'silent-code-source')
+            unread_round(cls.unread)
+            ceiling_round(cls.ceiling)
 
     @classmethod
     def tearDownClass(cls):
@@ -309,6 +369,19 @@ class EngineRoundsTests(unittest.TestCase):
                               'tokens_cache_read': 500, 'tokens_output': 100, 'tokens_peak_context': 1000}, slot)
         # A slot with no model asked is not one whose model is unverified.
         self.assertEqual((run['models_unverified'], run['publishable']), ([], True))
+
+    def test_a_seat_that_spent_past_its_ceiling_says_so_in_the_engines_words(self):
+        run = self.view(self.ceiling)['run']
+        agents = {row['slot']: row for row in run['agents']}
+        over = agents['core-2']
+        self.assertEqual((over['state'], over['ending'], over['detail']),
+                         ('over the token ceiling', 'over the token ceiling',
+                          f'the seat spent {CEILING_TOKENS + 1} tokens against a ceiling of {CEILING_TOKENS}'))
+        self.assertEqual((over['tokens'], over['tokens_cumulative']), (CEILING_TOKENS + 1, CEILING_TOKENS + 1))
+        # It reported before it spent, so its report stands, and the other seats answered as usual.
+        self.assertEqual((over['none_found'], agents['core-1']['ending'], agents['editor']['ending']),
+                         (True, 'answered', 'answered'))
+        self.assertEqual((run['status'], run['publishable']), ('complete', True))
 
     def test_round_one_is_read_as_three_issues(self):
         review = self.view(self.first)
@@ -431,6 +504,33 @@ class EngineRoundsTests(unittest.TestCase):
         [item] = shown['thrown_out']
         self.assertEqual((item['title'], item['code_evidence'], item['placement']),
                          (MEAN['title'], SUMMARY_EVIDENCE, 'anchored'))
+
+    def test_a_code_check_that_never_answered_is_shown_incomplete_and_its_claim_stands(self):
+        engine = read_run(self.silent_code)['code_check']
+        self.assertTrue(engine['incomplete_reason'].startswith('1 method claim(s) were not read against the code'),
+                        engine)
+        review = self.view(self.silent_code)
+        self.assertEqual(review['run']['code_check'], {
+            'cap': engine['cap'], 'checked': 0, 'not_checked': 1, 'over_cap': 0, 'incomplete': True,
+            'incomplete_reason': engine['incomplete_reason'],
+            'counts': {'confirmed': 0, 'contradicted': 0, 'not-shown': 0}, 'thrown_out': []})
+        # The claim the check never read is a card as its reviewer filed it.
+        self.assertEqual([card['title'] for card in review['findings']], [MEAN['title']])
+        # A check that answered every claim it was handed is not incomplete.
+        whole = self.view(self.coded)['run']['code_check']
+        self.assertEqual((whole['incomplete'], whole['not_checked'], whole['incomplete_reason']), (False, 0, None))
+
+    def test_a_manuscript_whose_reader_failed_says_so_and_one_never_read_by_design_does_not(self):
+        # The engine says reader_failed only in what the review returns, which unread_round checks. The run folder
+        # has the manuscript's state and the reader's row, and the viewer reads the failure from those.
+        engine = read_run(self.unread)['manuscript']
+        self.assertEqual(self.view(self.unread)['run']['manuscript_read'],
+                         {'state': 'sealed-without-read', 'reader_failed': True, 'reason': engine['reason']})
+        self.assertTrue(engine['reason'])
+        # A manuscript written from an application's own source needs no reader, so none ran and none failed.
+        shown = self.view(self.silent_code)['run']['manuscript_read']
+        self.assertEqual((shown['state'], shown['reader_failed']), ('sealed-without-read', False))
+        self.assertIs(self.view(self.first)['run']['manuscript_read']['reader_failed'], False)
 
     def test_a_run_given_no_code_has_no_code_check(self):
         review = self.view(self.first)

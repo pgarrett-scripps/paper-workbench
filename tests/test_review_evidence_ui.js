@@ -325,6 +325,25 @@ vm.runInContext(`ledger = [{...ledger[0], status:'fixed', fix_checks:[{draft:'se
 assert.ok(html('#history-ledger').includes('<p><strong>Fix check of draft second on 2026-11-01: fixed</strong><br>Basis: old-quote-gone<br>'
   + 'Searched the draft for: seed</p><p class="muted">No longer in draft second word for word</p><blockquote>alpha</blockquote>'));
 assert.ok(!html('#history-ledger').includes('Earlier fix checks'));
+// A verdict from an incomplete check, or from one whose reader failed, says so under it, so it never reads as
+// one from a clean check. Each entry names the checker's lane, and a problem with no verdict the lane it was dealt to.
+vm.runInContext(`ledger = [{...ledger[0], status:'fixed', fix_checks:[
+  {draft:'second', run:'/checks/one', date:'2026-11-01', lane:'fix-3', verdict:null, basis:'', evidence:null,
+   old_evidence:[], searches:[], reason:'fix-3 claimed its batch and stopped without reporting', note:'',
+   check_incomplete:'fix-3 answered 0 of <2>', read_failed:''},
+  {draft:'second', run:'/checks/one', date:'2026-11-01', lane:'fix-1', verdict:'fixed', basis:'old-quote-gone',
+   evidence:null, old_evidence:[], searches:[], reason:'', note:'', check_incomplete:'fix-3 answered 0 of <2>',
+   read_failed:'the reader <stage> returned twice'}]}]; history();`, context);
+const flagged = html('#history-ledger');
+for (const text of ['<p class="muted"><strong>Not checked on draft second on 2026-11-01, dealt to fix-3</strong><br>'
+                    + 'fix-3 claimed its batch and stopped without reporting</p>'
+                    + '<p class="error">This check was incomplete: fix-3 answered 0 of &lt;2&gt;</p>',
+                    '<p><strong>Fix check of draft second on 2026-11-01, checked by fix-1: fixed</strong><br>Basis: old-quote-gone</p>'
+                    + '<p class="error">This check was incomplete: fix-3 answered 0 of &lt;2&gt;</p>'
+                    + '<p class="error">The reader did not read the pages of draft second, so this check read the converter&#39;s text: '
+                    + 'the reader &lt;stage&gt; returned twice</p>']) {
+  assert.ok(flagged.includes(text), text);
+}
 // The count is of the ledger cards() last drew: the seed and the donors are open, and the scope is declined.
 assert.ok(elements.get('#finding-count').textContent.endsWith(' · 2 earlier problems open'));
 // A card's author response can decline the issue.
@@ -418,6 +437,29 @@ assert.equal(vm.runInContext(`runStatus({status:'complete-without-findings', qua
 // A check whose record named no cap says how many were over it without a number for the cap.
 assert.ok(vm.runInContext("codeCheckCounts({cap:null, checked:0, over_cap:3, counts:{confirmed:0, contradicted:0, 'not-shown':0}})", context)
   .includes('3 over its cap left unchecked'));
+// A code check that fell silent is incomplete in its counts and says why above the comments, in the engine's
+// words when it gave them. A check that answered everything it was handed says neither.
+const silent = "{cap:12, checked:0, not_checked:1, over_cap:0, incomplete:true, incomplete_reason:'code-check answered 0 of 1', counts:{confirmed:0, contradicted:0, 'not-shown':0}, thrown_out:[]}";
+assert.equal(vm.runInContext(`codeCheckCounts(${silent})`, context),
+  '<p class="count">Code check, incomplete: 0 checked, 0 confirmed, 0 thrown out, 0 not shown in the code, 1 handed to it and not checked</p>');
+assert.equal(vm.runInContext(`codeCheckIncomplete(${silent})`, context),
+  'The code check is incomplete, so a finding it did not reach stands as its reviewer filed it: code-check answered 0 of 1');
+assert.equal(vm.runInContext(`codeCheckIncomplete({...${silent}, incomplete_reason:null, not_checked:2})`, context),
+  'The code check is incomplete, so a finding it did not reach stands as its reviewer filed it: 2 claims not read against the code.');
+assert.equal(vm.runInContext(`codeCheckIncomplete({...${silent}, incomplete:false, not_checked:0})`, context), '');
+assert.ok(!vm.runInContext(`codeCheckCounts({...${silent}, incomplete:false, not_checked:0})`, context).includes('incomplete'));
+// A reader that failed is said above the comments. A manuscript no reader was planned for says nothing.
+assert.equal(vm.runInContext("readerFailed({state:'sealed-without-read', reader_failed:true, reason:'the reader stage returned twice'})", context),
+  "The reader did not read the pages of this manuscript, so the reviewers read the converter's text: the reader stage returned twice");
+assert.equal(vm.runInContext("readerFailed({state:'sealed-without-read', reader_failed:false, reason:'written from an application'})", context), '');
+vm.runInContext(`review.run.manuscript_read = {state:'sealed-without-read', reader_failed:true, reason:'it <stopped>'};
+  review.run.code_check = ${silent}; cards();`, context);
+for (const text of ['<p class="error">The reader did not read the pages of this manuscript, so the reviewers read the converter&#39;s text: it &lt;stopped&gt;</p>',
+                    '<p class="error">The code check is incomplete, so a finding it did not reach stands as its reviewer filed it: code-check answered 0 of 1</p>',
+                    '<p class="count">Code check, incomplete: 0 checked']) {
+  assert.ok(html('#run-panel').includes(text), text);
+}
+vm.runInContext('review.run.manuscript_read = null; review.run.code_check = null; cards();', context);
 
 // Every anchored member marks the manuscript, overlapping quotes included, each pinned with its issue's number.
 // The issue that is one edit shows its wording, and the unplaced member marks nothing.

@@ -2,21 +2,23 @@
 
 Every check here is written by the engine's own fix-check lane through
 ``peerreviewagents.scripted_fix_check``, with a script of this file in the
-checker's seat and no model run. A check that is not finished is the folder as
-the engine left it while its checker was still in its seat, read from inside
-that seat. A draft's PDF comes from ``reader_fixture.pdf_bytes``, printed from
-the draft's own source where typst would compile it, as CI has no typst.
+checker's seat and no model run. A check that did not finish is one the engine
+blocked: the draft it was handed has a page turned on its side and its reader
+never answers, so the new draft is never sealed. A check whose reader failed on
+a draft it could still read goes on from the converter's text. A draft's PDF
+comes from ``reader_fixture.pdf_bytes``, printed from the draft's own source
+where typst would compile it, as CI has no typst.
 """
 import contextlib
 import io
-import shutil
 import subprocess
 import tempfile
 import unittest
 from pathlib import Path
 from unittest.mock import patch
 
-from peerreviewagents import check_fixes_parser, names, read_fix_check, scripted_fix_check, verify_workspace
+from peerreviewagents import (NO_ANSWER, check_fixes_parser, names, read_fix_check, scripted_fix_check,
+                              verify_workspace)
 from peerreviewagents.workspace import normalize_review, read_json
 
 from manuscripts import line_of
@@ -26,7 +28,7 @@ from paper_workspace.fix_check import problem_rows
 from paper_workspace.revisions import (automation_decisions, copyedit_proposals, create_revision, fix_check_entries,
                                        head, ledger_of, open_problems, problem_status, record_fix_checks, snapshot)
 from paper_workspace.scaffold_import import import_scaffold
-from reader_fixture import pdf_bytes
+from reader_fixture import PAGES, TURNED, pdf_bytes
 
 FIXTURE = Path(__file__).parent / 'fixtures/scaffold-revision'
 DATE = '2026-11-18'
@@ -34,8 +36,13 @@ DATE = '2026-11-18'
 RAISED = [('8 of 12 seedlings', 'Report the seedlings that did not bend.', 'minor'),
           ('protein activity', 'Say what supports the mechanism.', 'major'),
           ('in order to assess', 'Say how treatment was assigned.', 'moderate')]
-NOT_REACHED = 'No checker reached it before the check was written.'
+# The engine's reason for a problem dealt to a checker that returned without a verdict on it.
+NOT_REACHED = 'fix-1 claimed its batch and stopped without reporting, so the new draft was never read against it'
 PROG = 'paper-workbench check-fixes: '
+# A reader that never answers. On a draft the converter reads whole, the check goes on from the converter's text.
+UNREAD = {'reader': lambda slot: NO_ANSWER}
+BLOCKED = (r'is blocked \(check-fixes: the reader did not seal the new draft and it could not be sealed as '
+           r'converted: .*\), and only a complete check is recorded\.')
 
 
 def printed(project):
@@ -75,16 +82,17 @@ def answer(slot, problem_id, verdict, holding=None, **named):
     return slot.submit_fix_check(problem_id, verdict, **named)
 
 
-def killed(script, folder, run):
-    """``script`` as the checker, after which ``run`` is the check's ``folder`` as it stood, not yet written.
+def blocked(run, problems):
+    """The engine's fix check of ``problems`` into ``run``, blocked before any checker sat.
 
-    That is what an engine killed as its checker finished leaves behind: the
-    check started and answered, and the recorder never wrote it.
+    The draft it is handed has a page turned on its side, which the converter
+    reads too little of to seal, and its reader never answers, so the new
+    draft is never sealed and the engine blocks the check.
     """
-    def checker(slot):
-        script(slot)
-        shutil.copytree(folder, run, dirs_exist_ok=True)
-    return checker
+    turned = Path(run).with_name(Path(run).name + '.pdf')
+    turned.write_bytes(pdf_bytes(PAGES, TURNED))
+    check = scripted_fix_check(turned, run, problems, UNREAD)
+    assert check.status == 'blocked', (check.status, check.blocked_reason)
 
 
 class Draft(unittest.TestCase):
@@ -123,18 +131,14 @@ class Draft(unittest.TestCase):
 
 
 class FixCheckTest(Draft):
-    def check(self, run, script, written=True):
+    def check(self, run, script, unread=False):
         """The engine's fix check of the draft's PDF on its open problems, with ``script`` as the checker, as read.
 
-        When ``written`` is false, ``run`` is the check as it stood when the
-        checker finished, before the recorder wrote it.
+        When ``unread`` is true the reader never answers, so the check reads
+        the converter's text of the draft.
         """
         problems = open_problems(ledger_of(self.folder), 'second')
-        if written:
-            scripted_fix_check(self.pdf, run, problems, {'fix-check': script})
-        else:
-            engine = run.with_name(run.name + '-engine')
-            scripted_fix_check(self.pdf, engine, problems, {'fix-check': killed(script, engine, run)})
+        scripted_fix_check(self.pdf, run, problems, {**(UNREAD if unread else {}), 'fix-check': script})
         return read_fix_check(run)
 
     def test_the_verdict_names_are_the_engines(self):
@@ -143,20 +147,28 @@ class FixCheckTest(Draft):
     def test_a_check_is_recorded_beside_the_draft_and_frozen_into_the_next(self):
         self.assertNotIn('in order to assess', self.draft.line_text(line_of(self.draft, 'to assess')))
         run = self.temp / 'check-1'
-        ledger = record_fix_checks(self.root, 'second', self.check(run, self.first_check), date=DATE)
+        check = self.check(run, self.first_check)
+        # The checker returned with the minor problem unanswered, so the engine calls the check incomplete, and
+        # every entry it writes says so, the two with verdicts as well.
+        self.assertTrue(check['complete'])
+        self.assertIn(NOT_REACHED, check['incomplete_reason'])
+        whole = {'lane': 'fix-1', 'check_incomplete': check['incomplete_reason'], 'read_failed': ''}
+        ledger = record_fix_checks(self.root, 'second', check, date=DATE)
         line, quote = self.quoted
         self.assertEqual(self.checks(ledger), {
             self.major: [{'draft': 'second', 'run': str(run), 'date': DATE, 'verdict': 'not-fixed', 'basis': 'quote',
                           'evidence': {'document': 'paper.md', 'line': line, 'end_line': line, 'page': 1,
                                        'section': 'Methods', 'quote': quote},
                           'old_evidence': [{'document': 'paper.md', 'quote': 'protein activity', 'present': True}],
-                          'searches': [], 'reason': '', 'note': 'The sentence still names no support.'}],
+                          'searches': [], 'reason': '', 'note': 'The sentence still names no support.', **whole}],
             self.moderate: [{'draft': 'second', 'run': str(run), 'date': DATE, 'verdict': 'fixed',
                              'basis': 'old-quote-gone', 'evidence': None,
                              'old_evidence': [{'document': 'paper.md', 'quote': 'in order to assess', 'present': False}],
-                             'searches': ['in order to assess'], 'reason': '', 'note': 'The sentence was rewritten.'}],
+                             'searches': ['in order to assess'], 'reason': '', 'note': 'The sentence was rewritten.',
+                             **whole}],
             self.minor: [{'draft': 'second', 'run': str(run), 'date': DATE, 'verdict': None, 'basis': '',
-                          'evidence': None, 'old_evidence': [], 'searches': [], 'reason': NOT_REACHED, 'note': ''}]})
+                          'evidence': None, 'old_evidence': [], 'searches': [], 'reason': NOT_REACHED, 'note': '',
+                          **whole}]})
         by_id = {row['id']: row for row in ledger}
         self.assertEqual([problem_status(by_id[key]) for key in (self.major, self.moderate, self.minor)],
                          ['open', 'fixed', 'open'])
@@ -180,8 +192,10 @@ class FixCheckTest(Draft):
         again = self.temp / 'check-2'
         ledger = record_fix_checks(self.root, 'second', self.check(again, second_check), date=DATE)
         minor = next(row for row in ledger if row['id'] == self.minor)
-        self.assertEqual([(entry['run'], entry['verdict']) for entry in minor['fix_checks']],
-                         [(str(run), None), (str(again), 'cannot-tell')])
+        # The second check answered the one problem it was given, so it is not incomplete.
+        self.assertEqual([(entry['run'], entry['verdict'], bool(entry['check_incomplete']))
+                          for entry in minor['fix_checks']],
+                         [(str(run), None, True), (str(again), 'cannot-tell', False)])
         self.assertEqual((problem_status(minor), open_problems(ledger, 'second')), ('open', []))
 
         # The next draft carries every check in its own frozen ledger, and the checked draft takes no more.
@@ -192,10 +206,25 @@ class FixCheckTest(Draft):
         with self.assertRaisesRegex(ValueError, 'Record fix checks on the current draft'):
             record_fix_checks(self.root, 'second', read_fix_check(run))
 
+    def test_a_check_whose_reader_failed_says_so_on_every_entry(self):
+        # A check whose reader read the pages says nothing of it.
+        self.assertEqual({entry['read_failed'] for entry in fix_check_entries(
+            self.check(self.temp / 'read', self.first_check), DATE)}, {''})
+        run = self.temp / 'unread'
+        check = self.check(run, self.first_check, unread=True)
+        # The reader never answered, so the draft was sealed as converted and the check went on from that text.
+        self.assertTrue(check['complete'])
+        reason = read_json(run / 'manuscript/manifest.json')['ai_read']['reason']
+        self.assertTrue(reason)
+        ledger = record_fix_checks(self.root, 'second', check, date=DATE)
+        self.assertEqual({entry['read_failed'] for entries in self.checks(ledger).values() for entry in entries},
+                         {reason})
+
     def test_a_check_that_is_not_complete_or_not_read_whole_changes_nothing(self):
-        unfinished = self.check(self.temp / 'unfinished', self.first_check, written=False)
-        with self.assertRaisesRegex(ValueError, 'is running, and only a complete check is recorded'):
-            record_fix_checks(self.root, 'second', unfinished)
+        stopped = self.temp / 'stopped'
+        blocked(stopped, open_problems(ledger_of(self.folder), 'second'))
+        with self.assertRaisesRegex(ValueError, BLOCKED):
+            record_fix_checks(self.root, 'second', read_fix_check(stopped))
         damaged = self.temp / 'damaged'
         self.check(damaged, self.first_check)
         # A process killed while writing leaves a file that is not JSON.
@@ -216,20 +245,31 @@ class FixCheckTest(Draft):
             if 'p01' in [row['id'] for row in slot.fix_queue()['problems']]:
                 answer(slot, 'p01', 'fixed', 'level bench', note='The bench is named.')
         scripted_fix_check(paper, self.temp / 'run', rows, {'fix-check': first})
-        entries = fix_check_entries(read_fix_check(self.temp / 'run'), DATE)
+        check = read_fix_check(self.temp / 'run')
+        entries = fix_check_entries(check, DATE)
         self.assertEqual([entry['id'] for entry in entries], [row['id'] for row in rows])
-        self.assertEqual([(entry['verdict'], entry['reason']) for entry in entries[::20]],
-                         [('fixed', ''), (None, NOT_REACHED), (None, 'Past the cap of 40 problems one fix check reads.')])
+        # Each problem with no verdict keeps the engine's reason and the lane it was dealt to, if any.
+        self.assertEqual([(entry['verdict'], entry['lane'], entry['reason']) for entry in entries[::20]],
+                         [('fixed', 'fix-1', ''), (None, 'fix-3', NOT_REACHED.replace('fix-1', 'fix-3')),
+                          (None, '', "past this check's limit of 40 problems: it was never dealt to a checker")])
+        self.assertEqual({entry['check_incomplete'] for entry in entries}, {check['incomplete_reason']})
+        # A check written before engine d702d89 gives no reasons, so the app says what it can.
+        older = fix_check_entries({**check, 'unchecked': [], 'incomplete_reason': None}, DATE)
+        self.assertEqual([entry['reason'] for entry in older[::20]],
+                         ['', 'No checker reached it before the check was written.',
+                          'Past the cap of 40 problems one fix check reads.'])
+        self.assertEqual({entry['check_incomplete'] for entry in older}, {'40 of 41 problems have no verdict.'})
 
 
 class CheckFixesCommandTest(Draft):
     """``paper-workbench check-fixes``, with the engine's lane run by a script in place of the model session."""
 
-    def command(self, *argv, script=None, status=0, after=None):
+    def command(self, *argv, script=None, stopped=False, unread=False, after=None):
         """Run the command with ``script`` as the checker, and return its status, stderr and what the engine got.
 
-        An engine that exits with ``status`` other than 0 is killed as its
-        checker finished, so the run folder holds the check unwritten.
+        When ``stopped`` is true the engine is handed a draft it cannot seal and
+        blocks the check, and exits 1. When ``unread`` is true the reader never
+        answers, and the check reads the converter's text of the draft.
         ``after`` is handed the run folder once the engine is done with it.
         """
         given = {}
@@ -237,15 +277,14 @@ class CheckFixesCommandTest(Draft):
         def engine(argv, prog):
             args = check_fixes_parser(prog=prog).parse_args(argv)
             given.update(argv=argv, problems=read_json(args.problems))
-            if status == 0:
-                scripted_fix_check(args.workspace, args.output, args.problems, {'fix-check': script})
+            if stopped:
+                blocked(args.output, args.problems)
             else:
-                folder = Path(args.output + '-engine')
-                scripted_fix_check(args.workspace, folder, args.problems,
-                                   {'fix-check': killed(script, folder, args.output)})
+                scripted_fix_check(args.workspace, args.output, args.problems,
+                                   {**(UNREAD if unread else {}), 'fix-check': script})
             if after:
                 after(Path(args.output))
-            return status
+            return 1 if stopped else 0
 
         errors = io.StringIO()
         with patch('paper_workspace.fix_check.check_fixes_main', engine), contextlib.redirect_stderr(errors):
@@ -265,8 +304,14 @@ class CheckFixesCommandTest(Draft):
         status, errors, given = self.command(str(self.root), str(run), script=self.written(
             (self.minor, 'fixed', '8 of 12 seedlings', {'note': 'The seedlings that did not bend are reported.'}),
             (self.major, 'not-fixed', 'protein activity', {'note': 'Still no support.'})))
+        # The checker left the moderate problem unanswered, so the check is incomplete, and a line under the
+        # counts says why in the engine's words.
+        reason = read_fix_check(run)['incomplete_reason']
+        self.assertIn(NOT_REACHED, reason)
         self.assertEqual((status, errors), (0, PROG + 'recorded on draft second: fixed 1, not-fixed 1, '
-                                                      'cannot-tell 0, not checked 1.\n'))
+                                                      'cannot-tell 0, not checked 1.\n'
+                                            + PROG + 'This check is incomplete, so a problem not checked is still '
+                                                     f'open: {reason.rstrip(".")}.\n'))
         self.assertEqual(given['argv'], [str(self.pdf), str(run), '--problems', str(run / 'problems.json')])
         # The problems file is the open problems of the ledger, the gravest first.
         self.assertEqual(given['problems'], {'schema_version': names.PROBLEMS_SCHEMA_VERSION, 'problems': [
@@ -294,12 +339,22 @@ class CheckFixesCommandTest(Draft):
         self.assertTrue(notes[0].startswith('problem original:first:unrated is left out of this check: '), notes)
         self.assertIn('severity', notes[0])
 
+    def test_a_check_whose_reader_failed_says_so_under_its_counts(self):
+        run = self.temp / 'unread'
+        status, errors, _ = self.command(str(self.root), str(run), unread=True, script=self.written(
+            (self.minor, 'fixed', '8 of 12 seedlings', {'note': 'Reported.'}),
+            (self.major, 'not-fixed', 'protein activity', {'note': 'Still no support.'}),
+            (self.moderate, 'fixed', None, {'searches': ['in order to assess'], 'note': 'Rewritten.'})))
+        reason = read_json(run / 'manuscript/manifest.json')['ai_read']['reason']
+        self.assertEqual((status, errors), (0, PROG + 'recorded on draft second: fixed 2, not-fixed 1, '
+                                                      'cannot-tell 0, not checked 0.\n'
+                                            + PROG + 'The reader did not read the pages of draft second, so the '
+                                                     f"check read the converter's text: {reason.rstrip('.')}.\n"))
+
     def test_a_check_that_is_not_complete_or_not_read_whole_leaves_the_ledger_unchanged(self):
-        status, errors, _ = self.command(str(self.root), str(self.temp / 'unfinished'), script=self.first_check,
-                                         status=1)
+        status, errors, _ = self.command(str(self.root), str(self.temp / 'stopped'), stopped=True)
         self.assertEqual(status, 1)
-        self.assertIn('is running, and only a complete check is recorded. The ledger of draft second is '
-                      'unchanged.', errors)
+        self.assertRegex(errors, BLOCKED + r' The ledger of draft second is unchanged\.')
 
         def damaged(run):
             # A process killed while writing leaves a file that is not JSON.
