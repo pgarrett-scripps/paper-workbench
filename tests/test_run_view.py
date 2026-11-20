@@ -482,19 +482,8 @@ class RunReviewTests(unittest.TestCase):
         words = ('ending', 'detail', *TOKEN_FIELDS)
         for row in run_review(self.review, self.base)['run']['agents']:
             self.assertEqual({word: row[word] for word in words}, dict.fromkeys(words), row['slot'])
-        # The recorder's "in process" row and the spend of an answered seat are read from a run the engine wrote,
-        # in test_engine_rounds.py. A scripted run has no token ceiling, so this stopped seat is written by hand.
-        spent = {'tokens': 592106, 'tokens_cumulative': 592106, 'tokens_input_uncached': 1200,
-                 'tokens_cache_write': 40000, 'tokens_cache_read': 540000, 'tokens_output': 10906,
-                 'tokens_peak_context': 144072}
-        stopped = 'stopped over the token ceiling after it answered'
-        runtime = json.loads((self.review / 'runtime.json').read_text())
-        runtime['agents'][0].update(spent, state='done', ending='answered', detail=stopped)
-        write_json(self.review / 'runtime.json', runtime)
-        core = {row['slot']: row for row in run_review(self.review, self.base)['run']['agents']}['core-1']
-        # An agent that answered and was then stopped keeps its answer, its sentence and its whole spend.
-        self.assertEqual((core['state'], core['ending'], core['detail']), ('done', 'answered', stopped))
-        self.assertEqual({field: core[field] for field in spent}, spent)
+        # The recorder's "in process" row, the spend of an answered seat and a seat that spent past its token
+        # ceiling are read from runs the engine wrote, in test_engine_rounds.py.
 
     def test_a_review_without_findings_is_publishable_unless_the_guard_held_some(self):
         self.write_issues([], findings_delivered=0, findings_submitted=0, escalation_rulings=[], escalated_count=0)

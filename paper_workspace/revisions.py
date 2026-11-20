@@ -11,12 +11,12 @@ from contextlib import contextmanager
 from datetime import datetime, timezone
 from pathlib import Path
 
-from peerreviewagents import export_draft, read_run, verify_workspace
+from peerreviewagents import MANUSCRIPT_DIRECTORY, export_draft, read_run, verify_workspace
 from peerreviewagents.names import FIX_VERDICTS
 from peerreviewagents.problems import problems_from_run
 from peerreviewagents.workspace import digest, read_json, save_review, write_json
 
-from .run_view import source_sha256
+from .run_view import reader_ran, source_sha256
 from .scaffold_import import SPANS, copy_project, import_scaffold, scaffold_spans, span_at
 from .source_edits import NATIVE_CITATION, citation_markers, decode_span, encode_span
 
@@ -207,7 +207,15 @@ def fix_check_entries(check, date):
     draft as ``evidence``, or None, whether each quote it was raised on is
     still ``present`` in that draft, the searches, the reason and the
     checker's note. A problem with no verdict is entered as not checked, with
-    ``verdict`` None and why: past the check's cap, or reached by no checker.
+    ``verdict`` None and the engine's reason: past the check's cap, or dealt to
+    a lane that stopped. ``lane`` is the checker's seat, or '' for a problem
+    dealt to none.
+
+    Every entry also says what was wrong with the check as a whole, so no
+    verdict reads as one from a clean check: ``check_incomplete`` is why the
+    check left problems with no verdict, and ``read_failed`` is why the reader
+    did not read the checked draft's pages, so the check read the converter's
+    text. Each is '' for a check it does not apply to.
     """
     given = [str(problem['id']) for problem in check['problems']]
     if not given:
@@ -218,24 +226,57 @@ def fix_check_entries(check, date):
             raise ValueError(f'The fix check at {check["run"]} answered problem {row["problem_id"]}, '
                              'which it was not given')
         answered[str(row['problem_id'])] = row
+    unchecked = {str(row['id']): row for row in check['unchecked']}
+    whole = {'check_incomplete': check_incomplete(check, len(given)), 'read_failed': fix_check_unread(check)}
     entries = []
     for place, problem in enumerate(given):
         entry = {'id': problem, 'run': check['run'], 'date': date, 'verdict': None, 'basis': '',
-                 'evidence': None, 'old_evidence': [], 'searches': [], 'reason': '', 'note': ''}
+                 'evidence': None, 'old_evidence': [], 'searches': [], 'reason': '', 'note': '', 'lane': '',
+                 **whole}
         row = answered.get(problem)
         if row is None:
+            left = unchecked.get(problem) or {}
             past = check['cap'] is not None and place >= check['cap']
-            entry['reason'] = (f'Past the cap of {check["cap"]} problems one fix check reads.' if past
-                               else 'No checker reached it before the check was written.')
+            # A check written before engine d702d89 gives no reason, so the app says what it can.
+            entry.update(lane=left.get('lane') or '', reason=left.get('reason') or (
+                f'Past the cap of {check["cap"]} problems one fix check reads.' if past
+                else 'No checker reached it before the check was written.'))
         else:
             quoted = row['draft_evidence']
-            entry.update(verdict=row['verdict'], basis=row['basis'],
+            entry.update(verdict=row['verdict'], basis=row['basis'], lane=row.get('slot') or '',
                          evidence={field: quoted.get(field) for field in DRAFT_EVIDENCE} if quoted else None,
                          old_evidence=[{'document': old['document'], 'quote': old['quote'],
                                         'present': old['in_new_draft']['present']} for old in row['old_evidence']],
                          searches=list(row['searches']), reason=row['reason'], note=row['note'])
         entries.append(entry)
     return entries
+
+
+def check_incomplete(check, given):
+    """Why a fix check left problems with no verdict, in the engine's words, or '' for one that answered them all.
+
+    A check written before engine d702d89 is judged only by its problems with
+    no verdict and carries no reason, so the app counts them.
+    """
+    if not check['incomplete']:
+        return ''
+    return check['incomplete_reason'] or f'{check["not_checked"]} of {given} problems have no verdict.'
+
+
+def fix_check_unread(check):
+    """Why the reader of a fix check did not read the checked draft's pages, or '' when it did.
+
+    A reader that fails leaves the draft sealed as converted, and the check goes
+    on from the converter's text. ``read_fix_check`` does not say so, so it is
+    read from the run's manuscript manifest when the reader seat ran.
+    """
+    if not reader_ran(check['agents']):
+        return ''
+    path = Path(check['run']) / MANUSCRIPT_DIRECTORY / 'manifest.json'
+    read = read_json(path).get('ai_read') if path.is_file() else None
+    if not isinstance(read, dict) or read.get('read'):
+        return ''
+    return read.get('reason') or 'The reader did not read the pages of the checked draft.'
 
 
 def ledger_of(folder):

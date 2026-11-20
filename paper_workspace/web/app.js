@@ -270,8 +270,17 @@ function authorDecisions(row){
 }
 // One engine fix check of a later draft. Its verdict and basis are printed as the engine names them, and the
 // quote is the passage of the checked draft the verdict rests on. A check that did not reach the problem says why.
+// The lane is the checker's seat. What was wrong with the check as a whole is on every entry it wrote, so no
+// verdict from an incomplete check, or from one that read the converter's text, reads as one from a clean check.
+function fixCheckWarnings(check){
+ return [check.check_incomplete&&`This check was incomplete: ${check.check_incomplete}`,
+  check.read_failed&&`The reader did not read the pages of draft ${check.draft}, so this check read the converter's text: ${check.read_failed}`]
+  .filter(Boolean).map(text=>`<p class="error">${esc(text)}</p>`).join('');
+}
 function fixCheck(check){
- if(!check.verdict)return `<p class="muted"><strong>Not checked on draft ${esc(check.draft)} on ${esc(check.date)}</strong><br>${esc(check.reason)}</p>`;
+ const lane=check.lane?`, ${check.verdict?'checked by':'dealt to'} ${esc(check.lane)}`:'';
+ const warnings=fixCheckWarnings(check);
+ if(!check.verdict)return `<p class="muted"><strong>Not checked on draft ${esc(check.draft)} on ${esc(check.date)}${lane}</strong><br>${esc(check.reason)}</p>${warnings}`;
  const said=[check.basis&&`Basis: ${esc(check.basis)}`,check.reason&&`Reason: ${esc(check.reason)}`,
   check.note&&`Checker's note: ${esc(check.note)}`,
   check.searches.length&&`Searched the draft for: ${check.searches.map(esc).join(', ')}`].filter(Boolean);
@@ -279,7 +288,7 @@ function fixCheck(check){
  const where=evidence&&[Number.isInteger(evidence.page)&&`page ${esc(evidence.page)} of its PDF`,evidence.section&&`section ${esc(evidence.section)}`].filter(Boolean);
  const quoted=evidence?`<p class="muted">From draft ${esc(check.draft)}${where.length?', '+where.join(', '):''}</p><blockquote>${esc(evidence.quote)}</blockquote>`
   :check.old_evidence.map(span=>`<p class="muted">${span.present?'Still in':'No longer in'} draft ${esc(check.draft)} word for word</p><blockquote>${esc(span.quote)}</blockquote>`).join('');
- return `<p><strong>Fix check of draft ${esc(check.draft)} on ${esc(check.date)}: ${esc(check.verdict)}</strong>${said.map(text=>'<br>'+text).join('')}</p>${quoted}`;
+ return `<p><strong>Fix check of draft ${esc(check.draft)} on ${esc(check.date)}${lane}: ${esc(check.verdict)}</strong>${said.map(text=>'<br>'+text).join('')}</p>${warnings}${quoted}`;
 }
 // The latest verdict leads, after a later check that did not reach the problem. Every earlier check stays below it.
 function fixChecks(row){
@@ -489,12 +498,24 @@ function codeReviewed(code){
  return `<div class="code-reviewed"><p><strong>Code reviewed</strong><br><code>${esc(source||'the code this run was given')}</code>${esc(commit)}${counts.length?`<br>${esc(counts.join(', '))}`:''}${data.length?`<br>${esc(data.join(', '))}`:''}</p>${cut}${opened.length?`<details><summary>Files opened (${opened.length})</summary><ul>${opened.map(path=>`<li><code>${esc(path)}</code></li>`).join('')}</ul></details>`:''}${fetched.length?`<details><summary>Data files fetched (${fetched.length})</summary><ul>${fetched.map(row=>`<li><code>${esc(row.path)}</code>, ${esc(dataRead(row))}</li>`).join('')}</ul></details>`:''}</div>`;
 }
 // What the run's code check did with the findings that rest on how a number was computed.
-// A run given no code has no code check.
+// A run given no code has no code check. A check that fell silent or answered only some of the claims
+// it was handed is incomplete, and the run panel says why above its comments.
 function codeCheckCounts(check){
  if(!check)return '';
  const counts=check.counts||{};
+ const missed=check.not_checked>0?`, ${check.not_checked} handed to it and not checked`:'';
  const over=check.over_cap>0?`, ${check.over_cap} over its cap${check.cap===null?'':` of ${check.cap}`} left unchecked`:'';
- return `<p class="count">${esc(`Code check: ${check.checked} checked, ${counts.confirmed??0} confirmed, ${counts.contradicted??0} thrown out, ${counts['not-shown']??0} not shown in the code${over}`)}</p>`;
+ return `<p class="count">${esc(`Code check${check.incomplete?', incomplete':''}: ${check.checked} checked, ${counts.confirmed??0} confirmed, ${counts.contradicted??0} thrown out, ${counts['not-shown']??0} not shown in the code${missed}${over}`)}</p>`;
+}
+// Why a run's code check left claims unread against the code, in the engine's words.
+function codeCheckIncomplete(check){
+ if(!check||!check.incomplete)return '';
+ return `The code check is incomplete, so a finding it did not reach stands as its reviewer filed it: ${check.incomplete_reason||`${plural(check.not_checked,'claim')} not read against the code.`}`;
+}
+// A reader that failed leaves the manuscript sealed as converted, and the run goes on from the converter's text.
+function readerFailed(read){
+ if(!read||!read.reader_failed)return '';
+ return `The reader did not read the pages of this manuscript, so the reviewers read the converter's text: ${read.reason||'the reader gave no reason.'}`;
 }
 // A finding the code check threw out is in no issue and takes no decision. It is shown with the
 // code that disproved it, marked as thrown out, apart from every open issue.
@@ -525,7 +546,8 @@ function runPanel(){
   Number.isFinite(run.wall_seconds)&&`${Math.round(run.wall_seconds/60)} min`,
   Number.isFinite(run.tokens_total)&&`${count(run.tokens_total)} tokens${spentRows(run).length?' spent':''}`].filter(Boolean);
  // Why a run is not publishable is shown once, above its comments.
- const warnings=[run.cause,run.note,...(run.problems||[]),(run.missing_stages||[]).length&&`Stages that did not report: ${run.missing_stages.join(', ')}`].filter(Boolean);
+ const warnings=[run.cause,run.note,...(run.problems||[]),(run.missing_stages||[]).length&&`Stages that did not report: ${run.missing_stages.join(', ')}`,
+  readerFailed(run.manuscript_read),codeCheckIncomplete(run.code_check)].filter(Boolean);
  const unverified=unverifiedNote(run.models_unverified);
  const verdict=run.verdict;
  const verdictHtml=verdict?`<details open><summary>Editor's verdict</summary><p><strong>Significance</strong><br>${esc(verdict.significance)}</p><p><strong>Strength of evidence</strong><br>${esc(verdict.strength_of_evidence)}</p>${verdict.reasoning?`<p><strong>Reasoning</strong><br>${esc(verdict.reasoning)}</p>`:''}<p class="muted">Basis: ${esc(verdict.basis||'unstated')}. ${esc(verdict.limitation||'')}</p></details>`:'';
