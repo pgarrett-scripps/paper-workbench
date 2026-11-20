@@ -84,7 +84,7 @@ review = {id:'run', summary:'Editor summary', raw_response:undefined, findings:[
         dirty:true, snapshot:'/home/someone/run/code', files_in_snapshot:3, files_skipped:1,
         truncated:'more than 400 files of text source', source_cut:0, files_opened:['analysis/<fdr>.py'], opened:1, searches:2,
         data_listed:0, data_fetched:0, data_partial:0, data_refused:0, data_bytes:0, data:[]},
-  code_check:null,
+  code_check:null, read:null,
   findings_by_track:{field:1, core:1}, wall_seconds:600, tokens_total:1234}};
 cards();
 `, context);
@@ -286,7 +286,7 @@ vm.runInContext(`ledger = [{id:'original:run:i03', raised_on:'original', review_
                old_evidence:[{document:'paper.md', quote:'alpha', present:false}], searches:[], reason:'',
                note:'The generator is not named.'},
               {draft:'fourth', run:'/checks/three', date:'2026-11-18', verdict:null, basis:'', evidence:null,
-               old_evidence:[], searches:[], reason:'Past the cap of 40 problems one fix check reads.', note:''}],
+               old_evidence:[], searches:[], reason:"past this check's limit of 40 problems: it was never dealt to a checker", note:''}],
   finding:{}},
   {id:'original:run:i04', raised_on:'original', review_id:'run', source_id:'i04', paper_id:'p', raised_as:'problem',
   status:'declined', title:'Scope', category:'claims-and-conclusions', statement:'Widen the claim.', severity:'minor',
@@ -302,7 +302,7 @@ for (const text of ['<span class="badge">original:run:i03</span> Open', 'Reprodu
                     'State the seed.', '<blockquote>alpha</blockquote>',
                     "<p>Wording noted on draft original</p><p><strong>Author's decision on draft third</strong><br>Issue addressed by the author<br>Rationale: The &lt;generator&gt; is named now.</p>"
                     + "<p><strong>Author's decision on draft original</strong><br>Issue addressed by the author<br>Note: We added it.<br>Rationale: Methods now name the seed.</p>"
-                    + '<p class="muted"><strong>Not checked on draft fourth on 2026-11-18</strong><br>Past the cap of 40 problems one fix check reads.</p>'
+                    + '<p class="muted"><strong>Not checked on draft fourth on 2026-11-18</strong><br>past this check&#39;s limit of 40 problems: it was never dealt to a checker</p>'
                     + '<p><strong>Fix check of draft third on 2026-11-17: not-fixed</strong><br>Basis: quote<br>'
                     + "Checker's note: The generator is not named.</p>"
                     + '<p class="muted">From draft third, page 2 of its PDF, section Methods</p><blockquote>The seed is &lt;42&gt;.</blockquote>'
@@ -437,29 +437,38 @@ assert.equal(vm.runInContext(`runStatus({status:'complete-without-findings', qua
 // A check whose record named no cap says how many were over it without a number for the cap.
 assert.ok(vm.runInContext("codeCheckCounts({cap:null, checked:0, over_cap:3, counts:{confirmed:0, contradicted:0, 'not-shown':0}})", context)
   .includes('3 over its cap left unchecked'));
-// A code check that fell silent is incomplete in its counts and says why above the comments, in the engine's
-// words when it gave them. A check that answered everything it was handed says neither.
-const silent = "{cap:12, checked:0, not_checked:1, over_cap:0, incomplete:true, incomplete_reason:'code-check answered 0 of 1', counts:{confirmed:0, contradicted:0, 'not-shown':0}, thrown_out:[]}";
+// A code check that filed no report is silent in its counts, one that answered only some claims is incomplete,
+// and each says why above the comments, in the engine's words when it gave them. A check that answered
+// everything it was handed says neither.
+const silent = "{cap:12, silent:true, checked:0, not_checked:1, over_cap:0, incomplete:true, incomplete_reason:'code-check answered 0 of 1', counts:{confirmed:0, contradicted:0, 'not-shown':0}, thrown_out:[]}";
+const partial = `{...${silent}, silent:false, checked:1, incomplete_reason:'code-check answered 1 of 2'}`;
 assert.equal(vm.runInContext(`codeCheckCounts(${silent})`, context),
-  '<p class="count">Code check, incomplete: 0 checked, 0 confirmed, 0 thrown out, 0 not shown in the code, 1 handed to it and not checked</p>');
+  '<p class="count">Code check, silent: 0 checked, 0 confirmed, 0 thrown out, 0 not shown in the code, 1 handed to it and not checked</p>');
 assert.equal(vm.runInContext(`codeCheckIncomplete(${silent})`, context),
-  'The code check is incomplete, so a finding it did not reach stands as its reviewer filed it: code-check answered 0 of 1');
-assert.equal(vm.runInContext(`codeCheckIncomplete({...${silent}, incomplete_reason:null, not_checked:2})`, context),
+  'The code check filed no report, so every finding it was handed stands as its reviewer filed it: code-check answered 0 of 1');
+assert.equal(vm.runInContext(`codeCheckCounts(${partial})`, context),
+  '<p class="count">Code check, incomplete: 1 checked, 0 confirmed, 0 thrown out, 0 not shown in the code, 1 handed to it and not checked</p>');
+assert.equal(vm.runInContext(`codeCheckIncomplete(${partial})`, context),
+  'The code check is incomplete, so a finding it did not reach stands as its reviewer filed it: code-check answered 1 of 2');
+assert.equal(vm.runInContext(`codeCheckIncomplete({...${partial}, incomplete_reason:null, not_checked:2})`, context),
   'The code check is incomplete, so a finding it did not reach stands as its reviewer filed it: 2 claims not read against the code.');
-assert.equal(vm.runInContext(`codeCheckIncomplete({...${silent}, incomplete:false, not_checked:0})`, context), '');
-assert.ok(!vm.runInContext(`codeCheckCounts({...${silent}, incomplete:false, not_checked:0})`, context).includes('incomplete'));
-// A reader that failed is said above the comments. A manuscript no reader was planned for says nothing.
-assert.equal(vm.runInContext("readerFailed({state:'sealed-without-read', reader_failed:true, reason:'the reader stage returned twice'})", context),
-  "The reader did not read the pages of this manuscript, so the reviewers read the converter's text: the reader stage returned twice");
-assert.equal(vm.runInContext("readerFailed({state:'sealed-without-read', reader_failed:false, reason:'written from an application'})", context), '');
-vm.runInContext(`review.run.manuscript_read = {state:'sealed-without-read', reader_failed:true, reason:'it <stopped>'};
-  review.run.code_check = ${silent}; cards();`, context);
+assert.equal(vm.runInContext(`codeCheckIncomplete({...${partial}, incomplete:false, not_checked:0})`, context), '');
+const whole = vm.runInContext(`codeCheckCounts({...${partial}, incomplete:false, not_checked:0})`, context);
+assert.ok(!whole.includes('incomplete') && !whole.includes('silent'), whole);
+// A reader that failed is said above the comments, from the engine's record of the Read stage. A manuscript
+// no reader was planned for has no record, and a reader that sealed it says nothing.
+const readStage = "{reader_failed:true, reason:'the manuscript was sealed as converted after the reader failed', sealed:true, model:'claude-sonnet-5-5', attempts:null, pages:1, pages_viewed:0, actions:0, tool_calls:0}";
+assert.equal(vm.runInContext(`readerFailed(${readStage})`, context),
+  "The reader did not read the pages of this manuscript, so the reviewers read the converter's text: the manuscript was sealed as converted after the reader failed");
+assert.equal(vm.runInContext(`readerFailed({...${readStage}, reader_failed:false, reason:null})`, context), '');
+assert.equal(vm.runInContext('readerFailed(null)', context), '');
+vm.runInContext(`review.run.read = {...${readStage}, reason:'it <stopped>'}; review.run.code_check = ${silent}; cards();`, context);
 for (const text of ['<p class="error">The reader did not read the pages of this manuscript, so the reviewers read the converter&#39;s text: it &lt;stopped&gt;</p>',
-                    '<p class="error">The code check is incomplete, so a finding it did not reach stands as its reviewer filed it: code-check answered 0 of 1</p>',
-                    '<p class="count">Code check, incomplete: 0 checked']) {
+                    '<p class="error">The code check filed no report, so every finding it was handed stands as its reviewer filed it: code-check answered 0 of 1</p>',
+                    '<p class="count">Code check, silent: 0 checked']) {
   assert.ok(html('#run-panel').includes(text), text);
 }
-vm.runInContext('review.run.manuscript_read = null; review.run.code_check = null; cards();', context);
+vm.runInContext('review.run.read = null; review.run.code_check = null; cards();', context);
 
 // Every anchored member marks the manuscript, overlapping quotes included, each pinned with its issue's number.
 // The issue that is one edit shows its wording, and the unplaced member marks nothing.

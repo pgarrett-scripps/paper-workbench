@@ -26,7 +26,6 @@ from paper_workspace.server import make_server
 # The line of paper.md the findings quote, under the title and its blank line, and the engine's fingerprint of it.
 LINE = 3
 FINGERPRINT = manuscripts.fingerprint_of(TEXT)
-CEILING = 'the run reached its per-run token ceiling'
 SONNET, HAIKU = 'claude-sonnet-5-5', 'claude-haiku-5-5'
 # The six specialist lanes of engine 0.10.0, in the order its plan lists them.
 LANES = ['stats', 'figures-tables', 'methods-reporting', 'citations', 'numbers', 'field']
@@ -176,21 +175,6 @@ def make_run(root, issues=True, ledger=True, citations=CITATIONS):
     (review / 'audit_stats.md').write_text('# Statistics audit\n')
     (review / 'audit_numbers.md').write_text('# Numbers audit\n')
     return manuscript, review
-
-
-def stop_run(review):
-    """Leave the run as the starter does after a token ceiling: no protocol, manifest or issues.
-
-    The ledger has a second, later row for ``aa11``, as the server appends one per submission.
-    """
-    for name in ('protocol.json', 'manifest.json', 'issues.json'):
-        (review / name).unlink()
-    write_json(review / 'progress.json', {'status': 'blocked', 'error': CEILING, 'arm': 'reviewers-only',
-        'reviewers': 2, 'stages': {'missing': ['editor'], 'none_found': []}})
-    write_json(review / 'runtime.json', {'status': 'blocked', 'blocked_reason': CEILING,
-                                    'tokens_total': 4000, 'wall_seconds': 300})
-    with (review / 'findings.jsonl').open('a') as stream:
-        stream.write(json.dumps(finding('aa11', 'lowered VPS35', comment='Name the knockdown control.')) + '\n')
 
 
 def run_quietly(argv):
@@ -819,46 +803,20 @@ class CitationLedgerTests(unittest.TestCase):
         self.assertEqual((run['publishable'], run['not_publishable_reasons']), (True, []))
 
 
-class StoppedRunTests(unittest.TestCase):
-    """A run the starter stopped mid-session has progress, runtime and the ledger, and nothing else."""
+class StartupBlockedRunTests(unittest.TestCase):
+    """A run the start-up probe refused has its startup and runtime records and nothing else.
+
+    test_engine_rounds.py builds the run the starter stops mid-session through
+    the engine's scripted review. No engine helper builds a run whose probe
+    failed, so this one folder is written by hand as the starter writes it.
+    """
 
     def setUp(self):
         self.temporary = tempfile.TemporaryDirectory()
         self.root = Path(self.temporary.name).resolve()
-        self.manuscript, self.review = make_run(self.root)
-        stop_run(self.review)
-        self.base = read_manuscript(self.manuscript)
 
     def tearDown(self):
         self.temporary.cleanup()
-
-    def test_a_stopped_run_opens_with_what_it_recorded(self):
-        self.assertEqual(locate(self.root), (self.manuscript, self.review))
-        review = run_review(self.review, self.base)
-        self.assertEqual([(f['id'], f['group'], f['comment']) for f in review['findings']],
-                         [('aa11', 'ledger', 'Name the knockdown control.'),
-                          ('bb22', 'ledger', 'Say how the 12 samples were drawn.'),
-                          ('cc33', 'ledger', 'Start with an article.')])
-        run = review['run']
-        self.assertEqual((run['status'], run['cause'], run['findings_source'], run['missing_stages']),
-                         ('blocked', CEILING, 'ledger', ['editor']))
-        self.assertEqual((run['tokens_total'], run['wall_seconds'], run['problems']), (4000, 300, []))
-        self.assertEqual(review['summary'], f'The run stopped before the editor wrote its issues: {CEILING}')
-        make_server(self.root, 0).server_close()
-
-    def test_without_a_manifest_the_fingerprints_pin_the_version(self):
-        rows = ledger_rows(self.review)
-        rows[-1]['fingerprint'] = manuscripts.fingerprint_of('An earlier version of the sentence.')
-        write_ledger(self.review, rows)
-        with self.assertRaisesRegex(RunError, 'different manuscript version'):
-            run_review(self.review, self.base)
-
-    def test_report_renders_what_the_stopped_run_recorded(self):
-        status, output, _ = run_quietly(['report', str(self.root)])
-        self.assertEqual(status, 0)
-        summary = json.loads(output)
-        self.assertEqual((summary['status'], summary['cause']), ('blocked', CEILING))
-        self.assertTrue((self.review / 'REVIEW.md').is_file())
 
     def test_a_startup_blocked_run_cannot_be_served_and_its_report_says_why(self):
         run = self.root / 'startup-only'
@@ -940,13 +898,6 @@ class RunServerTests(unittest.TestCase):
         write_json(self.review / 'manifest.json', {'paper_id': PAPER_ID, 'source_sha256': 'other'})
         status, body = self.request('/api/review?review=run')
         self.assertEqual((status, body), (400, {'error': 'The run reviewed a different manuscript version'}))
-
-    def test_a_stopped_run_is_served_with_its_status(self):
-        stop_run(self.review)
-        status, review = self.request('/api/review?review=run')
-        self.assertEqual(status, 200)
-        self.assertEqual((review['run']['status'], review['run']['cause']), ('blocked', CEILING))
-        self.assertEqual([f['id'] for f in review['findings']], ['aa11', 'bb22', 'cc33'])
 
     def add_card_without_an_engine_id(self):
         """A ledger-only run whose fourth card is an edit the viewer can only number by its place."""

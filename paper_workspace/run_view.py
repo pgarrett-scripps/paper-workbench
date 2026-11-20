@@ -27,7 +27,7 @@ from pathlib import Path
 from peerreviewagents import MANUSCRIPT_DIRECTORY, cited_text, read_citation_ledger, read_run
 from peerreviewagents import locate_run, NotARunFolder
 from peerreviewagents.issues import ISSUE_FIELDS, by_category, is_issue_id, required_issues, suggestion_issues
-from peerreviewagents.names import CODE_CHECK_VERDICTS, MANUSCRIPT_SEALED_WITHOUT_READ
+from peerreviewagents.names import CODE_CHECK_VERDICTS
 
 RUN_REVIEW_ID = 'run'
 AUDIT_LIMIT = 400_000
@@ -67,12 +67,12 @@ CODE_VIEW = ('reviewed', 'kind', 'source', 'commit', 'branch', 'dirty', 'snapsho
 # engine's words how the file changed after the snapshot listed it.
 DATA_VIEW = ('path', 'bytes', 'stored_bytes', 'partial', 'changed')
 CONTRADICTED = 'contradicted'
-# What the panel shows of the code check. Since engine d702d89 a check that fell silent or
-# answered only some claims is `incomplete`, with the engine's reason, and `not_checked`
-# counts the claims it never read against the code.
-CODE_CHECK_VIEW = ('cap', 'checked', 'not_checked', 'over_cap', 'incomplete', 'incomplete_reason', 'counts')
-# The engine's seat that reads the page images of a manuscript it converted.
-READER_SLOT = 'reader'
+# What the panel shows of the code check. A check that answered only some claims is
+# `incomplete`, with the engine's reason, and `not_checked` counts the claims it never read
+# against the code. `silent` is a check that filed no report at all, which `checked: 0`
+# cannot tell from one that reported and settled nothing.
+CODE_CHECK_VIEW = ('cap', 'silent', 'checked', 'not_checked', 'over_cap', 'incomplete', 'incomplete_reason',
+                   'counts')
 # What a finding the code check threw out keeps from the check's row. Its comment
 # and offsets come from its ledger row, and the slot and track are the finding's own.
 THROWN_OUT_VIEW = ('finding_uid', 'title', 'severity', 'basis', 'assumed_method', 'quote', 'document', 'line',
@@ -213,25 +213,6 @@ def code_check_of(run):
     if problems:
         raise RunError(wrong_types(problems, "This run's code check"))
     return check
-
-
-def reader_ran(agents):
-    """Whether a run's agents include the reader seat, which a run over a manuscript sealed before it has not."""
-    return any(row.get('slot') == READER_SLOT for row in agents)
-
-
-def manuscript_read(run):
-    """Whether a model read the pages of the run's manuscript, and why not.
-
-    A reader that fails leaves the manuscript sealed as converted, and the run
-    goes on from the converter's text. ``read_run`` does not say the reader
-    failed, so it is read here as a manuscript sealed with no page read on a
-    run whose reader seat ran. A run over a manuscript sealed before it started
-    has no reader seat, and its reason says why nothing read the pages.
-    """
-    manuscript = run['manuscript']
-    failed = manuscript['state'] == MANUSCRIPT_SEALED_WITHOUT_READ and reader_ran(run['agents'])
-    return {'state': manuscript['state'], 'reader_failed': failed, 'reason': manuscript['reason']}
 
 
 def fetched_data(code):
@@ -661,10 +642,14 @@ def run_review(review, base):
         # `reviewed` is false for a run given no code, and every other key is then empty.
         'code': {**{key: run['code'][key] for key in CODE_VIEW}, 'data': list(data.values())},
         # `None` on a run given no code. A finding it threw out is listed here and in no card. A
-        # silent or failed check is `incomplete`, and the claims it never answered stand as filed.
+        # check that filed no report is `silent`, a silent or failed check is `incomplete`, and the
+        # claims it never answered stand as filed.
         'code_check': check and {**{key: check[key] for key in CODE_CHECK_VIEW},
                                  'thrown_out': thrown_out(check, ledger, data, base)},
-        'manuscript_read': manuscript_read(run),
+        # The engine's record of the Read stage, or `None` for a manuscript sealed before the run,
+        # which planned no reader. A reader that failed left the manuscript sealed as converted, so
+        # every finding was made against the converter's text: `reader_failed` with its `reason`.
+        'read': run['read'],
         'tokens_total': run['runtime']['tokens_total'],
         'wall_seconds': run['runtime']['wall_seconds'],
     }

@@ -20,7 +20,9 @@ writes them, so the snapshot also shows that no run's files are copied in as
 code. Three more runs show what went wrong in a run that still finished: a
 code check that never answered, a reader that never answered, so the
 manuscript was sealed as the converter read it, and a seat that spent past its
-token ceiling after it reported. test_ledger_import.py builds its runs here
+token ceiling after it reported. One more is the starter's stop: a seat spends
+past the run's token ceiling before it reports, so the run blocks before the
+editor with its findings only in the ledger. test_ledger_import.py builds its runs here
 too: rounds of a draft's PDF, an author's draft check with no editor, and a
 review whose reviewers never answered.
 """
@@ -39,12 +41,12 @@ from peerreviewagents.names import TOKEN_FIELDS
 from peerreviewagents.workspace import digest
 
 import manuscripts
-from paper_workspace.run_view import run_review
+from paper_workspace.run_view import RunError, locate, run_review
 from paper_workspace.server import make_server
 from paper_workspace.workspace_review import engine_argv
 from reader_fixture import pdf_bytes
 from test_run_view import (CODE_EVIDENCE, PIPELINE, SUMMARY, SUMMARY_EVIDENCE, THROWN_OUT_NOTE, finding, issue,
-                           issues_document)
+                           issues_document, run_quietly)
 from test_workspace_review import make_workspace
 
 FIRST =['Knockdown lowered VPS35 in twelve samples drawn from one donor.',
@@ -58,8 +60,10 @@ MEAN = {'title': 'The mean hides the spread of three repeats', 'quote': 'the mea
         'comment': 'With three repeats the mean says little. Show each repeat.',
         'assumed_method': 'The figure plots the mean of the three repeats.'}
 CREDENTIALS = ('ANTHROPIC_API_KEY', 'ANTHROPIC_AUTH_TOKEN', 'OPENAI_API_KEY')
-# The per-seat token ceiling of the round one seat spends past.
+# The token ceiling one seat spends past: per seat in one round, and per run in the round the starter stops.
 CEILING_TOKENS = 5000
+# What the round the starter stops files before its ceiling, in the order the ledger holds it.
+STOPPED_QUOTES = ['twelve samples drawn from one donor', 'controls retromer assembly in all tissues']
 
 
 @contextmanager
@@ -271,6 +275,27 @@ def ceiling_round(root):
                         reviewers=2, per_agent_tokens=CEILING_TOKENS), 'complete')
 
 
+def stopped_round(root):
+    """A reviewers-only round the starter stops at its per-run token ceiling of 5000, before the editor.
+
+    core-1 files a finding for each of STOPPED_QUOTES and spends past the
+    ceiling before it reports, so its stage is missing and the panel starts
+    nothing again. core-2 finds nothing. The findings are in the ledger and
+    there are no issues.
+    """
+    def greedy(slot):
+        slot.whole_paper()
+        for quote in STOPPED_QUOTES:
+            assert slot.submit_finding(title='Claim', quote=quote, comment=f'Say what carries "{quote}".',
+                                       severity='major').get('stored')
+        slot.spend(8 * CEILING_TOKENS)
+
+    scripts = {'core-1': greedy, 'core-2': lambda slot: (slot.whole_paper(), reported(slot, 'Nothing.',
+                                                                                        none_found=True))}
+    ran(scripted_review(sealed(root, FIRST, 'source-stopped'), root, scripts, arm='reviewers-only', reviewers=2,
+                        per_run_tokens=CEILING_TOKENS), 'blocked')
+
+
 @contextmanager
 def served(root):
     """The viewer's server on one run folder, and a function that sends it a request."""
@@ -309,6 +334,7 @@ class EngineRoundsTests(unittest.TestCase):
         cls.coded = cls.workspace / 'reviews' / 'coded'
         cls.disproved, cls.unwritten = cls.root / 'disproved', cls.root / 'unwritten'
         cls.silent_code, cls.unread, cls.ceiling = cls.root / 'silent-code', cls.root / 'unread', cls.root / 'ceiling'
+        cls.stopped = cls.root / 'stopped'
         with offline():
             one_round(cls.first, FIRST, 'source-1', [
                 'twelve samples drawn from one donor', 'controls retromer assembly in all tissues',
@@ -328,6 +354,7 @@ class EngineRoundsTests(unittest.TestCase):
             silent_code_round(cls.silent_code, cls.root / 'silent-code-source')
             unread_round(cls.unread)
             ceiling_round(cls.ceiling)
+            stopped_round(cls.stopped)
 
     @classmethod
     def tearDownClass(cls):
@@ -510,27 +537,61 @@ class EngineRoundsTests(unittest.TestCase):
         self.assertTrue(engine['incomplete_reason'].startswith('1 method claim(s) were not read against the code'),
                         engine)
         review = self.view(self.silent_code)
+        # The lane filed no report, which the engine says as `silent`, not only as nothing checked.
         self.assertEqual(review['run']['code_check'], {
-            'cap': engine['cap'], 'checked': 0, 'not_checked': 1, 'over_cap': 0, 'incomplete': True,
+            'cap': engine['cap'], 'silent': True, 'checked': 0, 'not_checked': 1, 'over_cap': 0, 'incomplete': True,
             'incomplete_reason': engine['incomplete_reason'],
             'counts': {'confirmed': 0, 'contradicted': 0, 'not-shown': 0}, 'thrown_out': []})
         # The claim the check never read is a card as its reviewer filed it.
         self.assertEqual([card['title'] for card in review['findings']], [MEAN['title']])
-        # A check that answered every claim it was handed is not incomplete.
+        # A check that answered every claim it was handed is neither silent nor incomplete.
         whole = self.view(self.coded)['run']['code_check']
-        self.assertEqual((whole['incomplete'], whole['not_checked'], whole['incomplete_reason']), (False, 0, None))
+        self.assertEqual((whole['silent'], whole['incomplete'], whole['not_checked'], whole['incomplete_reason']),
+                         (False, False, 0, None))
 
     def test_a_manuscript_whose_reader_failed_says_so_and_one_never_read_by_design_does_not(self):
-        # The engine says reader_failed only in what the review returns, which unread_round checks. The run folder
-        # has the manuscript's state and the reader's row, and the viewer reads the failure from those.
-        engine = read_run(self.unread)['manuscript']
-        self.assertEqual(self.view(self.unread)['run']['manuscript_read'],
-                         {'state': 'sealed-without-read', 'reader_failed': True, 'reason': engine['reason']})
+        # The viewer shows the engine's record of the Read stage as the folder holds it.
+        engine = read_run(self.unread)['read']
+        self.assertEqual(self.view(self.unread)['run']['read'], engine)
+        self.assertEqual((engine['reader_failed'], engine['sealed']), (True, True))
         self.assertTrue(engine['reason'])
-        # A manuscript written from an application's own source needs no reader, so none ran and none failed.
-        shown = self.view(self.silent_code)['run']['manuscript_read']
-        self.assertEqual((shown['state'], shown['reader_failed']), ('sealed-without-read', False))
-        self.assertIs(self.view(self.first)['run']['manuscript_read']['reader_failed'], False)
+        # A manuscript sealed before the run needs no reader, so the run planned none and has no record of one.
+        self.assertIsNone(self.view(self.silent_code)['run']['read'])
+        self.assertIsNone(self.view(self.first)['run']['read'])
+
+    def test_a_run_stopped_at_its_token_ceiling_opens_with_what_it_recorded(self):
+        engine = read_run(self.stopped)
+        self.assertEqual(locate(self.stopped), (self.stopped / 'manuscript', self.stopped / 'review'))
+        review = self.view(self.stopped)
+        self.assertEqual([(f['group'], f['comment']) for f in review['findings']],
+                         [('ledger', f'Say what carries "{quote}".') for quote in STOPPED_QUOTES])
+        run = review['run']
+        self.assertEqual((run['status'], run['cause'], run['findings_source'], run['missing_stages']),
+                         ('blocked', engine['cause'], 'ledger', ['core-1', 'editor']))
+        # The cause names the seat's own ending and the stop after it, so the stage is missing because the run ran out.
+        self.assertIn('core-1 (over the token ceiling, and nothing was started again)', run['cause'])
+        self.assertIn(f'this run reached its token ceiling of {CEILING_TOKENS:,}', run['cause'])
+        self.assertEqual((run['tokens_total'], run['problems']), (engine['runtime']['tokens_total'], []))
+        self.assertEqual(review['summary'], f'The run stopped before the editor wrote its issues: {engine["cause"]}')
+        with served(self.stopped) as request:
+            status, served_review = request('/api/review?review=run')
+        self.assertEqual((status, served_review['run']['status'], served_review['run']['cause']),
+                         (200, 'blocked', engine['cause']))
+        self.assertEqual([f['id'] for f in served_review['findings']], [f['id'] for f in review['findings']])
+
+    def test_a_stopped_runs_findings_pin_the_version_its_manuscript_names(self):
+        # A manuscript of the same paper and source whose first sentence reads otherwise is another version.
+        other = self.root / 'other-version'
+        manuscripts.build(other, SECOND, source_sha256=digest(b'source-stopped'))
+        with self.assertRaisesRegex(RunError, 'different manuscript version'):
+            run_review(self.stopped / 'review', read_manuscript(other))
+
+    def test_report_renders_what_the_stopped_run_recorded(self):
+        status, output, _ = run_quietly(['report', str(self.stopped)])
+        self.assertEqual(status, 0)
+        summary = json.loads(output)
+        self.assertEqual((summary['status'], summary['cause']), ('blocked', read_run(self.stopped)['cause']))
+        self.assertTrue((self.stopped / 'review' / 'REVIEW.md').is_file())
 
     def test_a_run_given_no_code_has_no_code_check(self):
         review = self.view(self.first)

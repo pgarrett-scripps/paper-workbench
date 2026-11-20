@@ -213,8 +213,10 @@ class FixCheckTest(Draft):
         run = self.temp / 'unread'
         check = self.check(run, self.first_check, unread=True)
         # The reader never answered, so the draft was sealed as converted and the check went on from that text.
+        # The engine says so on its record of the Read stage, with the reason each entry carries.
         self.assertTrue(check['complete'])
-        reason = read_json(run / 'manuscript/manifest.json')['ai_read']['reason']
+        self.assertEqual((check['read']['reader_failed'], check['read']['sealed']), (True, True))
+        reason = check['read']['reason']
         self.assertTrue(reason)
         ledger = record_fix_checks(self.root, 'second', check, date=DATE)
         self.assertEqual({entry['read_failed'] for entries in self.checks(ledger).values() for entry in entries},
@@ -253,11 +255,9 @@ class FixCheckTest(Draft):
                          [('fixed', 'fix-1', ''), (None, 'fix-3', NOT_REACHED.replace('fix-1', 'fix-3')),
                           (None, '', "past this check's limit of 40 problems: it was never dealt to a checker")])
         self.assertEqual({entry['check_incomplete'] for entry in entries}, {check['incomplete_reason']})
-        # A check written before engine d702d89 gives no reasons, so the app says what it can.
+        # A check written before engine d702d89 gives no reasons, and the app does not guess one from a position.
         older = fix_check_entries({**check, 'unchecked': [], 'incomplete_reason': None}, DATE)
-        self.assertEqual([entry['reason'] for entry in older[::20]],
-                         ['', 'No checker reached it before the check was written.',
-                          'Past the cap of 40 problems one fix check reads.'])
+        self.assertEqual([entry['reason'] for entry in older[::20]], ['', revisions.NO_REASON, revisions.NO_REASON])
         self.assertEqual({entry['check_incomplete'] for entry in older}, {'40 of 41 problems have no verdict.'})
 
 
@@ -345,7 +345,9 @@ class CheckFixesCommandTest(Draft):
             (self.minor, 'fixed', '8 of 12 seedlings', {'note': 'Reported.'}),
             (self.major, 'not-fixed', 'protein activity', {'note': 'Still no support.'}),
             (self.moderate, 'fixed', None, {'searches': ['in order to assess'], 'note': 'Rewritten.'})))
-        reason = read_json(run / 'manuscript/manifest.json')['ai_read']['reason']
+        read = read_fix_check(run)['read']
+        self.assertTrue(read['reader_failed'])
+        reason = read['reason']
         self.assertEqual((status, errors), (0, PROG + 'recorded on draft second: fixed 2, not-fixed 1, '
                                                       'cannot-tell 0, not checked 0.\n'
                                             + PROG + 'The reader did not read the pages of draft second, so the '
@@ -355,6 +357,14 @@ class CheckFixesCommandTest(Draft):
         status, errors, _ = self.command(str(self.root), str(self.temp / 'stopped'), stopped=True)
         self.assertEqual(status, 1)
         self.assertRegex(errors, BLOCKED + r' The ledger of draft second is unchanged\.')
+        # The engine gives each problem with no verdict its lane and why, and the command says it once per reason.
+        unchecked = read_fix_check(self.temp / 'stopped')['unchecked']
+        self.assertEqual([row['id'] for row in unchecked], [self.major, self.moderate, self.minor])
+        self.assertEqual({row['lane'] for row in unchecked}, {'fix-1'})
+        reason = unchecked[0]['reason']
+        self.assertTrue(reason.startswith('fix-1 never claimed its batch, so nothing read the draft against it'))
+        self.assertTrue(errors.endswith(f'{PROG}No verdict on {self.major}, {self.moderate}, {self.minor} '
+                                        f'(fix-1): {reason.rstrip(".")}.\n'), errors)
 
         def damaged(run):
             # A process killed while writing leaves a file that is not JSON.
