@@ -14,6 +14,7 @@ from unittest.mock import patch
 
 from peerreviewagents import FINDING_SCHEMA_VERSION, ISSUES_SCHEMA_VERSION, citation_uses, read_manuscript, read_run
 from peerreviewagents.issues import ISSUE_FIELDS, MEMBER_FIELDS
+from peerreviewagents.names import TOKEN_FIELDS
 from peerreviewagents.workspace import write_json
 
 import manuscripts
@@ -476,36 +477,42 @@ class RunReviewTests(unittest.TestCase):
             self.assertTrue(any(line.startswith('spec-citations was assigned') and 'ran claude-opus-5-5' in line
                                 for line in lines), lines)
 
-    def test_the_recorder_the_engine_ran_itself_is_in_process_with_no_model(self):
-        # This fixture's recorder is an agent with a model asked, as before engine dd7451f.
-        run = run_review(self.review, self.base)['run']
-        self.assertEqual({row['slot']: row['in_process'] for row in run['agents']},
-                         {'cite-1': False, 'core-1': False, 'recorder': False, 'spec-citations': False,
-                          'spec-numbers': False})
-        # Since dd7451f the plan asks no model of the recorder, and its one stream row is the run itself.
+    def test_each_agent_says_how_it_ended_and_what_it_spent_in_the_engines_words(self):
+        # This fixture's stream is from before the engine wrote them, so none of the eight is recorded.
+        words = ('ending', 'detail', *TOKEN_FIELDS)
+        for row in run_review(self.review, self.base)['run']['agents']:
+            self.assertEqual({word: row[word] for word in words}, dict.fromkeys(words), row['slot'])
+        # Since engine dd7451f the plan asks no model of the recorder, and its one stream row is the run itself.
         protocol = json.loads((self.review / 'protocol.json').read_text())
         protocol['agents']['recorder'].update(model=None, assigned_model=None)
         del protocol['models']['recorder']
         write_json(self.review / 'protocol.json', protocol)
+        spent = {'tokens': 592106, 'tokens_cumulative': 592106, 'tokens_input_uncached': 1200,
+                 'tokens_cache_write': 40000, 'tokens_cache_read': 540000, 'tokens_output': 10906,
+                 'tokens_peak_context': 144072}
+        stopped = 'stopped over the token ceiling after it answered'
+        in_process = 'the run itself: every recorder tool was called in this process, with no model'
         runtime = json.loads((self.review / 'runtime.json').read_text())
         runtime['agents'] = [row for row in runtime['agents'] if row.get('agentType') != 'pra:recorder'] + [
-            {'label': 'recorder', 'agentType': 'recorder', 'attempt': 1, 'tokens': 0, 'toolCalls': 4, 'model': None,
-             'state': 'done', 'ending': 'in process', 'seconds': 1.5,
-             'detail': 'the run itself: every recorder tool was called in this process, with no model'}]
+            {'label': 'recorder', 'agentType': 'recorder', 'attempt': 1, 'tokens': 0, **dict.fromkeys(TOKEN_FIELDS, 0),
+             'toolCalls': 4, 'model': None, 'state': 'done', 'ending': 'in process', 'seconds': 1.5,
+             'detail': in_process}]
+        runtime['agents'][0].update(spent, state='done', ending='answered', detail=stopped)
         write_json(self.review / 'runtime.json', runtime)
         run = run_review(self.review, self.base)['run']
-        recorder = next(row for row in run['agents'] if row['slot'] == 'recorder')
-        self.assertEqual((recorder['in_process'], recorder['assigned_model'], recorder['model'], recorder['tokens']),
-                         (True, None, None, 0))
-        self.assertEqual([row['slot'] for row in run['agents'] if row['in_process']], ['recorder'])
+        agents = {row['slot']: row for row in run['agents']}
+        recorder, core = agents['recorder'], agents['core-1']
+        # The viewer reads the engine's own word for the recorder and adds no guess of its own.
+        self.assertEqual((recorder['ending'], recorder['detail'], recorder['assigned_model'], recorder['model']),
+                         ('in process', in_process, None, None))
+        self.assertNotIn('in_process', recorder)
+        self.assertEqual([slot for slot, row in agents.items() if row['ending'] == 'in process'], ['recorder'])
+        self.assertEqual({field: recorder[field] for field in TOKEN_FIELDS}, dict.fromkeys(TOKEN_FIELDS, 0))
+        # An agent that answered and was then stopped keeps its answer, its sentence and its whole spend.
+        self.assertEqual((core['state'], core['ending'], core['detail']), ('done', 'answered', stopped))
+        self.assertEqual({field: core[field] for field in spent}, spent)
         # A slot with no model asked is not one whose model is unverified.
         self.assertEqual((run['models_unverified'], run['publishable']), ([], True))
-        # A run from before bfc8aae asked no model of any slot, so its recorder is not read as in process.
-        for record in protocol['agents'].values():
-            record['assigned_model'] = None
-        write_json(self.review / 'protocol.json', protocol)
-        run = run_review(self.review, self.base)['run']
-        self.assertEqual([row['slot'] for row in run['agents'] if row['in_process']], [])
 
     def test_a_review_without_findings_is_publishable_unless_the_guard_held_some(self):
         self.write_issues([], findings_delivered=0, findings_submitted=0, escalation_rulings=[], escalated_count=0)

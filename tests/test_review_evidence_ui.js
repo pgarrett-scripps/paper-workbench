@@ -155,19 +155,49 @@ for (const text of ['Arm full-two-track', '3 reviewers', 'Status complete', 'Iss
                     '1 escalated', 'Guard clean', '10 min',
                     "Editor's verdict", 'High if true', 'Basis: judgement. Not a score.', 'Specialist reports (1)',
                     '# Stats audit &lt;script&gt;x&lt;/script&gt;',
-                    'spec-stats · stats track · model asked claude-sonnet-5-5 · model ran claude-sonnet-5-5 · attempt 1 · 4 tool calls · 5000 tokens · done · 1 findings</li>',
-                    'Agents (2)',
-                    'recorder · ingest track · model asked claude-haiku-5-5 · model ran not recorded · attempt 1 · 4 tool calls · 42000 tokens · completed · tasks ingest, write review</li>',
+                    'spec-stats · stats track · model asked claude-sonnet-5-5 · model ran claude-sonnet-5-5 · attempt 1 · 4 tool calls · 5,000 tokens · done · 1 findings</li>',
+                    'Agents (2)', '1,234 tokens',
+                    'recorder · ingest track · model asked claude-haiku-5-5 · model ran not recorded · attempt 1 · 4 tool calls · 42,000 tokens · completed · tasks ingest, write review</li>',
                     '<p class="unverified">The model that ran was not recorded for 1 slot (recorder), so the model asked for it is unverified.</p>',
                     'marked blocked afterwards: rate limit', 'runtime.json is not valid JSON &lt;x&gt;',
                     'Findings by track: field 1 · core 1', 'Advisory only.']) {
   assert.ok(panel.includes(text), text);
 }
 assert.ok(!panel.includes('<script>'));
-// The recorder the engine ran in its own process says so, in place of a model asked and a model ran.
+// A run from before the token fields says nothing about what its total counts.
+for (const text of ['tokens spent', 'Peak context', '1,234 tokens spent']) assert.ok(!panel.includes(text), text);
+// The recorder the engine says it ran in its own process says so, in place of a model asked and a model ran.
+const zero = "tokens_cumulative:0, tokens_input_uncached:0, tokens_cache_write:0, tokens_cache_read:0, tokens_output:0, tokens_peak_context:0";
 assert.equal(vm.runInContext("agentFacts({slot:'recorder', role:'recorder', track:'ingest', assigned_model:null, model:null,"
-  + " in_process:true, attempt:1, tool_calls:4, tokens:0, state:'done', findings:0, none_found:false, labels:['recorder']})", context),
-  'recorder · ingest track · in process, no model · attempt 1 · 4 tool calls · 0 tokens · done');
+  + ` attempt:1, tool_calls:4, tokens:0, ${zero}, state:'done', ending:'in process',`
+  + " detail:'the run itself: every recorder tool was called in this process, with no model', findings:0, none_found:false, labels:['recorder']})", context),
+  'recorder · ingest track · in process, no model · attempt 1 · 4 tool calls · 0 tokens spent · done');
+// An agent shows what it spent in all with its four parts, its widest call, how it ended and the engine's sentence.
+const spent = "tokens:592106, tokens_cumulative:592106, tokens_input_uncached:1200, tokens_cache_write:40000,"
+  + " tokens_cache_read:540000, tokens_output:10906, tokens_peak_context:144072";
+assert.equal(vm.runInContext("agentFacts({slot:'core-1', role:'core', track:'core', assigned_model:'claude-opus-5-5', model:'claude-opus-5-5',"
+  + ` attempt:1, tool_calls:30, ${spent}, state:'done', ending:'answered', detail:'stopped over the <token> ceiling after it answered',`
+  + " findings:3, none_found:false, labels:['core-1']})", context),
+  'core-1 · core track · model asked claude-opus-5-5 · model ran claude-opus-5-5 · attempt 1 · 30 tool calls'
+  + ' · 592,106 tokens spent (uncached input 1,200, cache write 40,000, cache read 540,000, output 10,906)'
+  + ' · peak context 144,072 tokens · done (answered) · 3 findings'
+  + '<br><span class="muted">stopped over the &lt;token&gt; ceiling after it answered</span>');
+// An ending that is the state's own word is not said twice, and a field not recorded is left out.
+assert.equal(vm.runInContext("agentFacts({slot:'spec-stats', role:'specialist', track:'stats', assigned_model:'a', model:'a', attempt:2,"
+  + " tokens:900, tokens_cumulative:900, tokens_input_uncached:null, tokens_cache_write:null, tokens_cache_read:null,"
+  + " tokens_output:null, tokens_peak_context:null, state:'failed', ending:'failed', detail:null, findings:0, none_found:true, labels:[]})", context),
+  'spec-stats · stats track · model asked a · model ran a · attempt 2 · 900 tokens spent · failed · reported no findings');
+// A run whose agents carry the token fields says its total is the spend, and says once what the two figures mean.
+vm.runInContext("savedRun = review.run; review.run = {...review.run, tokens_total:1600000, agents:[{slot:'core-1', role:'core',"
+  + ` track:'core', assigned_model:'a', model:'a', attempt:1, tool_calls:2, ${spent}, state:'failed', ending:'out of time',`
+  + " detail:null, findings:0, none_found:false, labels:[]}]}; cards();", context);
+const spentPanel = html('#run-panel');
+for (const text of ['1,600,000 tokens spent', 'failed (out of time)',
+                    '<p class="muted">Tokens spent is every call added up, cache reads included, and is what the run cost.'
+                    + ' Peak context is the largest single call, and is the figure that compares with a run from before engine 0.10.0.</p>']) {
+  assert.ok(spentPanel.includes(text), text);
+}
+vm.runInContext('review.run = savedRun; cards();', context);
 // The panel says which code the run was reviewed against, naming a local folder by its own name only.
 assert.ok(panel.includes('<div class="code-reviewed"><p><strong>Code reviewed</strong><br><code>paper-repo</code> at 0123456789ab with uncommitted changes'
   + '<br>1 of 3 files opened, 2 searches, 1 path left out of the snapshot, the snapshot stopped early: more than 400 files of text source</p>'

@@ -32,6 +32,7 @@ from pathlib import Path
 from unittest import mock
 
 from peerreviewagents import ReviewRefused, read_manuscript, read_run, scripted_review
+from peerreviewagents.names import TOKEN_FIELDS
 # The code check's slot alone, which scripted_review does not claim.
 from peerreviewagents.plugin import server as engine
 from peerreviewagents.workspace import digest
@@ -259,12 +260,14 @@ class EngineRoundsTests(unittest.TestCase):
             self.assertEqual(sorted(issues_document()), sorted(document))
         self.assertIsNone(json.loads((self.first / 'review' / 'issues.json').read_text())['code_check'])
 
-    def test_the_engine_runs_the_recorder_in_process_with_no_model(self):
-        # The recorder is the engine's own Python, so the run asks no model of it, and it alone is in process.
-        agents = self.view(self.first)['run']['agents']
-        recorder = next(row for row in agents if row['slot'] == 'recorder')
-        self.assertEqual((recorder['in_process'], recorder['assigned_model'], recorder['model']), (True, None, None))
-        self.assertEqual([row['slot'] for row in agents if row['in_process']], ['recorder'])
+    def test_every_agent_row_carries_the_engines_ending_and_token_fields(self):
+        # The engine asks no model of the recorder. scripted_review claims each slot itself and runs no agent,
+        # so it writes no stream row, and every row says not recorded rather than a guess.
+        agents = {row['slot']: row for row in self.view(self.first)['run']['agents']}
+        self.assertEqual((agents['recorder']['assigned_model'], agents['recorder']['model']), (None, None))
+        words = ('ending', 'detail', *TOKEN_FIELDS)
+        for slot, row in agents.items():
+            self.assertEqual({word: row[word] for word in words}, dict.fromkeys(words), slot)
 
     def test_round_one_is_read_as_three_issues(self):
         review = self.view(self.first)
