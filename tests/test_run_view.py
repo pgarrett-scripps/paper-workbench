@@ -7,7 +7,6 @@ import io
 import json
 import os
 import shutil
-import socket
 import tempfile
 import threading
 import unittest
@@ -32,6 +31,8 @@ FINGERPRINT = manuscripts.fingerprint_of(TEXT)
 SONNET, HAIKU = 'claude-sonnet-5-5', 'claude-haiku-5-5'
 # The citation ledger the engine's own ledger code wrote for the run's manuscript. README.md there says what it holds.
 CITATIONS = Path(__file__).resolve().parent / 'fixtures' / 'citations'
+# make_run's citations value that keeps the ledger the run's own lane wrote, with no network to look anything up on.
+OWN = 'own'
 NO_LEDGER = 'this run planned a citations lane and wrote no citation ledger, so there are no ledger counts'
 UNREADABLE = ('review/citations/ledger.jsonl is present and could not be read (Permission denied), '
               'so this run has no citation counts')
@@ -186,30 +187,28 @@ def scripted(root, scripts=None, *, sealed=True, **plan):
 
     With ``sealed`` the manuscript is the one the engine's own writer seals, so the run plans no Read
     stage. The run sets its deadline and the harness version in the environment, and both are put back.
+    The engine runs it offline, so every lookup fails as it does on a machine with no route out.
     """
     if sealed:
         manuscripts.run_manuscript(root / 'manuscript')
     (root / 'manuscript.pdf').write_bytes(b'qa-source')
     environment = {key: value for key, value in os.environ.items() if key not in CREDENTIALS}
-    with patch.dict(os.environ, environment, clear=True), \
-            patch('socket.getaddrinfo', side_effect=socket.gaierror('no network while a test run is built')):
-        return scripted_review(root / 'manuscript.pdf', root, scripts, **plan)
+    with patch.dict(os.environ, environment, clear=True):
+        return scripted_review(root / 'manuscript.pdf', root, scripts, offline=True, **plan)
 
 
 def built(lane):
     """The run make_run copies, built once per test process by the engine's scripted review.
 
-    With ``lane`` the run plans the citations lane with one worker. Each reference lookup fails at
-    once with no network, and the short wall timeout leaves no time to wait out the ledger's retry
-    gap, so the lane ends with every reference unchecked instead of holding the build for minutes.
-    PeerReviewAgents has no public way to hand the lane an offline opener.
+    With ``lane`` the run plans the citations lane with one worker. The run is offline, so the lane
+    reaches no lookup host and ends at once with every reference not checked.
     """
     if lane not in BUILT:
         root = Path(tempfile.mkdtemp())
         atexit.register(shutil.rmtree, root, True)
         tracks = ['numbers', 'stats', 'citations'] if lane else ['numbers', 'stats']
         review = scripted(root, run_scripts(), arm='full-two-track', reviewers=1, tracks=tracks,
-                          citation_workers=1, wall_timeout=60)
+                          citation_workers=1)
         if review.status != 'complete':
             raise RuntimeError(f'the test run did not build: {review.status}, {review.blocked_reason}')
         BUILT[lane] = root
@@ -221,13 +220,14 @@ def make_run(root, citations=CITATIONS):
 
     The manuscript is written by the engine's own writer. With ``citations`` the run planned the
     citations lane, and its ledger is the one in that folder, which the engine's own ledger code
-    wrote with lookups and verdicts. With None the run planned no citations lane.
+    wrote with lookups and verdicts. With ``OWN`` it keeps the ledger its own lane wrote with no
+    network. With None the run planned no citations lane.
     """
     run = built(citations is not None)
     manuscript, review = root / 'manuscript', root / 'review'
     shutil.copytree(run / 'manuscript', manuscript)
     shutil.copytree(run / 'review', review)
-    if citations is not None:
+    if citations is not None and citations != OWN:
         shutil.rmtree(review / 'citations')
         (review / 'citations').mkdir()
         for name in ('ledger.jsonl', 'stages.json'):
@@ -794,10 +794,33 @@ class CitationLedgerTests(unittest.TestCase):
     def test_a_planned_lane_without_a_ledger_says_there_are_no_counts(self):
         shutil.rmtree(self.review / 'citations')
         run = self.view()
-        self.assertEqual(run['citations'], {'complete': False, 'problems': [NO_LEDGER], 'ledger': False,
-                                            'readable': False, 'counts': {}, 'references': [],
+        self.assertEqual(run['citations'], {'complete': False, 'no_network': False, 'problems': [NO_LEDGER],
+                                            'ledger': False, 'readable': False, 'counts': {}, 'references': [],
                                             'references_not_shown': 0, 'uses': [], 'uses_not_shown': 0})
         self.assertEqual((run['problems'], run['publishable']), ([], True))
+
+    def test_a_lane_that_reached_no_host_says_nothing_was_checked(self):
+        # The run make_run copies was built offline. Its own lane reached no lookup host, and the engine
+        # records that in the resolve stage, so the panel says the citations were not checked at all.
+        manuscript, review = make_run(self.root / 'offline', citations=OWN)
+        stages = json.loads((review / 'citations' / 'stages.json').read_text())
+        self.assertIs(stages['resolve']['hosts_reached'], False)
+        self.assertTrue(stages['resolve']['unchecked_reason'])
+        run = run_review(review, read_manuscript(manuscript))['run']
+        citations = run['citations']
+        # test_review_evidence_ui.js renders offline.json, so it must stay this view.
+        self.assertEqual(citations, json.loads((CITATIONS / 'offline.json').read_text()),
+                         'tests/fixtures/citations/offline.json is out of date. README.md there says how to refresh it.')
+        self.assertIs(citations['no_network'], True)
+        self.assertEqual({row['state'] for row in citations['references']}, {'could not check'})
+        self.assertEqual(citations['counts']['could_not_check'], citations['counts']['references'])
+        # The engine names why in its own line, and the panel shows it once, in the citation section.
+        self.assertTrue(any(stages['resolve']['unchecked_reason'] in line for line in citations['problems']))
+        self.assertEqual(read_run(review)['problems'], citations['problems'])
+        # A lane with no network does not hold the review back.
+        self.assertEqual((run['problems'], run['publishable']), ([], True))
+        # A lane that reached a host, even with some lookups unanswered, is not marked as offline.
+        self.assertIs(self.view()['citations']['no_network'], False)
 
     def test_a_run_without_a_citations_lane_has_no_citations_panel(self):
         manuscript, review = make_run(self.root / 'no-lane', citations=None)

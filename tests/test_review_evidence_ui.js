@@ -418,6 +418,22 @@ assert.ok(!unexplained.includes('class="count"'));
 assert.ok(vm.runInContext('citationPanel({...ledgerView, complete:true, problems:[]})', context)
   .startsWith('<details class="citations"><summary>Citations: 6 references, 8 in-text uses</summary>'));
 assert.equal(vm.runInContext('citationPanel(null)', context), '');
+// A lane that reached no lookup host says plainly that nothing was checked, from the view of an offline engine run.
+context.offlineView = JSON.parse(fs.readFileSync('tests/fixtures/citations/offline.json', 'utf8'));
+const offline = vm.runInContext('citationPanel(offlineView)', context);
+assert.ok(offline.startsWith('<details class="citations" open><summary>Citations not checked, no network</summary>'));
+assert.ok(offline.includes('<p class="error">No lookup host could be reached from the machine that ran the review, so no reference was checked. This says nothing about whether the works are real.</p>'));
+// The no-network line replaces the line for a check that did not finish, and the engine's own lines stay.
+assert.ok(!offline.includes('The citation check did not finish'));
+for (const line of vm.runInContext('offlineView.problems.map(esc)', context)) {
+  assert.ok(offline.includes(`<p class="error">${line}</p>`), line);
+}
+assert.ok(offline.includes('<p class="count">6 references: 0 found in an index · 0 DOI not held by the DOI resolver · 0 title not located in Crossref or Europe PMC · 6 could not be checked · 0 never looked up</p>'));
+let offlineProse = offline;
+for (const line of vm.runInContext('offlineView.problems.map(esc)', context)) offlineProse = offlineProse.split(line).join('');
+assert.ok(!/not exist|fabricat|fake|made up|hallucinat/i.test(offlineProse));
+// The view of a lane that reached a host is not marked as offline.
+assert.ok(!citations.includes('no network') && !citations.includes('No lookup host'));
 // Only https links leave the page.
 assert.equal(vm.runInContext("sourceLink('javascript:alert(1)', 'Source') + sourceLink('http://example.org', 'Source')", context), '');
 // A citation worker writes no findings, and its line says so.

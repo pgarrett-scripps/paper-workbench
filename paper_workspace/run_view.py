@@ -412,13 +412,19 @@ def citation_view(citations, review):
     are listed with the ones a reader should check first at the top, at most
     ``CITATION_ROWS`` of them. Text in a row came from the manuscript, from an
     index on the internet or from a worker, and the panel shows it escaped as
-    quoted text.
+    quoted text. ``no_network`` is true when the resolve stage reached no lookup
+    host, so the panel says no reference was checked.
     """
     if not citations.get('enabled'):
         return None
     counts = citations.get('counts') or {}
+    stages = counts.get('stages') if isinstance(counts.get('stages'), dict) else {}
+    resolve = stages.get('resolve') if isinstance(stages.get('resolve'), dict) else {}
     view = {
         'complete': citations.get('complete') is True,
+        # The engine records hosts_reached false when every lookup of the run failed to reach a host,
+        # the machine offline or behind a firewall, so no reference was checked at all.
+        'no_network': resolve.get('hosts_reached') is False,
         'problems': [line for line in citations.get('problems') or [] if isinstance(line, str)],
         'ledger': citations.get('ledger') is not None,
         'readable': bool(counts),

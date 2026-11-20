@@ -5,8 +5,8 @@
 It builds the test run's manuscript with ``manuscripts.run_manuscript``, fills
 the ledger from it, resolves five of its six references and has two citation
 workers judge five uses, all through the engine's own citation ledger module,
-then writes ``ledger.jsonl``, ``stages.json`` and ``view.json`` into the folder
-given. Nothing goes on the network. Every lookup goes to the opener below,
+then writes ``ledger.jsonl``, ``stages.json``, ``view.json`` and ``offline.json``
+into the folder given. Nothing goes on the network. Every lookup goes to the opener below,
 which answers from the canned bodies here and raises ``OSError`` for any other
 address, which the engine records as a host that did not answer.
 
@@ -149,12 +149,14 @@ def main(out):
         citations = fill(root / 'filled')
         for name in ('ledger.jsonl', 'stages.json'):
             (out / name).write_bytes((citations / name).read_bytes())
-        # The panel view of that ledger, on the run test_run_view.make_run builds through the engine.
+        # The panel view of that ledger, on the run test_run_view.make_run builds through the engine,
+        # and the panel view of the ledger that run's own lane wrote offline.
         from paper_workspace.run_view import run_review
-        from test_run_view import make_run
-        _, review = make_run(root / 'run', citations=out)
-        view = run_review(review, read_manuscript(root / 'run' / 'manuscript'))['run']['citations']
-        (out / 'view.json').write_text(json.dumps(view, indent=1, ensure_ascii=False) + '\n')
+        from test_run_view import OWN, make_run
+        for name, citations in (('view.json', out), ('offline.json', OWN)):
+            _, review = make_run(root / name, citations=citations)
+            view = run_review(review, read_manuscript(root / name / 'manuscript'))['run']['citations']
+            (out / name).write_text(json.dumps(view, indent=1, ensure_ascii=False) + '\n')
 
 
 if __name__ == '__main__':

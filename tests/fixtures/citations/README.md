@@ -3,9 +3,15 @@
 `ledger.jsonl` and `stages.json` are written by `generate.py` through the engine's own citation ledger code, from the
 test run's manuscript (`manuscripts.run_manuscript`). Nothing goes on the network. Every lookup goes to the
 generator's opener, which answers from canned bodies and raises `OSError` for any other address, which the engine
-records as a host that did not answer. `view.json` is what `paper_workspace.run_view.run_review` makes of this ledger
-for the run panel, on the run `test_run_view.make_run` builds through the engine's scripted review, and the viewer
-test renders it.
+records as a host that did not answer. The other references' lookups answer, so the resolve stage reached a host and
+records `hosts_reached` true. `view.json` is what `paper_workspace.run_view.run_review` makes of this ledger for the
+run panel, on the run `test_run_view.make_run` builds through the engine's scripted review, and the viewer test
+renders it.
+
+`offline.json` is what `run_review` makes of the ledger that run's own citations lane wrote. `make_run` builds the
+run with `scripted_review(..., offline=True)`, so every lookup fails to connect, the resolve stage records
+`hosts_reached` false and the panel says the citations were not checked, with no network. The viewer test renders
+it too.
 
 The engine has no public ledger writer, so `generate.py` imports its internal ledger module. It is the one file in
 this repo allowed to, and `test_engine_contract.PublicSurfaceTest` names it. No test runs the generator.
@@ -37,10 +43,13 @@ link and its marker is bare digits.
    them escaped and must not show the abstract.
 4. The resolve and judge stages are not done, so the check is incomplete.
 
+The opener has no "too many requests" case. A fake index that means one must answer HTTP 429, because the engine
+reads a connection failure as a host it could not reach.
+
 ## Regenerating it
 
 1. Run `python tests/fixtures/citations/generate.py tests/fixtures/citations` from the repo root with the pinned
-   engine installed. It writes `ledger.jsonl`, `stages.json` and `view.json` over the files here.
+   engine installed. It writes `ledger.jsonl`, `stages.json`, `view.json` and `offline.json` over the files here.
 2. Check the diff. The timestamps change on every run, and nothing else should change unless the engine or the
    generator did.
 3. Run `python -m unittest discover -s tests -p 'test_run_view.py'` and `node tests/test_review_evidence_ui.js`.
