@@ -28,7 +28,7 @@ def parser(prog=PROG):
     """The engine's check-fixes parser, taking a workspace for the PDF and writing its own problems file."""
     built = check_fixes_parser(prog=prog)
     built.description = ('Check the current draft of a manuscript workspace against the open problems in its '
-                         'issue ledger, with the pra plugin in a headless Claude Code session, and record each '
+                         'issue ledger, with headless Claude Code agents, and record each '
                          'verdict in the ledger. Nothing new is raised.')
     built.epilog = (f'The problems file is written from the ledger to RUN/{PROBLEMS}: every open problem the '
                     'draft has no verdict on yet, in severity order. A check that is blocked or stopped, or '

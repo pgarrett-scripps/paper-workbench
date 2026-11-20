@@ -9,12 +9,12 @@ description = "The manuscript workspace and revision app, built on the PeerRevie
 readme = "README.md"
 requires-python = ">=3.11"
 license = {file = "LICENSE"}
-# PeerReviewAgents runs the review (the pra plugin in a headless Claude Code
-# session) and owns ingest and the domain packs. The app imports it directly.
+# PeerReviewAgents runs the review (a panel of headless Claude Code agents run
+# by its own Python) and owns ingest and the domain packs. The app imports it directly.
 # The engine is not released yet, so it is pinned to one commit of its main
 # branch as GitHub's archive of that commit, with the archive's hash.
 dependencies = [
-    "peerreviewagents @ https://github.com/pgarrett-scripps/PeerReviewAgents/archive/e530d2cce1fa2ad02d46846bcd80ea42c5b146a8.tar.gz#sha256=219a27ef34773fd50f9243d6f27e140549e8583fa62e888bf353e0f35c380998",
+    "peerreviewagents @ https://github.com/pgarrett-scripps/PeerReviewAgents/archive/dd7451ffc32061967eea28b0fdb6ada913e2d7b8.tar.gz#sha256=43d1851f71881a0c4c41a213b4699ef6555f8ebd170ebae8cab09c462da5dbdf",
 ]
 
 [project.optional-dependencies]

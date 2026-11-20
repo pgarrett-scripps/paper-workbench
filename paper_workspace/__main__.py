@@ -150,8 +150,9 @@ def dispatch(parser,args):
                           'lines':{name:paper.line_count(name) for name in paper.document_names()},
                           'status':'verified'},indent=2))
     elif args.command=='port-scaffold':
-        from .scaffold_port import port_workspace
-        print(port_workspace(args.workspace,args.output)['statistics'])
+        from .scaffold_port import port_workspace, ported_line
+        manifest=port_workspace(args.workspace,args.output)
+        print(f'paper-workbench port-scaffold: {ported_line(manifest,args.workspace,args.output)}')
     elif args.command=='import-scaffold':
         from .workspace_review import import_project, imported_line
         manifest,note=import_project(args.source,args.output,args.title)

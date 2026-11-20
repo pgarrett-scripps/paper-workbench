@@ -1,5 +1,7 @@
 """A port preserves scientific text while exposing only safe source edits."""
 from pathlib import Path
+import contextlib
+import io
 import tempfile
 import unittest
 
@@ -10,6 +12,7 @@ import manuscripts
 import reader_fixture
 from manuscripts import BOX, line_of
 from paper_workspace.scaffold_import import scaffold_spans, span_at
+from paper_workspace.__main__ import main
 from paper_workspace.scaffold_port import port_workspace
 
 PDF = b'Original PDF fixture bytes'
@@ -105,6 +108,23 @@ class ScaffoldPort(unittest.TestCase):
             typst = ''.join(path.read_text() for path in (output / 'scaffold').rglob('*.typ'))
             for text in ('A photograph of the bench', '0 10 20 30 40 mm', 'qn,s,d else'):
                 self.assertNotIn(text, typst)
+
+    def test_the_command_prints_one_summary_line(self):
+        # As import-scaffold does, the command says what it wrote in one line, not a statistics dict.
+        with tempfile.TemporaryDirectory() as folder:
+            root = Path(folder).resolve()
+            source = root / 'original'
+            source_manuscript(source)
+            output = root / 'ported'
+            stdout = io.StringIO()
+            with contextlib.redirect_stdout(stdout):
+                self.assertEqual(main(['port-scaffold', str(source), str(output)]), 0)
+            manifest = verify_workspace(output).manifest
+            stats = manifest['statistics']
+            self.assertEqual(stdout.getvalue(),
+                             f'paper-workbench port-scaffold: ported "Real source test" from {source} as paper '
+                             f'{manifest["paper_id"]} into {output}: {stats["pieces"]} pieces, '
+                             f'{stats["total_words"]:,} words and {stats["reference_entries"]} references.\n')
 
 
 if __name__ == '__main__':

@@ -110,7 +110,8 @@ def issues_document(issues=ISSUES, **extra):
             'escalation_rulings': [{'finding_uid': 'aa11', 'ruling': 'Accepted.'}], 'escalated_count': 1,
             'stages': {}, 'audits': ['audit_numbers.md', 'audit_stats.md'],
             'findings_by_track': {'core': 2, 'numbers': 1}, 'findings_delivered': 3, 'findings_submitted': 3,
-            'quarantined_findings': [], 'quarantined_findings_count': 0, 'review_guard_status': 'clean',
+            'quarantined_findings': [], 'quarantined_findings_count': 0,
+            'quarantined_superseded_count': 0, 'review_guard_status': 'clean',
             'code_check': None, 'reviewer_count': 3, 'reviewer_provenance': [], 'arm': 'full-two-track', 'synthesis_policy': 'editor',
             'finding_schema_version': None, 'workflow_version': None, **extra}
 

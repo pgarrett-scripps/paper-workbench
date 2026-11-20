@@ -52,9 +52,11 @@ class AppCommandTest(unittest.TestCase):
         output = io.StringIO()
         with contextlib.redirect_stdout(output), self.assertRaises(SystemExit):
             main(['review', '-h'])
-        for flag in ('--reviewer-models', '--specialist-model', '--editor-model', '--recorder-model',
+        for flag in ('--reviewer-models', '--specialist-model', '--editor-model',
                      '--citation-workers', '--citation-worker-model', '--reader-model', '--code'):
             self.assertIn(flag, output.getvalue())
+        # The recorder is the engine's own Python, not an agent, so it has no model to set.
+        self.assertNotIn('--recorder-model', output.getvalue())
         # The reader always runs on a PDF review, so there is no switch to turn it off.
         self.assertNotIn('--no-ai-read', output.getvalue())
         # Every review is a fresh panel, so there is no option that hands it an earlier review.
@@ -79,16 +81,14 @@ class EngineCommandTest(unittest.TestCase):
         with patch.dict(os.environ, {'PATH': str(empty)}):
             status, summary = run_main(['review', str(self.pdf), str(out), '--arm', 'reviewers-only',
                                         '--reviewers', '2', '--reviewer-models', 'claude-haiku-5-5,claude-opus-5-5',
-                                        '--editor-model', 'claude-opus-5-5', '--recorder-model', 'claude-sonnet-5-5',
-                                        '--reader-model', 'claude-haiku-5-5'])
+                                        '--editor-model', 'claude-opus-5-5', '--reader-model', 'claude-haiku-5-5'])
         self.assertEqual((status, summary['status'], summary['stage']), (2, 'blocked', 'startup'))
         self.assertIn('claude is not installed', summary['blocked_reason'])
         # The options reach the engine, which records them in its summary. The reader is the Read
         # stage's slot, which reads the page images before any reviewer starts.
         self.assertEqual((summary['arm'], summary['reviewers']), ('reviewers-only', 2))
         self.assertEqual(summary['models_requested'], {'reader': 'claude-haiku-5-5', 'core-1': 'claude-haiku-5-5',
-                                                       'core-2': 'claude-opus-5-5', 'editor': 'claude-opus-5-5',
-                                                       'recorder': 'claude-sonnet-5-5'})
+                                                       'core-2': 'claude-opus-5-5', 'editor': 'claude-opus-5-5'})
         self.assertTrue((out / 'review' / 'startup.json').is_file())
         # The run never imported the manuscript, so serve says why in plain words.
         stderr = io.StringIO()
