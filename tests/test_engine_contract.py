@@ -282,11 +282,9 @@ class EngineOutputContractTest(unittest.TestCase):
 
 class PublicSurfaceTest(unittest.TestCase):
     PRIVATE = ('engine', 'plugin', 'cli', 'runs')
-    # test_engine_rounds.py builds its rounds with scripted_review, which does not claim the code check's
-    # slot, so that one slot acts through the engine's own server. The engine has no public ledger writer
-    # either, so the fixture generator imports its ledger module. No test runs the generator.
-    ALLOWED = ['tests/fixtures/citations/generate.py: ' + 'peerreviewagents.' + 'engine',
-               'tests/test_engine_rounds.py: ' + 'peerreviewagents.' + 'plugin']
+    # The engine has no public ledger writer, so the citation fixture generator imports its ledger module.
+    # No test runs the generator.
+    ALLOWED = ['tests/fixtures/citations/generate.py: ' + 'peerreviewagents.' + 'engine']
 
     def test_the_app_and_its_tests_use_only_public_engine_names(self):
         # A dotted name catches an import, a lazy import or a patch target. The AST catches

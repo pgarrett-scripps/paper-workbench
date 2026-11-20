@@ -1,7 +1,7 @@
 """A manuscript the engine's own Read stage wrote, with a script in place of the model.
 
-``read_paper`` writes a three page PDF and opens a run on it with ``peerreviewagents.scripted_read``,
-with the pieces a converter is known to leave behind spliced into the draft. The script does what a
+``read_paper`` writes a three page PDF and runs the Read stage on it with ``peerreviewagents.scripted_read``,
+with the pieces a converter is known to leave behind spliced into the draft. The script in the reader's seat does what a
 reader does. It views every page, repairs the equation, describes the figure and folds its axis
 numbers into the description, re-reads a paragraph of run-together cells as a sentence, a table and
 a caption with a stray heading folded into the table, cuts a stray phrase out of a paragraph, puts
@@ -101,24 +101,29 @@ def pdf_bytes(pages, turned=()):
     return bytes(out)
 
 
+def reader(slot):
+    """The reader's seat: what a reader does to the pieces the converter left, then the seal."""
+    for page in range(1, len(PAGES) + 1):
+        slot.view_page(page)
+    slot.replace_equation(slot.find('E = m c^{2'), 2, 'E = m c^{2}', number='(1)')
+    slot.describe_figure(slot.find('Figure 1: The bench'), 2, DESCRIBED, absorb=[slot.find('0 10 20 30 40 mm')])
+    slot.reread_piece(slot.find('logged every hour'), 2, [
+        {'kind': 'paragraph', 'keep': 'The current was logged every hour.'},
+        {'kind': 'table', 'rows': [['Hour', 'Current (mA)'], ['1', '4.5'], ['2', '9.0']]},
+        {'kind': 'caption', 'text': 'Table 1: Current by hour.'},
+    ], absorb=[slot.find('with $\\{$')])
+    slot.reread_piece(slot.find('no widget moved'), 2, [{'kind': 'paragraph', 'remove': ['qn,s,d else']}])
+    slot.add_piece(slot.find('no widget moved'), 'paragraph', 3, text=LOST_PAGE_TEXT)
+    slot.seal(note=NOTE)
+
+
 def read_paper(root):
     """Run the scripted Read stage on the fixture PDF under ``root`` and return the sealed workspace."""
     root = Path(root)
     paper = root / 'paper.pdf'
     paper.write_bytes(pdf_bytes(PAGES, TURNED))
-    with scripted_read(paper, root / 'run', CONVERTER_LEFT) as read:
-        for page in range(1, len(PAGES) + 1):
-            read.view_page(page)
-        read.replace_equation(read.find('E = m c^{2'), 2, 'E = m c^{2}', number='(1)')
-        read.describe_figure(read.find('Figure 1: The bench'), 2, DESCRIBED, absorb=[read.find('0 10 20 30 40 mm')])
-        read.reread_piece(read.find('logged every hour'), 2, [
-            {'kind': 'paragraph', 'keep': 'The current was logged every hour.'},
-            {'kind': 'table', 'rows': [['Hour', 'Current (mA)'], ['1', '4.5'], ['2', '9.0']]},
-            {'kind': 'caption', 'text': 'Table 1: Current by hour.'},
-        ], absorb=[read.find('with $\\{$')])
-        read.reread_piece(read.find('no widget moved'), 2, [{'kind': 'paragraph', 'remove': ['qn,s,d else']}])
-        read.add_piece(read.find('no widget moved'), 'paragraph', 3, text=LOST_PAGE_TEXT)
-        read.seal(note=NOTE)
+    read = scripted_read(paper, root / 'run', reader, pieces=CONVERTER_LEFT)
+    assert read.sealed, read.summary
     return read.workspace
 
 
