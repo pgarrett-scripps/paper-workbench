@@ -1,4 +1,5 @@
 """A PeerReviewAgents run folder in the viewer: the run's review, its decisions and its export."""
+import atexit
 import contextlib
 import hashlib
 import http.client
@@ -6,19 +7,21 @@ import io
 import json
 import os
 import shutil
+import socket
 import tempfile
 import threading
 import unittest
 from pathlib import Path
 from unittest.mock import patch
 
-from peerreviewagents import FINDING_SCHEMA_VERSION, ISSUES_SCHEMA_VERSION, citation_uses, read_manuscript, read_run
+from peerreviewagents import (FINDING_SCHEMA_VERSION, ISSUES_SCHEMA_VERSION, citation_uses, read_manuscript, read_run,
+                              scripted_review)
 from peerreviewagents.issues import ISSUE_FIELDS, MEMBER_FIELDS
 from peerreviewagents.names import TOKEN_FIELDS
 from peerreviewagents.workspace import write_json
 
 import manuscripts
-from manuscripts import BOX, PAPER_ID, REFERENCES, SOURCE_SHA256, TEXT
+from manuscripts import BOX, PAPER_ID, REFERENCES, TEXT
 from paper_workspace.__main__ import main
 from paper_workspace.run_view import NO_ENGINE_ID, RunError, locate, run_review
 from paper_workspace.server import make_server
@@ -27,13 +30,16 @@ from paper_workspace.server import make_server
 LINE = 3
 FINGERPRINT = manuscripts.fingerprint_of(TEXT)
 SONNET, HAIKU = 'claude-sonnet-5-5', 'claude-haiku-5-5'
-# The six specialist lanes of engine 0.10.0, in the order its plan lists them.
-LANES = ['stats', 'figures-tables', 'methods-reporting', 'citations', 'numbers', 'field']
 # The citation ledger the engine's own ledger code wrote for the run's manuscript. README.md there says what it holds.
 CITATIONS = Path(__file__).resolve().parent / 'fixtures' / 'citations'
 NO_LEDGER = 'this run planned a citations lane and wrote no citation ledger, so there are no ledger counts'
 UNREADABLE = ('review/citations/ledger.jsonl is present and could not be read (Permission denied), '
               'so this run has no citation counts')
+# The quotes of the three findings in the run make_run builds: issue 1 pools the first two, issue 2 is the third.
+QUOTES = ('lowered VPS35', '12 samples', 'Knockdown')
+# The keys a test run is built without, and the runs built so far in this process, by whether they plan citations.
+CREDENTIALS = ('ANTHROPIC_API_KEY', 'ANTHROPIC_AUTH_TOKEN', 'OPENAI_API_KEY')
+BUILT = {}
 # A table the engine writes as three lines: the header, the delimiter and one row.
 TABLE = {'kind': 'table', 'text': 'Sample VPS35 A 12', 'table': [['Sample', 'VPS35'], ['A', '12']],
          'page': 1, 'bbox': list(BOX)}
@@ -73,15 +79,6 @@ def finding(uid, quote, slot='core-1', track='core', **extra):
             'recorded': '2026-11-15T12:00:00+00:00', **extra}
 
 
-# The ledger of the run make_run writes: two findings the editor pooled into one
-# major issue, and one suggested edit that is a minor issue of its own.
-AA11 = finding('aa11', 'lowered VPS35', escalate=True)
-BB22 = finding('bb22', '12 samples', slot='spec-numbers', track='numbers', severity='minor',
-               comment='Say how the 12 samples were drawn.')
-CC33 = finding('cc33', 'Knockdown', kind='edit', severity='minor', replacement='The knockdown',
-               comment='Start with an article.')
-
-
 def member(row):
     """The member the editor writes for a ledger finding: its uid, slot, quote and where the engine placed it."""
     return {key: row.get(key) for key in MEMBER_FIELDS}
@@ -95,19 +92,15 @@ def issue(number, name, severity, category, rows, **extra):
             'audits': [], **extra}
 
 
-ISSUES = [issue(1, 'The knockdown control is not named', 'major', 'claims-and-conclusions', [AA11, BB22]),
-          issue(2, 'The opening sentence needs an article', 'minor', 'presentation', [CC33])]
-
-
-def issues_document(issues=ISSUES, **extra):
-    """``review/issues.json`` with every top-level key docs/INTEGRATIONS.md lists."""
+def issues_document(issues=(), **extra):
+    """``review/issues.json`` with every top-level key docs/INTEGRATIONS.md lists. test_engine_rounds.py checks the keys."""
     return {'schema_version': ISSUES_SCHEMA_VERSION, 'issues_source': 'editor', 'issues_source_reason': None,
             'summary': 'One central question.',
-            'issues': issues, 'counts': {},
+            'issues': list(issues), 'counts': {},
             'verdict': {'significance': 'High', 'strength_of_evidence': 'Weak', 'reasoning': 'Correlation.',
                         'basis': 'judgement', 'limitation': 'Advisory.'},
             'limitations': ['The editor read no supplement.'],
-            'escalation_rulings': [{'finding_uid': 'aa11', 'ruling': 'Accepted.'}], 'escalated_count': 1,
+            'escalation_rulings': [], 'escalated_count': 0,
             'stages': {}, 'audits': ['audit_numbers.md', 'audit_stats.md'],
             'findings_by_track': {'core': 2, 'numbers': 1}, 'findings_delivered': 3, 'findings_submitted': 3,
             'quarantined_findings': [], 'quarantined_findings_count': 0,
@@ -124,56 +117,121 @@ def ledger_rows(review):
     return [json.loads(line) for line in (review / 'findings.jsonl').read_text().splitlines()]
 
 
-def make_run(root, issues=True, ledger=True, citations=CITATIONS):
-    """A run folder as ``peerreview review`` leaves it, with two issues over three findings.
+def ran(review, slot, model):
+    """The model ``slot`` was seen running, changed in the session stream and the protocol alike."""
+    runtime = json.loads((review / 'runtime.json').read_text())
+    for row in runtime['agents']:
+        if row['label'] == slot:
+            row['model'] = model
+    write_json(review / 'runtime.json', runtime)
+    protocol = json.loads((review / 'protocol.json').read_text())
+    protocol['agents'][slot]['model'] = model
+    write_json(review / 'protocol.json', protocol)
 
-    The manuscript is written by the engine's own writer. With ``ledger`` the run
-    holds the citation ledger in ``citations``, as a run that planned the
-    citations lane leaves it.
+
+def filed(review):
+    """The three findings of the run make_run builds, as the engine filed them: issue 1's two, then the edit."""
+    rows = {row['quote']: row for row in ledger_rows(review)}
+    return [rows[quote] for quote in QUOTES]
+
+
+def run_scripts():
+    """The scripts of the seats that file or group findings. Every other seat takes the engine's default.
+
+    core-1 files a major finding and an edit, and spec-numbers files a minor one it escalates. Each waits
+    on the other so the ledger holds them in that order. The editor pools the first two into issue 1,
+    rules on the escalation and makes the edit issue 2.
     """
+    first, second = threading.Event(), threading.Event()
+
+    def core(slot):
+        slot.whole_paper()
+        slot.submit_finding(title='The control is not named', quote=QUOTES[0], comment='Name the control.',
+                            severity='major', line=LINE)
+        first.set()
+        second.wait(60)
+        slot.submit_finding(title='Start with an article', quote=QUOTES[2], comment='Start with an article.',
+                            severity='minor', line=LINE, kind='edit', replacement='The knockdown')
+        slot.submit_report('Checked.', model=slot.model)
+
+    def numbers(slot):
+        slot.whole_paper()
+        first.wait(60)
+        slot.submit_finding(title='How the samples were drawn', quote=QUOTES[1],
+                            comment='Say how the 12 samples were drawn.', severity='minor', line=LINE, escalate=True)
+        second.set()
+        slot.submit_report('One.', model=slot.model)
+
+    def editor(slot):
+        slot.whole_paper()
+        uid = {row['quote']: row['finding_uid'] for row in slot.list_findings()['findings']}
+        slot.submit_issues([
+            {'name': 'The knockdown control is not named', 'severity': 'major', 'category': 'claims-and-conclusions',
+             'rank': 1, 'statement': 'The knockdown control is not named, as the editor states it.',
+             'members': [uid[QUOTES[0]], uid[QUOTES[1]]]},
+            {'name': 'The opening sentence needs an article', 'severity': 'minor', 'category': 'presentation',
+             'rank': 2, 'statement': 'The opening sentence needs an article, as the editor states it.',
+             'members': [uid[QUOTES[2]]]}])
+        slot.submit_editor(summary='One central question.', significance='High', strength_of_evidence='Weak',
+                           verdict_reasoning='Correlation.',
+                           escalation_rulings=[{'finding_uid': uid[QUOTES[1]], 'ruling': 'Accepted.'}],
+                           limitations=['The editor read no supplement.'])
+        slot.submit_report('Grouped.', model=slot.model)
+
+    return {'core-1': core, 'spec-numbers': numbers, 'editor': editor}
+
+
+def scripted(root, scripts=None, *, sealed=True, **plan):
+    """The engine's scripted review of the test manuscript in ``root``, with no network and no credentials.
+
+    With ``sealed`` the manuscript is the one the engine's own writer seals, so the run plans no Read
+    stage. The run sets its deadline and the harness version in the environment, and both are put back.
+    """
+    if sealed:
+        manuscripts.run_manuscript(root / 'manuscript')
+    (root / 'manuscript.pdf').write_bytes(b'qa-source')
+    environment = {key: value for key, value in os.environ.items() if key not in CREDENTIALS}
+    with patch.dict(os.environ, environment, clear=True), \
+            patch('socket.getaddrinfo', side_effect=socket.gaierror('no network while a test run is built')):
+        return scripted_review(root / 'manuscript.pdf', root, scripts, **plan)
+
+
+def built(lane):
+    """The run make_run copies, built once per test process by the engine's scripted review.
+
+    With ``lane`` the run plans the citations lane with one worker. Each reference lookup fails at
+    once with no network, and the short wall timeout leaves no time to wait out the ledger's retry
+    gap, so the lane ends with every reference unchecked instead of holding the build for minutes.
+    PeerReviewAgents has no public way to hand the lane an offline opener.
+    """
+    if lane not in BUILT:
+        root = Path(tempfile.mkdtemp())
+        atexit.register(shutil.rmtree, root, True)
+        tracks = ['numbers', 'stats', 'citations'] if lane else ['numbers', 'stats']
+        review = scripted(root, run_scripts(), arm='full-two-track', reviewers=1, tracks=tracks,
+                          citation_workers=1, wall_timeout=60)
+        if review.status != 'complete':
+            raise RuntimeError(f'the test run did not build: {review.status}, {review.blocked_reason}')
+        BUILT[lane] = root
+    return BUILT[lane]
+
+
+def make_run(root, citations=CITATIONS):
+    """A run folder as the engine's scripted review leaves it, with two issues over three findings.
+
+    The manuscript is written by the engine's own writer. With ``citations`` the run planned the
+    citations lane, and its ledger is the one in that folder, which the engine's own ledger code
+    wrote with lookups and verdicts. With None the run planned no citations lane.
+    """
+    run = built(citations is not None)
     manuscript, review = root / 'manuscript', root / 'review'
-    manuscripts.run_manuscript(manuscript)
-    # The engine writes the plan into both the protocol and the manifest.
-    plan = {'arm': 'full-two-track', 'reviewers': 3, 'specialists': LANES, 'citation_workers': ['cite-1']}
-    write_json(review / 'startup.json', {'problems': []})
-    # `models` and each agent's `assigned_model` are the plan. An agent's `model` is what it reported
-    # running, and the stream rows below carry the model each task was seen running.
-    write_json(review / 'protocol.json', {'arm': 'full-two-track', 'reviewers': 3, 'plan': plan,
-        'models': {'core-1': SONNET, 'recorder': HAIKU, 'spec-citations': SONNET, 'spec-numbers': SONNET,
-                   'cite-1': HAIKU},
-        'reviewer_models': [SONNET, 'claude-opus-5-5', HAIKU],
-        'agents': {
-            'core-1': {'role': 'core', 'track': 'core', 'tool_calls': 3, 'model': SONNET, 'assigned_model': SONNET},
-            'recorder': {'role': 'recorder', 'track': 'ingest', 'tool_calls': 4, 'model': None,
-                         'assigned_model': HAIKU},
-            'spec-citations': {'role': 'specialist', 'track': 'citations', 'tool_calls': 2, 'model': SONNET,
-                               'assigned_model': SONNET},
-            'spec-numbers': {'role': 'specialist', 'track': 'numbers', 'tool_calls': 2, 'model': SONNET,
-                             'assigned_model': SONNET},
-            'cite-1': {'role': 'citation-worker', 'track': 'citations', 'tool_calls': 6, 'model': HAIKU,
-                       'assigned_model': HAIKU}}})
-    write_json(review / 'manifest.json', {'paper_id': PAPER_ID, 'source_sha256': SOURCE_SHA256,
-                                          'citation_ledger': 'citations/ledger.jsonl', 'plan': plan})
-    if ledger:
+    shutil.copytree(run / 'manuscript', manuscript)
+    shutil.copytree(run / 'review', review)
+    if citations is not None:
+        shutil.rmtree(review / 'citations')
         (review / 'citations').mkdir()
         for name in ('ledger.jsonl', 'stages.json'):
             shutil.copyfile(Path(citations) / name, review / 'citations' / name)
-    write_json(review / 'progress.json', {'status': 'complete', 'error': None, 'arm': 'full-two-track', 'reviewers': 3,
-        'stages': {'missing': [], 'none_found': ['spec-citations']}})
-    # The stream names the recorder by its two tasks, and the last row is a label-only placeholder.
-    write_json(review / 'runtime.json', {'status': 'complete', 'tokens_total': 900, 'wall_seconds': 120, 'agents': [
-        {'label': 'core-1', 'agentType': 'pra:core', 'tokens': 500, 'toolCalls': 9, 'state': 'completed',
-         'model': 'claude-sonnet-5-5'},
-        {'label': 'ingest', 'agentType': 'pra:recorder', 'tokens': 120, 'toolCalls': 5, 'state': 'completed',
-         'model': HAIKU},
-        {'label': 'write review', 'agentType': 'pra:recorder', 'tokens': 280, 'toolCalls': 7,
-         'state': 'completed', 'model': HAIKU},
-        {'label': 'spec-field'}]})
-    write_ledger(review, (AA11, BB22, CC33))
-    if issues:
-        write_json(review / 'issues.json', issues_document())
-    (review / 'audit_stats.md').write_text('# Statistics audit\n')
-    (review / 'audit_numbers.md').write_text('# Numbers audit\n')
     return manuscript, review
 
 
@@ -191,6 +249,9 @@ class RunReviewTests(unittest.TestCase):
         self.root = Path(self.temporary.name).resolve()
         self.manuscript, self.review = make_run(self.root)
         self.base = read_manuscript(self.manuscript)
+        # The three ledger rows the engine wrote, and their uids.
+        self.aa, self.bb, self.cc = filed(self.review)
+        self.a, self.b, self.c = (row['finding_uid'] for row in (self.aa, self.bb, self.cc))
 
     def tearDown(self):
         self.temporary.cleanup()
@@ -239,8 +300,15 @@ class RunReviewTests(unittest.TestCase):
             self.assertEqual(message,
                              f'paper-workbench: {path} is neither a manuscript workspace nor a run folder\n')
 
-    def write_issues(self, issues=ISSUES, **extra):
-        write_json(self.review / 'issues.json', issues_document(issues, **extra))
+    def issue_rows(self):
+        """The issues the engine wrote for this run, as a copy a test may change."""
+        return json.loads((self.review / 'issues.json').read_text())['issues']
+
+    def write_issues(self, issues=None, **extra):
+        """The engine's issues.json with its issues, and any other key, replaced."""
+        document = json.loads((self.review / 'issues.json').read_text())
+        write_json(self.review / 'issues.json',
+                   {**document, **extra, 'issues': document['issues'] if issues is None else issues})
 
     def test_one_card_per_issue_required_changes_first(self):
         review = run_review(self.review, self.base)
@@ -254,10 +322,11 @@ class RunReviewTests(unittest.TestCase):
                          ('The knockdown control is not named', 'The knockdown control is not named, as the editor '
                           'states it.', 'claims-and-conclusions', True))
         # Each member is joined to its ledger row for the comment and the span, and every one is placed.
+        # The card is escalated because its spec-numbers member is.
         self.assertEqual([(m['finding_uid'], m['slot'], m['comment'], m['placement'], TEXT[m['start']:m['end']])
                           for m in pooled['members']],
-                         [('aa11', 'core-1', 'Name the control.', 'anchored', 'lowered VPS35'),
-                          ('bb22', 'spec-numbers', 'Say how the 12 samples were drawn.', 'anchored', '12 samples')])
+                         [(self.a, 'core-1', 'Name the control.', 'anchored', 'lowered VPS35'),
+                          (self.b, 'spec-numbers', 'Say how the 12 samples were drawn.', 'anchored', '12 samples')])
         # The card is anchored where its first member is, by document, line and quote, so it can be found on the page.
         self.assertEqual((pooled['document'], pooled['line'], pooled['end_line'], pooled['quote'],
                           pooled['anchor_text'], pooled['placement'], pooled['replacement']),
@@ -272,10 +341,13 @@ class RunReviewTests(unittest.TestCase):
         self.assertNotIn('prior_round', run)
         self.assertEqual((run['counts']['issues'], run['counts']['required'], run['counts']['suggestions']), (2, 1, 1))
         self.assertNotIn('edited', run)
-        self.assertEqual(run['none_found'], ['spec-citations'])
-        self.assertEqual(run['escalation_rulings'], [{'finding_uid': 'aa11', 'ruling': 'Accepted.'}])
-        self.assertEqual((run['tokens_total'], run['wall_seconds']), (900, 120))
-        self.assertEqual(run['audits'], {'numbers': '# Numbers audit\n', 'stats': '# Statistics audit\n'})
+        self.assertEqual(run['none_found'], ['spec-citations', 'spec-stats'])
+        self.assertEqual(run['escalation_rulings'], [{'finding_uid': self.b, 'ruling': 'Accepted.'}])
+        # Six seats ran a model, at the scripted review's 1000 tokens each. The recorder spent none.
+        runtime = json.loads((self.review / 'runtime.json').read_text())
+        self.assertEqual((run['tokens_total'], run['wall_seconds']), (6000, runtime['wall_seconds']))
+        self.assertEqual(run['audits'], {lane: (self.review / f'audit_{lane}.md').read_text()
+                                         for lane in ('citations', 'numbers', 'stats')})
         self.assertEqual(run['findings_by_track'], {'core': 2, 'numbers': 1})
         self.assertEqual((run['publishable'], run['not_publishable_reasons']), (True, []))
 
@@ -286,7 +358,7 @@ class RunReviewTests(unittest.TestCase):
         rows[0].update(page=9, bbox=[0.0, 0.0, 1.0, 1.0])
         write_ledger(self.review, rows)
         card = run_review(self.review, self.base)['findings'][0]
-        self.assertEqual((card['id'], card['page'], card['bbox']), ('aa11', 1, BOX))
+        self.assertEqual((card['id'], card['page'], card['bbox']), (self.a, 1, BOX))
         # A manuscript whose import recorded no boxes draws none, and the quote is still placed on its line.
         shutil.rmtree(self.manuscript)
         base = manuscripts.run_manuscript(self.manuscript, boxed=False)
@@ -306,21 +378,21 @@ class RunReviewTests(unittest.TestCase):
                 'piece_kind': 'table', 'piece_lines': [first, first + 2],
                 'fingerprint': base.piece_at(first)['fingerprint']}
         (self.review / 'issues.json').unlink()
-        write_ledger(self.review, [AA11, finding('dd44', 'VPS35 column and sample A', **span)])
+        write_ledger(self.review, [self.aa, finding('dd44', 'VPS35 column and sample A', **span)])
         card = run_review(self.review, base)['findings'][1]
         self.assertEqual((card['id'], card['placement'], card['line'], card['end_line'], card['start'], card['end'],
                           card['anchor_text'], card['page'], card['bbox']),
                          ('dd44', 'anchored', first, first + 2, start, end, words, 1, BOX))
         # A span that ends one character off no longer covers its words, and the card keeps only its line.
-        write_ledger(self.review, [AA11, finding('dd44', 'VPS35 column and sample A', **{**span, 'end': end + 1})])
+        write_ledger(self.review, [self.aa, finding('dd44', 'VPS35 column and sample A', **{**span, 'end': end + 1})])
         card = run_review(self.review, base)['findings'][1]
         self.assertEqual((card['placement'], card['line'], card['start'], card['anchor_text']),
                          ('unplaced', first, None, None))
 
     def test_suggestions_follow_the_required_changes_grouped_by_category(self):
-        rows = [issue(1, 'Wording', 'minor', 'presentation', [CC33]),
-                issue(2, 'Cohort', 'minor', 'methods-and-reporting', [BB22]),
-                issue(3, 'Control', 'moderate', 'claims-and-conclusions', [AA11])]
+        rows = [issue(1, 'Wording', 'minor', 'presentation', [self.cc]),
+                issue(2, 'Cohort', 'minor', 'methods-and-reporting', [self.bb]),
+                issue(3, 'Control', 'moderate', 'claims-and-conclusions', [self.aa])]
         self.write_issues(rows)
         findings = run_review(self.review, self.base)['findings']
         self.assertEqual([(f['id'], f['group'], f['category']) for f in findings],
@@ -330,7 +402,7 @@ class RunReviewTests(unittest.TestCase):
     def test_the_viewer_reads_nothing_about_an_earlier_round(self):
         # Every review is a fresh panel. A field about an earlier round is not read, so a value of any type
         # in one refuses nothing, and the run panel has no prior round.
-        rows = json.loads(json.dumps(ISSUES))
+        rows = self.issue_rows()
         rows[0].update(status=5, prior_id=7, prior_rank='1', status_reason=['x'], text_unchanged_reason={},
                        surviving_quotes='lowered VPS35')
         self.write_issues(rows, prior_round={'file': 'issues.json', 'issues': 3})
@@ -341,7 +413,7 @@ class RunReviewTests(unittest.TestCase):
 
     def test_issues_the_server_made_are_shown_with_the_reason_the_run_is_not_publishable(self):
         rows = [issue(n, row['title'], row['severity'], 'claims-and-conclusions', [row])
-                for n, row in enumerate((AA11, BB22, CC33), 1)]
+                for n, row in enumerate((self.aa, self.bb, self.cc), 1)]
         self.write_issues(rows, issues_source='server', issues_source_reason='this arm has no editor')
         review = run_review(self.review, self.base)
         self.assertEqual([f['id'] for f in review['findings']], ['i01', 'i02', 'i03'])
@@ -366,7 +438,7 @@ class RunReviewTests(unittest.TestCase):
         (self.review / 'issues.json').unlink()
         review = run_review(self.review, self.base)
         self.assertEqual([(f['id'], f['group'], f['number']) for f in review['findings']],
-                         [('aa11', 'ledger', 1), ('bb22', 'ledger', 2), ('cc33', 'ledger', 3)])
+                         [(self.a, 'ledger', 1), (self.b, 'ledger', 2), (self.c, 'ledger', 3)])
         run = review['run']
         self.assertEqual((run['findings_source'], run['publishable']), ('ledger', False))
         self.assertTrue(any('no readable issues.json' in line for line in run['not_publishable_reasons']),
@@ -383,11 +455,11 @@ class RunReviewTests(unittest.TestCase):
         self.assertFalse(review['run']['publishable'])
 
     def test_findings_no_issue_holds_follow_the_issues(self):
-        self.write_issues(ISSUES[:1])
+        self.write_issues(self.issue_rows()[:1])
         findings = run_review(self.review, self.base)['findings']
         self.assertEqual([(f['id'], f['group'], f['number'], f['kind']) for f in findings],
-                         [('i01', 'required', 1, 'issue'), ('cc33', 'ledger', 2, 'edit')])
-        self.assertEqual([m['finding_uid'] for m in findings[1]['members']], ['cc33'])
+                         [('i01', 'required', 1, 'issue'), (self.c, 'ledger', 2, 'edit')])
+        self.assertEqual([m['finding_uid'] for m in findings[1]['members']], [self.c])
 
     def test_the_rebuttal_is_in_the_document_the_issue_names(self):
         # The editor quoted the rebuttal from a supplement, and the engine names that document on the issue.
@@ -395,7 +467,7 @@ class RunReviewTests(unittest.TestCase):
         shutil.rmtree(self.manuscript)
         base = manuscripts.build(self.manuscript, [TEXT, *manuscripts.CITING], references=manuscripts.REFERENCES,
                                  documents={'S1.md': [{'kind': 'paragraph', 'text': 'The draws were random.'}]})
-        rows = json.loads(json.dumps(ISSUES))
+        rows = self.issue_rows()
         rows[0].update(rebuttal_quote='lowered VPS35', rebuttal_line=LINE)
         rows[1].update(rebuttal_quote='The draws were random.', rebuttal_line=1, rebuttal_document='S1.md')
         self.write_issues(rows)
@@ -416,45 +488,46 @@ class RunReviewTests(unittest.TestCase):
     def test_a_member_whose_span_does_not_cover_its_words_is_unplaced(self):
         # The span is moved on the member and on its ledger row alike, so neither can place it.
         moved = {'start': 0, 'end': len('12 samples')}
-        rows = json.loads(json.dumps(ISSUES))
+        rows = self.issue_rows()
         rows[0]['members'][1].update(moved)
         self.write_issues(rows)
-        write_ledger(self.review, [AA11, {**BB22, **moved}, CC33])
+        write_ledger(self.review, [self.aa, {**self.bb, **moved}, self.cc])
         pooled = run_review(self.review, self.base)['findings'][0]
         self.assertEqual([(m['placement'], m['line'], m['start']) for m in pooled['members']],
                          [('anchored', LINE, TEXT.index('lowered VPS35')), ('unplaced', LINE, None)])
         self.assertEqual(pooled['placement'], 'anchored')
 
-    def test_each_agent_is_one_row_and_placeholders_are_dropped(self):
+    def test_each_agent_is_one_row(self):
         agents = {row['slot']: row for row in run_review(self.review, self.base)['run']['agents']}
-        self.assertEqual(list(agents), ['cite-1', 'core-1', 'recorder', 'spec-citations', 'spec-numbers'])
-        recorder = agents['recorder']
-        self.assertEqual((recorder['labels'], recorder['tokens'], recorder['session_calls'], recorder['tool_calls']),
-                         (['ingest', 'write review'], 400, 12, 4))
-        self.assertEqual((agents['spec-citations']['none_found'], agents['spec-citations']['tokens']), (True, None))
-        # A citation worker is its own row and holds no review.
+        self.assertEqual(list(agents), ['cite-1', 'core-1', 'editor', 'recorder', 'spec-citations', 'spec-numbers',
+                                        'spec-stats'])
+        self.assertEqual({slot: row['findings'] for slot, row in agents.items() if row['findings']},
+                         {'core-1': 2, 'spec-numbers': 1})
+        self.assertEqual([slot for slot, row in agents.items() if row['none_found']], ['spec-citations', 'spec-stats'])
+        # The recorder is the run itself and spent nothing. A citation worker is its own row and holds no review.
+        self.assertEqual((agents['recorder']['labels'], agents['recorder']['tokens']), (['recorder'], 0))
         self.assertEqual((agents['cite-1']['role'], agents['cite-1']['track'], agents['cite-1']['findings']),
-                         ('citation-worker', 'citations', 0))
+                         ('citation-worker', 'citation-worker', 0))
         self.assertEqual((agents['spec-numbers']['role'], agents['spec-numbers']['track']), ('specialist', 'numbers'))
 
     def test_each_agent_keeps_the_model_asked_beside_the_model_ran(self):
+        # The model ran is the family the seat reported, and the recorder asks no model at all.
         run = run_review(self.review, self.base)['run']
         self.assertEqual({row['slot']: (row['assigned_model'], row['model']) for row in run['agents']},
-                         {'cite-1': (HAIKU, HAIKU), 'core-1': (SONNET, SONNET), 'recorder': (HAIKU, HAIKU),
-                          'spec-citations': (SONNET, SONNET), 'spec-numbers': (SONNET, SONNET)})
+                         {'cite-1': (HAIKU, 'haiku'), 'core-1': (SONNET, 'sonnet'),
+                          'editor': ('claude-fable-5-2', 'fable'), 'recorder': (None, None),
+                          'spec-citations': (SONNET, 'sonnet'), 'spec-numbers': (SONNET, 'sonnet'),
+                          'spec-stats': (SONNET, 'sonnet')})
         self.assertEqual((run['models_unverified'], run['publishable'], run['problems']), ([], True, []))
-        protocol = json.loads((self.review / 'protocol.json').read_text())
         # A slot nothing observed has no model ran, never its model asked, and is named as unverified.
-        protocol['agents']['spec-citations']['model'] = None
-        write_json(self.review / 'protocol.json', protocol)
+        ran(self.review, 'spec-citations', None)
         run = run_review(self.review, self.base)['run']
         row = next(row for row in run['agents'] if row['slot'] == 'spec-citations')
         self.assertEqual((row['assigned_model'], row['model']), (SONNET, None))
         self.assertEqual((run['models_unverified'], run['publishable'], run['problems']),
                          (['spec-citations'], True, []))
         # A slot that ran another model family is a problem, and the review is not publishable.
-        protocol['agents']['spec-citations']['model'] = 'claude-opus-5-5'
-        write_json(self.review / 'protocol.json', protocol)
+        ran(self.review, 'spec-citations', 'claude-opus-5-5')
         run = run_review(self.review, self.base)['run']
         self.assertEqual((run['models_unverified'], run['publishable']), ([], False))
         for lines in (run['problems'], run['not_publishable_reasons']):
@@ -462,12 +535,15 @@ class RunReviewTests(unittest.TestCase):
                                 for line in lines), lines)
 
     def test_each_agent_says_how_it_ended_and_what_it_spent_in_the_engines_words(self):
-        # This fixture's stream is from before the engine wrote them, so none of the eight is recorded.
-        words = ('ending', 'detail', *TOKEN_FIELDS)
-        for row in run_review(self.review, self.base)['run']['agents']:
-            self.assertEqual({word: row[word] for word in words}, dict.fromkeys(words), row['slot'])
-        # The recorder's "in process" row, the spend of an answered seat and a seat that spent past its token
-        # ceiling are read from runs the engine wrote, in test_engine_rounds.py.
+        agents = {row['slot']: row for row in run_review(self.review, self.base)['run']['agents']}
+        recorder = agents.pop('recorder')
+        self.assertEqual((recorder['ending'], {field: recorder[field] for field in TOKEN_FIELDS}),
+                         ('in process', dict.fromkeys(TOKEN_FIELDS, 0)))
+        # Every other seat answered, and its spend is the scripted review's 1000 tokens.
+        for slot, row in agents.items():
+            self.assertEqual((row['ending'], row['detail'], row['tokens'], row['tokens_cumulative']),
+                             ('answered', None, 1000, 1000), slot)
+        # The split of the spend and a seat that spent past its token ceiling are read in test_engine_rounds.py.
 
     def test_a_review_without_findings_is_publishable_unless_the_guard_held_some(self):
         self.write_issues([], findings_delivered=0, findings_submitted=0, escalation_rulings=[], escalated_count=0)
@@ -489,7 +565,7 @@ class RunReviewTests(unittest.TestCase):
         return [(f['id'], f['decidable']) for f in run_review(self.review, self.base)['findings']]
 
     def test_a_repeated_issue_id_is_numbered_and_takes_no_decision(self):
-        rows = json.loads(json.dumps(ISSUES))
+        rows = self.issue_rows()
         rows[1]['id'] = 'i01'
         self.write_issues(rows)
         self.assertEqual(self.cards(), [('run-1', False), ('run-2', False)])
@@ -500,13 +576,13 @@ class RunReviewTests(unittest.TestCase):
         (self.review / 'issues.json').unlink()
         with (self.review / 'findings.jsonl').open('a') as stream:
             stream.write(json.dumps(finding('not a uid', '12 samples')) + '\n')
-        self.assertEqual(self.cards(), [('aa11', True), ('bb22', True), ('cc33', True), ('run-4', False)])
+        self.assertEqual(self.cards(), [(self.a, True), (self.b, True), (self.c, True), ('run-4', False)])
 
     def test_a_uid_shaped_like_a_place_number_is_not_an_engine_id(self):
         (self.review / 'issues.json').unlink()
         with (self.review / 'findings.jsonl').open('a') as stream:
             stream.write(json.dumps(finding('run-1', '12 samples')) + '\n')
-        self.assertEqual(self.cards(), [('aa11', True), ('bb22', True), ('cc33', True), ('run-4', False)])
+        self.assertEqual(self.cards(), [(self.a, True), (self.b, True), (self.c, True), ('run-4', False)])
 
     def test_issues_json_with_a_value_of_the_wrong_type_is_refused_in_one_message(self):
         lead = "This run's review/issues.json holds values of the wrong type, so the viewer cannot show it. "
@@ -524,9 +600,10 @@ class RunReviewTests(unittest.TestCase):
             'evidence_lines as a string': (lambda rows: rows[0]['members'][0].update(evidence_lines='3'),
                                            'In issue 1 (i01) member 1, evidence_lines is not a list of line numbers'),
         }
+        written = self.issue_rows()
         for label, (change, line) in cases.items():
             with self.subTest(label):
-                rows = json.loads(json.dumps(ISSUES))
+                rows = json.loads(json.dumps(written))
                 change(rows)
                 self.write_issues(rows)
                 with self.assertRaises(RunError) as raised:
@@ -539,7 +616,7 @@ class RunReviewTests(unittest.TestCase):
                                   'list of line numbers. Re-run the review.\n')
 
     def test_every_value_of_the_wrong_type_is_counted_and_the_first_few_named(self):
-        rows = json.loads(json.dumps(ISSUES))
+        rows = self.issue_rows()
         for row in rows:
             row.update(name=5, statement=6, severity=['major'], rank='1', audits='x', raised_by='y')
         self.write_issues(rows)
@@ -565,7 +642,8 @@ class RunReviewTests(unittest.TestCase):
                          'confirmed, contradicted, not-shown. Re-run the review.')
 
     def test_a_run_on_another_manuscript_version_is_refused(self):
-        write_json(self.review / 'manifest.json', {'paper_id': PAPER_ID, 'source_sha256': 'other'})
+        manifest = json.loads((self.review / 'manifest.json').read_text())
+        write_json(self.review / 'manifest.json', {**manifest, 'source_sha256': 'other'})
         with self.assertRaisesRegex(ValueError, 'different manuscript version'):
             run_review(self.review, self.base)
 
@@ -583,13 +661,13 @@ class RunReviewTests(unittest.TestCase):
         write_json(self.review / 'runtime.json', {'status': 'blocked', 'tokens_total': 900, 'wall_seconds': 120})
         review = run_review(self.review, self.base)
         self.assertEqual([(f['id'], f['group']) for f in review['findings']],
-                         [('aa11', 'ledger'), ('bb22', 'ledger'), ('cc33', 'ledger')])
+                         [(self.a, 'ledger'), (self.b, 'ledger'), (self.c, 'ledger')])
         self.assertEqual((review['run']['findings_source'], review['run']['publishable']), ('ledger', False))
         self.assertEqual(review['summary'], 'The run stopped before the editor wrote its issues: editor timed out')
 
     def test_the_ledger_keeps_the_latest_row_of_each_finding(self):
         with (self.review / 'findings.jsonl').open('a') as stream:
-            stream.write(json.dumps(finding('aa11', 'lowered VPS35', comment='Second submission.')) + '\n')
+            stream.write(json.dumps({**self.aa, 'comment': 'Second submission.'}) + '\n')
         # A member takes its comment from the latest row.
         pooled = run_review(self.review, self.base)['findings'][0]
         self.assertEqual([m['comment'] for m in pooled['members']],
@@ -597,8 +675,8 @@ class RunReviewTests(unittest.TestCase):
         (self.review / 'issues.json').unlink()
         findings = run_review(self.review, self.base)['findings']
         self.assertEqual([(f['id'], f['comment']) for f in findings],
-                         [('aa11', 'Second submission.'), ('bb22', 'Say how the 12 samples were drawn.'),
-                          ('cc33', 'Start with an article.')])
+                         [(self.a, 'Second submission.'), (self.b, 'Say how the 12 samples were drawn.'),
+                          (self.c, 'Start with an article.')])
 
     def test_an_empty_editor_summary_is_not_reported_as_missing_issues(self):
         self.write_issues(summary='')
@@ -722,19 +800,11 @@ class CitationLedgerTests(unittest.TestCase):
         self.assertEqual((run['problems'], run['publishable']), ([], True))
 
     def test_a_run_without_a_citations_lane_has_no_citations_panel(self):
-        shutil.rmtree(self.review / 'citations')
-        plan = {'arm': 'full-two-track', 'reviewers': 3, 'citation_workers': [],
-                'specialists': [lane for lane in LANES if lane != 'citations']}
-        protocol = json.loads((self.review / 'protocol.json').read_text())
-        for slot in ('spec-citations', 'cite-1'):
-            del protocol['agents'][slot], protocol['models'][slot]
-        write_json(self.review / 'protocol.json', {**protocol, 'plan': plan})
-        write_json(self.review / 'manifest.json', {'paper_id': PAPER_ID, 'source_sha256': SOURCE_SHA256,
-                                                   'citation_ledger': None, 'plan': plan})
-        progress = json.loads((self.review / 'progress.json').read_text())
-        write_json(self.review / 'progress.json', {**progress, 'stages': {'missing': [], 'none_found': []}})
-        run = self.view()
+        manuscript, review = make_run(self.root / 'no-lane', citations=None)
+        run = run_review(review, read_manuscript(manuscript))['run']
         self.assertEqual((run['citations'], run['problems'], run['publishable']), (None, [], True))
+        self.assertEqual([row['slot'] for row in run['agents']],
+                         ['core-1', 'editor', 'recorder', 'spec-numbers', 'spec-stats'])
 
     def test_a_torn_ledger_line_is_counted_and_the_rows_before_it_stand(self):
         supported = next(row['row_id'] for row in self.rows() if row.get('verdict') == 'supports')
@@ -794,9 +864,7 @@ class CitationLedgerTests(unittest.TestCase):
         self.assertEqual(use['sentence'], 'x' * 1_500 + ' [shortened by the viewer]')
 
     def test_a_citation_worker_on_another_model_is_reported_and_the_run_stays_publishable(self):
-        protocol = json.loads((self.review / 'protocol.json').read_text())
-        protocol['agents']['cite-1']['model'] = 'claude-opus-5-5'
-        write_json(self.review / 'protocol.json', protocol)
+        ran(self.review, 'cite-1', 'claude-opus-5-5')
         run = self.view()
         self.assertTrue(any(line.startswith(f'cite-1 was assigned {HAIKU} but ran claude-opus-5-5')
                             for line in run['problems']), run['problems'])
@@ -804,11 +872,9 @@ class CitationLedgerTests(unittest.TestCase):
 
 
 class StartupBlockedRunTests(unittest.TestCase):
-    """A run the start-up probe refused has its startup and runtime records and nothing else.
+    """A run blocked at start-up because nothing can run the agents: its startup and runtime records and nothing else.
 
-    test_engine_rounds.py builds the run the starter stops mid-session through
-    the engine's scripted review. No engine helper builds a run whose probe
-    failed, so this one folder is written by hand as the starter writes it.
+    The engine's scripted review builds it through the starter's own path for a missing runner.
     """
 
     def setUp(self):
@@ -820,9 +886,9 @@ class StartupBlockedRunTests(unittest.TestCase):
 
     def test_a_startup_blocked_run_cannot_be_served_and_its_report_says_why(self):
         run = self.root / 'startup-only'
-        write_json(run / 'review' / 'startup.json', {'problems': ['claude is not installed']})
-        write_json(run / 'review' / 'runtime.json', {'status': 'blocked',
-            'blocked_reason': 'the start-up probe failed: claude is not installed'})
+        run.mkdir()
+        blocked = scripted(run, sealed=False, missing='claude is not installed')
+        self.assertEqual((blocked.status, read_run(run / 'review')['manuscript']['state']), ('blocked', 'absent'))
         status, _, message = run_quietly(['serve', str(run)])
         self.assertEqual(status, 1)
         self.assertIn('stopped before it imported its manuscript', message)
@@ -838,6 +904,7 @@ class RunServerTests(unittest.TestCase):
         self.temporary = tempfile.TemporaryDirectory()
         self.root = Path(self.temporary.name).resolve()
         self.manuscript, self.review = make_run(self.root)
+        self.a, self.b, self.c = (row['finding_uid'] for row in filed(self.review))
         self.original = read_manuscript(self.manuscript).documents
         self.server = make_server(self.root, 0)
         self.port = self.server.server_port
@@ -891,11 +958,12 @@ class RunServerTests(unittest.TestCase):
         status, exported = self.request('/api/export?review=run')
         self.assertEqual((status, exported['review_id'], exported['run']['arm']), (200, 'run', 'full-two-track'))
         self.assertEqual([(f['id'], [m['finding_uid'] for m in f['members']]) for f in exported['findings']],
-                         [('i01', ['aa11', 'bb22']), ('i02', ['cc33'])])
+                         [('i01', [self.a, self.b]), ('i02', [self.c])])
         self.assertEqual(exported['proposed_documents'], self.edited())
 
     def test_a_mismatched_run_is_an_error_not_a_misplaced_review(self):
-        write_json(self.review / 'manifest.json', {'paper_id': PAPER_ID, 'source_sha256': 'other'})
+        manifest = json.loads((self.review / 'manifest.json').read_text())
+        write_json(self.review / 'manifest.json', {**manifest, 'source_sha256': 'other'})
         status, body = self.request('/api/review?review=run')
         self.assertEqual((status, body), (400, {'error': 'The run reviewed a different manuscript version'}))
 
@@ -910,15 +978,15 @@ class RunServerTests(unittest.TestCase):
         self.add_card_without_an_engine_id()
         status, review = self.request('/api/review?review=run')
         self.assertEqual([(f['id'], f['decidable']) for f in review['findings']],
-                         [('aa11', True), ('bb22', True), ('cc33', True), ('run-4', False)])
+                         [(self.a, True), (self.b, True), (self.c, True), ('run-4', False)])
         status, body = self.request('/api/decisions', {'review_id': 'run', 'annotation_id': 'run-4',
             'status': 'accepted', 'revision': 0})
         self.assertEqual((status, body), (400, {'error': NO_ENGINE_ID}))
         self.assertFalse((self.manuscript / 'decisions' / 'run.json').exists())
         # The card with an engine id still takes one.
-        status, decisions = self.request('/api/decisions', {'review_id': 'run', 'annotation_id': 'aa11',
+        status, decisions = self.request('/api/decisions', {'review_id': 'run', 'annotation_id': self.a,
             'status': 'noted', 'revision': 0})
-        self.assertEqual((status, decisions['items']), (200, {'aa11': 'noted'}))
+        self.assertEqual((status, decisions['items']), (200, {self.a: 'noted'}))
         # The app says the same words on the card.
         app = (Path(__file__).resolve().parents[1] / 'paper_workspace' / 'web' / 'app.js').read_text()
         self.assertIn(f"const NO_ENGINE_ID='{NO_ENGINE_ID}'", app)

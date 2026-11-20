@@ -8,9 +8,8 @@ nothing here reaches past the engine's public names. This file builds two
 rounds that way, each a fresh panel on its own draft that knows nothing of the
 other, and a third run given analysis code whose code lane fetches two data
 files and files one code-checked finding, and whose code check throws out the
-numbers lane's finding, and drives the viewer from them, so the hand-written
-fixture in test_run_view.py is checked against what the engine writes. Two
-more runs are given that code. In one the code lane finds nothing, so the one
+numbers lane's finding, and drives the viewer from them. Two more runs are
+given that code. In one the code lane finds nothing, so the one
 finding is thrown out. The other stops at an editor that never answers, before
 the review is written. The third run's code is what a workspace review hands
 over for a Paper Scaffold workspace, so the snapshot of it shows what the
