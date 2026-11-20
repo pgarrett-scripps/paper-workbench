@@ -149,7 +149,7 @@ def main(out):
         citations = fill(root / 'filled')
         for name in ('ledger.jsonl', 'stages.json'):
             (out / name).write_bytes((citations / name).read_bytes())
-        # The panel view of that ledger, for the run test_run_view.make_run writes.
+        # The panel view of that ledger, on the run test_run_view.make_run builds through the engine.
         from paper_workspace.run_view import run_review
         from test_run_view import make_run
         _, review = make_run(root / 'run', citations=out)

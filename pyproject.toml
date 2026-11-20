@@ -14,7 +14,7 @@ license = {file = "LICENSE"}
 # The engine is not released yet, so it is pinned to one commit of its main
 # branch as GitHub's archive of that commit, with the archive's hash.
 dependencies = [
-    "peerreviewagents @ https://github.com/pgarrett-scripps/PeerReviewAgents/archive/55d5707533da16c1f38012f79b3a74cdcf055798.tar.gz#sha256=632166deb7bc012774e4152a3082cbe6eeadcbe430d0cffe1a15573a69a216a0",
+    "peerreviewagents @ https://github.com/pgarrett-scripps/PeerReviewAgents/archive/443cb1ada3f7d1b997f09473828ebd65c051d7f6.tar.gz#sha256=bf0d09cb8a905df14063b5bc7b7ad75de371cd2f8e1afb57d7e4812653c01320",
 ]
 
 [project.optional-dependencies]

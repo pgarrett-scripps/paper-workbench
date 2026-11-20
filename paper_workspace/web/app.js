@@ -381,10 +381,10 @@ function runStatus(run){
 function count(value){return String(value).replace(/\B(?=(\d{3})+(?!\d))/g,',');}
 const TOKEN_PARTS=[['uncached input','tokens_input_uncached'],['cache write','tokens_cache_write'],
  ['cache read','tokens_cache_read'],['output','tokens_output']];
-// Since engine 3d96d92 an agent row says what the session spent, every call added up with cache reads
-// included, and its widest single call. A row without them keeps the one total it always had.
+// An agent row says what the session spent, every call added up with cache reads included, and its widest
+// single call. The engine leaves them empty for a slot nothing observed, which means not recorded, never zero.
 function spendFacts(row){
- if(!Number.isFinite(row.tokens_cumulative))return [Number.isFinite(row.tokens)&&`${count(row.tokens)} tokens`];
+ if(!Number.isFinite(row.tokens_cumulative))return [];
  if(!row.tokens_cumulative)return ['0 tokens spent'];
  const parts=TOKEN_PARTS.filter(([,key])=>Number.isFinite(row[key])).map(([name,key])=>`${name} ${count(row[key])}`);
  return [`${count(row.tokens_cumulative)} tokens spent${parts.length?` (${parts.join(', ')})`:''}`,
@@ -394,9 +394,11 @@ function agentFacts(row){
  const tasks=(row.labels||[]).filter(label=>label!==row.slot);
  const raises=['core','specialist'].includes(row.role)||row.findings>0||row.none_found;
  // The engine says `in process` for the recorder it ran itself, which has no model asked and none ran.
+ // Every other slot in the plan has a model asked. The one row without it is an agent the session stream
+ // reported and the plan never named, which the engine lists rather than drops.
  const inProcess=row.ending==='in process';
  const models=inProcess?['in process, no model']
-  :[`model asked ${row.assigned_model||'not recorded'}`,`model ran ${row.model||'not recorded'}`];
+  :[row.assigned_model?`model asked ${row.assigned_model}`:"not in the run's plan",`model ran ${row.model||'not recorded'}`];
  // The engine's own word for how the agent ended goes beside the state, when it says more.
  const ended=row.ending&&!inProcess&&row.ending!==row.state?row.ending:'';
  const facts=[row.slot,row.track&&`${row.track} track`,row.role==='citation-worker'&&'citation worker, writes no findings',...models,
@@ -407,11 +409,9 @@ function agentFacts(row){
   raises&&(row.none_found?'reported no findings':`${row.findings||0} findings`)].filter(Boolean).map(esc).join(' · ');
  return row.detail&&!inProcess?`${facts}<br><span class="muted">${esc(row.detail)}</span>`:facts;
 }
-// What the two token figures mean, shown once under the agents of a run that has them.
+// What the two token figures mean, shown once under the agents of a run when one of them spent anything on record.
 const TOKENS_NOTE='Tokens spent is every call added up, cache reads included, and is what the run cost. Peak context is the'
  +' largest single call, and is the figure that compares with a run from before engine 0.10.0.';
-// The agents of a run whose rows say what each session spent in all.
-function spentRows(run){return (run.agents||[]).filter(row=>Number.isFinite(row.tokens_cumulative));}
 function unverifiedNote(slots){
  if(!(slots||[]).length)return '';
  const one=slots.length===1;
@@ -547,7 +547,7 @@ function runPanel(){
   Number.isInteger(run.escalated_count)&&`${run.escalated_count} escalated`,run.review_guard_status&&`Guard ${run.review_guard_status}`,
   run.quarantined_findings_count?`${run.quarantined_findings_count} quarantined`:'',
   Number.isFinite(run.wall_seconds)&&`${Math.round(run.wall_seconds/60)} min`,
-  Number.isFinite(run.tokens_total)&&`${count(run.tokens_total)} tokens${spentRows(run).length?' spent':''}`].filter(Boolean);
+  Number.isFinite(run.tokens_total)&&`${count(run.tokens_total)} tokens spent`].filter(Boolean);
  // Why a run is not publishable is shown once, above its comments.
  const warnings=[run.cause,run.note,...(run.problems||[]),(run.missing_stages||[]).length&&`Stages that did not report: ${run.missing_stages.join(', ')}`,
   readerFailed(run.read),codeCheckIncomplete(run.code_check)].filter(Boolean);
@@ -557,7 +557,7 @@ function runPanel(){
  const audits=Object.entries(run.audits||{});
  const auditHtml=audits.length?`<details><summary>Specialist reports (${audits.length})</summary>${audits.map(([track,text])=>`<details class="audit"><summary>${esc(track)}</summary><pre>${esc(text)}</pre></details>`).join('')}</details>`:'';
  const reviewers=run.agents||[],tracks=Object.entries(run.findings_by_track||{});
- const tokensNote=spentRows(run).length?`<p class="muted">${esc(TOKENS_NOTE)}</p>`:'';
+ const tokensNote=reviewers.some(row=>Number.isFinite(row.tokens_cumulative))?`<p class="muted">${esc(TOKENS_NOTE)}</p>`:'';
  const reviewerHtml=reviewers.length||tracks.length?`<details><summary>Agents (${reviewers.length})</summary><ul>${reviewers.map(row=>`<li>${agentFacts(row)}</li>`).join('')}</ul>${tokensNote}${tracks.length?`<p class="muted">Findings by track: ${tracks.map(([track,count])=>`${esc(track)} ${esc(count)}`).join(' · ')}</p>`:''}</details>`:'';
  $('#run-panel').innerHTML=`<p class="count">${facts.map(esc).join(' · ')}</p>${warnings.map(text=>`<p class="error">${esc(text)}</p>`).join('')}${unverified?`<p class="unverified">${esc(unverified)}</p>`:''}${verdictHtml}${codeReviewed(run.code)}${codeCheckCounts(run.code_check)}${citationPanel(run.citations)}${auditHtml}${reviewerHtml}${(run.limitations||[]).map(text=>`<p class="muted">${esc(text)}</p>`).join('')}`;
 }

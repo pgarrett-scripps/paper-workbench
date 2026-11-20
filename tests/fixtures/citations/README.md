@@ -4,7 +4,8 @@
 test run's manuscript (`manuscripts.run_manuscript`). Nothing goes on the network. Every lookup goes to the
 generator's opener, which answers from canned bodies and raises `OSError` for any other address, which the engine
 records as a host that did not answer. `view.json` is what `paper_workspace.run_view.run_review` makes of this ledger
-for the run panel, and the viewer test renders it.
+for the run panel, on the run `test_run_view.make_run` builds through the engine's scripted review, and the viewer
+test renders it.
 
 The engine has no public ledger writer, so `generate.py` imports its internal ledger module. It is the one file in
 this repo allowed to, and `test_engine_contract.PublicSurfaceTest` names it. No test runs the generator.
