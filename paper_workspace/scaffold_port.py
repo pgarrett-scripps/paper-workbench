@@ -194,6 +194,14 @@ def port_workspace(source, output):
         return import_scaffold(project, output, title=base.title, check=same_lines)
 
 
+def ported_line(manifest, source, output):
+    """One line saying what :func:`port_workspace` wrote: the paper, from where and to where, and its size."""
+    stats = manifest['statistics']
+    return (f'ported "{manifest["title"]}" from {Path(source).expanduser().resolve()} as paper '
+            f'{manifest["paper_id"]} into {Path(output).expanduser().resolve()}: {stats["pieces"]} pieces, '
+            f'{stats["total_words"]:,} words and {stats["reference_entries"]} references.')
+
+
 def _abstracts(root, hashes):
     config = (root / CONFIG).read_bytes().decode('utf-8')
     declaration = ABSTRACT.search(config)

@@ -72,7 +72,7 @@ class WorkspaceRefused(ValueError):
 def parser(prog='paper-workbench review'):
     """The engine's review parser, which also takes a workspace folder and ``--no-code``."""
     built = review_parser(prog=prog)
-    built.description = ('Review one manuscript with the pra plugin in a headless Claude Code session. '
+    built.description = ('Review one manuscript with a panel of Claude Code agents. '
                          'The manuscript is a PDF, a Paper Scaffold workspace folder, or a manuscript '
                          'workspace made with import-scaffold.')
     built.epilog = ('A workspace folder, such as ".", is reviewed from its built paper.pdf, which must '
